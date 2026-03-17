@@ -9,6 +9,7 @@ const nav = [
   { href: '/checklists', label: 'Checklists', icon: '☑' },
   { href: '/pipeline', label: 'Pipeline', icon: '◎' },
   { href: '/tasks', label: 'Tasks', icon: '▤' },
+  { href: '/staff', label: 'Staff', icon: '◇' },
   { href: '/sops', label: 'SOPs', icon: '◉' },
 ]
 

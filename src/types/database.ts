@@ -6,6 +6,8 @@ export type TaskStatus = 'todo' | 'in_progress' | 'blocked' | 'done'
 export type TaskPriority = 'high' | 'medium' | 'low'
 export type TaskType = 'admin' | 'content' | 'janitorial' | 'sales' | 'events' | 'facility' | 'inventory' | 'other'
 export type SopCategory = 'operations' | 'front-desk' | 'sales' | 'content' | 'emergency' | 'equipment' | 'general'
+export type TimeOffStatus = 'pending' | 'approved' | 'denied'
+export type ShiftRole = 'front-desk' | 'coaching' | 'management' | 'other'
 
 export interface Org {
   id: string
@@ -90,6 +92,54 @@ export interface Sop {
   updated_by: string | null
   created_at: string
   updated_at: string
+}
+
+export interface TimeClock {
+  id: string
+  org_id: string
+  user_id: string
+  clock_in: string
+  clock_out: string | null
+  total_minutes: number | null
+  notes: string | null
+  created_at: string
+}
+
+export interface TimeOffRequest {
+  id: string
+  org_id: string
+  user_id: string
+  start_date: string
+  end_date: string
+  reason: string | null
+  status: TimeOffStatus
+  reviewed_by: string | null
+  reviewed_at: string | null
+  review_notes: string | null
+  created_at: string
+}
+
+export interface Availability {
+  id: string
+  org_id: string
+  user_id: string
+  day_of_week: number
+  start_time: string | null
+  end_time: string | null
+  is_available: boolean
+  created_at: string
+}
+
+export interface ScheduleShift {
+  id: string
+  org_id: string
+  user_id: string
+  shift_date: string
+  start_time: string
+  end_time: string
+  role: ShiftRole
+  notes: string | null
+  created_at: string
 }
 
 export interface Task {
