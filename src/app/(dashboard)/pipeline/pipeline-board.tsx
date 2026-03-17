@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import type { Lead, LeadStatus } from '@/types/database'
 
 const columns: { status: LeadStatus; label: string; color: string }[] = [
@@ -48,7 +49,7 @@ function LeadCard({ lead }: { lead: LeadWithProfile }) {
   const isOverdue = lead.next_action_date && new Date(lead.next_action_date) < new Date() && !['converted', 'lost', 'archived'].includes(lead.status)
 
   return (
-    <div className={`bg-gray-900 rounded-lg p-3 border ${isOverdue ? 'border-red-500/50' : 'border-gray-800'} hover:border-gray-700 transition-colors`}>
+    <Link href={`/pipeline/${lead.id}`} className={`block bg-gray-900 rounded-lg p-3 border ${isOverdue ? 'border-red-500/50' : 'border-gray-800'} hover:border-gray-700 transition-colors`}>
       <div className="flex items-start justify-between">
         <p className="text-sm font-medium text-white">{lead.name}</p>
         {lead.touch_count > 0 && (
@@ -81,6 +82,6 @@ function LeadCard({ lead }: { lead: LeadWithProfile }) {
           Next: {new Date(lead.next_action_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
         </p>
       )}
-    </div>
+    </Link>
   )
 }
