@@ -1,10 +1,14 @@
 export const dynamic = 'force-dynamic'
 
 import { createClient } from '@/lib/supabase/server'
+import { getUserOrg } from '@/lib/get-user-org'
 import { ChecklistView } from './checklist-view'
 
 export default async function ChecklistsPage() {
   const supabase = await createClient()
+  const userOrg = await getUserOrg()
+  if (!userOrg) return null
+
   const today = new Date().toISOString().split('T')[0]
 
   const { data: templates } = await supabase
@@ -22,7 +26,6 @@ export default async function ChecklistsPage() {
     .eq('checklist_items.checklist_completions.completed_date', today)
     .order('sort_order')
 
-  // Reshape: attach today's completion status to each item
   const checklists = (templates ?? []).map((template) => ({
     ...template,
     items: (template.checklist_items ?? [])
@@ -53,7 +56,7 @@ export default async function ChecklistsPage() {
       ) : (
         <div className="space-y-6">
           {checklists.map((checklist) => (
-            <ChecklistView key={checklist.id} checklist={checklist} />
+            <ChecklistView key={checklist.id} checklist={checklist} orgId={userOrg.orgId} />
           ))}
         </div>
       )}

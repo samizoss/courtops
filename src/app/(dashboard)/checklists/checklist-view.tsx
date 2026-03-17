@@ -12,6 +12,7 @@ interface ChecklistItem {
 }
 
 interface Props {
+  orgId: string
   checklist: {
     id: string
     name: string
@@ -27,7 +28,7 @@ const shiftColors: Record<string, string> = {
   custom: 'bg-gray-500/10 text-gray-400 border-gray-500/30',
 }
 
-export function ChecklistView({ checklist }: Props) {
+export function ChecklistView({ checklist, orgId }: Props) {
   const router = useRouter()
   const [loading, setLoading] = useState<string | null>(null)
   const completedCount = checklist.items.filter((i) => i.completed).length
@@ -45,7 +46,7 @@ export function ChecklistView({ checklist }: Props) {
     } else {
       await supabase.from('checklist_completions').insert({
         item_id: item.id,
-        org_id: checklist.id, // Will be replaced with actual org_id from context
+        org_id: orgId,
         completed_date: new Date().toISOString().split('T')[0],
       })
     }
