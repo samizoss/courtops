@@ -1,6 +1,32 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'courtops.app'
+
+/**
+ * Extract org slug from subdomain.
+ * thepbjar.courtops.app → "thepbjar"
+ * courtops.app → null
+ * localhost:3000 → null (dev mode)
+ */
+export function getOrgSlug(request: NextRequest): string | null {
+  const host = request.headers.get('host') || ''
+  const hostname = host.split(':')[0] // strip port
+
+  // Local dev: no subdomain resolution
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return null
+  }
+
+  // Check if it's a subdomain of ROOT_DOMAIN
+  if (hostname.endsWith(`.${ROOT_DOMAIN}`)) {
+    const slug = hostname.replace(`.${ROOT_DOMAIN}`, '')
+    if (slug && slug !== 'www') return slug
+  }
+
+  return null
+}
+
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
@@ -13,6 +39,14 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse
   }
 
+  // Resolve org slug from subdomain and pass via header
+  const orgSlug = getOrgSlug(request)
+  if (orgSlug) {
+    request.headers.set('x-org-slug', orgSlug)
+    supabaseResponse = NextResponse.next({ request })
+    supabaseResponse.headers.set('x-org-slug', orgSlug)
+  }
+
   const supabase = createServerClient(
     supabaseUrl,
     supabaseKey,
@@ -22,10 +56,13 @@ export async function updateSession(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
           supabaseResponse = NextResponse.next({
             request,
           })
+          if (orgSlug) {
+            supabaseResponse.headers.set('x-org-slug', orgSlug)
+          }
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
           )
