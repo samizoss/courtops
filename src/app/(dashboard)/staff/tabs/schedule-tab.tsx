@@ -55,6 +55,17 @@ export function ScheduleTab({ shifts, profiles, isAdmin, orgId, availability, ti
   const [editingShift, setEditingShift] = useState<string | null>(null)
   const [editForm, setEditForm] = useState({ start_time: '', end_time: '', role: 'front-desk' as ShiftRole })
 
+  // Click-to-assign state
+  const [assignModal, setAssignModal] = useState<{
+    profile: Profile
+    slotMin: number
+    status: 'available' | 'not-set' | 'unavailable' | 'time-off'
+  } | null>(null)
+  const [assignNote, setAssignNote] = useState('')
+  const [assignRole, setAssignRole] = useState<ShiftRole>('front-desk')
+  const [suppressWarnings, setSuppressWarnings] = useState(false)
+  const [showAddAnyone, setShowAddAnyone] = useState<number | null>(null) // slotMin for "add anyone" dropdown
+
   // Org hours with buffer — use per-day hours if available, else fallback
   const openDays = orgHours?.open_days ?? [1, 2, 3, 4, 5, 6]
   const dailyHours = orgHours?.daily_hours ?? {}
@@ -235,6 +246,71 @@ export function ScheduleTab({ shifts, profiles, isAdmin, orgId, availability, ti
     }
   }
 
+  // Click-to-assign: handle clicking a staff name in the grid
+  function handleStaffClick(profile: Profile, slotMin: number) {
+    if (!isAdmin) return
+    const status = getAvailabilityStatus(profile.id, slotMin)
+
+    // If available and warnings suppressed, assign immediately
+    if (status === 'available' && suppressWarnings) {
+      return executeQuickAssign(profile, slotMin, '')
+    }
+
+    // If available and no need for warning, assign immediately
+    if (status === 'available') {
+      return executeQuickAssign(profile, slotMin, '')
+    }
+
+    // Otherwise show modal with appropriate warning
+    setAssignModal({ profile, slotMin, status })
+    setAssignNote('')
+    setAssignRole('front-desk')
+  }
+
+  async function executeQuickAssign(profile: Profile, slotMin: number, notes: string) {
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+
+      // Calculate end time based on increment
+      const endMin = slotMin + increment
+      const startHH = String(Math.floor(slotMin / 60)).padStart(2, '0')
+      const startMM = String(slotMin % 60).padStart(2, '0')
+      const endHH = String(Math.floor(endMin / 60)).padStart(2, '0')
+      const endMM = String(endMin % 60).padStart(2, '0')
+
+      const { error } = await supabase.from('shifts').insert({
+        org_id: orgId,
+        user_id: profile.id,
+        shift_date: selectedDate,
+        start_time: `${startHH}:${startMM}`,
+        end_time: `${endHH}:${endMM}`,
+        role: assignRole,
+        notes: notes || null,
+      })
+      if (error) throw error
+
+      // If staff hasn't set availability, send notification
+      const status = getAvailabilityStatus(profile.id, slotMin)
+      if (status === 'not-set') {
+        await supabase.from('notifications').insert({
+          org_id: orgId,
+          user_id: profile.id,
+          type: 'system',
+          title: 'You\'ve been tentatively scheduled',
+          body: `You were scheduled for ${minutesToTime(slotMin)} on ${new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}. Please submit your availability within 2 days so the schedule can be finalized.`,
+          link: '/staff',
+        }).then(() => {}) // fire and forget
+      }
+
+      toast(`${profile.full_name?.split(' ')[0]} assigned at ${minutesToTime(slotMin)}`)
+      setAssignModal(null)
+      router.refresh()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed to assign shift', 'error')
+    }
+  }
+
   const isOpenDay = openDays.includes(selectedDayOfWeek)
 
   return (
@@ -374,19 +450,74 @@ export function ScheduleTab({ shifts, profiles, isAdmin, orgId, availability, ti
                         {minutesToTime(slotMin)}
                       </td>
                       <td className="py-2 pr-4">
-                        {count === 0 ? (
-                          <span className="text-red-400 text-xs">No one available</span>
-                        ) : (
-                          <div className="flex flex-wrap gap-1">
-                            {available.map(({ profile: p, status }) => (
-                              <span key={p.id} className={`text-[10px] px-1.5 py-0.5 rounded ${
-                                status === 'not-set' ? 'bg-yellow-500/10 text-yellow-400' : 'bg-green-500/10 text-green-400'
-                              }`}>
-                                {p.full_name?.split(' ')[0]}{status === 'not-set' ? '?' : ''}
-                              </span>
-                            ))}
-                          </div>
-                        )}
+                        <div className="flex flex-wrap gap-1 items-center">
+                          {count === 0 ? (
+                            <span className="text-red-400 text-xs">No one available</span>
+                          ) : (
+                            available.map(({ profile: p, status }) => (
+                              isAdmin ? (
+                                <button
+                                  key={p.id}
+                                  onClick={() => handleStaffClick(p, slotMin)}
+                                  className={`text-[10px] px-1.5 py-0.5 rounded cursor-pointer transition-all hover:ring-1 hover:ring-orange-500 ${
+                                    status === 'not-set' ? 'bg-yellow-500/10 text-yellow-400' : 'bg-green-500/10 text-green-400'
+                                  }`}
+                                  title={`Click to assign ${p.full_name}`}
+                                >
+                                  {p.full_name?.split(' ')[0]}{status === 'not-set' ? '?' : ''}
+                                </button>
+                              ) : (
+                                <span key={p.id} className={`text-[10px] px-1.5 py-0.5 rounded ${
+                                  status === 'not-set' ? 'bg-yellow-500/10 text-yellow-400' : 'bg-green-500/10 text-green-400'
+                                }`}>
+                                  {p.full_name?.split(' ')[0]}{status === 'not-set' ? '?' : ''}
+                                </span>
+                              )
+                            ))
+                          )}
+                          {isAdmin && (
+                            <div className="relative">
+                              <button
+                                onClick={() => setShowAddAnyone(showAddAnyone === slotMin ? null : slotMin)}
+                                className="text-[10px] w-5 h-5 rounded bg-gray-800 text-gray-500 hover:text-orange-400 hover:bg-gray-700 transition-colors flex items-center justify-center"
+                                title="Assign anyone to this slot"
+                              >
+                                +
+                              </button>
+                              {showAddAnyone === slotMin && (
+                                <div className="absolute left-0 top-6 z-20 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 min-w-[140px]">
+                                  {profiles
+                                    .filter((p) => !available.some(({ profile: ap }) => ap.id === p.id))
+                                    .map((p) => {
+                                      const pStatus = getAvailabilityStatus(p.id, slotMin)
+                                      return (
+                                        <button
+                                          key={p.id}
+                                          onClick={() => {
+                                            setShowAddAnyone(null)
+                                            handleStaffClick(p, slotMin)
+                                          }}
+                                          className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-700 transition-colors flex items-center gap-2"
+                                        >
+                                          <span className="text-gray-300">{p.full_name?.split(' ')[0]}</span>
+                                          <span className={`text-[9px] ${
+                                            pStatus === 'unavailable' ? 'text-red-400' :
+                                            pStatus === 'time-off' ? 'text-red-400' :
+                                            'text-yellow-400'
+                                          }`}>
+                                            {pStatus === 'unavailable' ? 'unavail' : pStatus === 'time-off' ? 'time off' : ''}
+                                          </span>
+                                        </button>
+                                      )
+                                    })}
+                                  {profiles.filter((p) => !available.some(({ profile: ap }) => ap.id === p.id)).length === 0 && (
+                                    <p className="px-3 py-1.5 text-xs text-gray-500">Everyone listed above</p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </td>
                       <td className="py-2 text-right">
                         <span className={`text-xs font-medium ${
@@ -461,6 +592,107 @@ export function ScheduleTab({ shifts, profiles, isAdmin, orgId, availability, ti
           </div>
         )}
       </div>
+
+      {/* Assignment confirmation modal */}
+      {assignModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setAssignModal(null)}>
+          <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold mb-1">
+              Assign {assignModal.profile.full_name?.split(' ')[0]}
+            </h3>
+            <p className="text-sm text-gray-400 mb-4">
+              {minutesToTime(assignModal.slotMin)} on {new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+            </p>
+
+            {/* Warning based on status */}
+            {assignModal.status === 'not-set' && (
+              <div className="mb-4 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+                <p className="text-xs text-yellow-400 font-medium">This person hasn&apos;t submitted their availability</p>
+                <p className="text-xs text-yellow-400/70 mt-0.5">They&apos;ll be notified and given 2 days to confirm. The shift is tentative until then.</p>
+              </div>
+            )}
+            {assignModal.status === 'unavailable' && (
+              <div className="mb-4 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20">
+                <p className="text-xs text-red-400 font-medium">This person is marked unavailable at this time</p>
+                <p className="text-xs text-red-400/70 mt-0.5">You&apos;re overriding their availability. A note is required.</p>
+              </div>
+            )}
+            {assignModal.status === 'time-off' && (
+              <div className="mb-4 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20">
+                <p className="text-xs text-red-400 font-medium">This person has approved time off on this date</p>
+                <p className="text-xs text-red-400/70 mt-0.5">You&apos;re overriding their time off. A note is required.</p>
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Role</label>
+                <select
+                  value={assignRole}
+                  onChange={(e) => setAssignRole(e.target.value as ShiftRole)}
+                  className="w-full px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-orange-500"
+                >
+                  <option value="front-desk">Front Desk</option>
+                  <option value="coaching">Coaching</option>
+                  <option value="management">Management</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">
+                  Note {(assignModal.status === 'unavailable' || assignModal.status === 'time-off') ? '(required)' : '(optional)'}
+                </label>
+                <input
+                  type="text"
+                  value={assignNote}
+                  onChange={(e) => setAssignNote(e.target.value)}
+                  placeholder={
+                    assignModal.status === 'unavailable' ? 'Why are you overriding availability?'
+                    : assignModal.status === 'time-off' ? 'Why are you overriding time off?'
+                    : 'Optional note...'
+                  }
+                  className="w-full px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                  autoFocus
+                />
+              </div>
+
+              {(assignModal.status === 'not-set' || assignModal.status === 'unavailable' || assignModal.status === 'time-off') && (
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={suppressWarnings}
+                    onChange={(e) => setSuppressWarnings(e.target.checked)}
+                    className="w-3.5 h-3.5 rounded border-gray-600 bg-gray-800 text-orange-500 focus:ring-orange-500"
+                  />
+                  <span className="text-xs text-gray-500">Don&apos;t warn me again this session</span>
+                </label>
+              )}
+            </div>
+
+            <div className="flex gap-2 mt-5">
+              <button
+                onClick={() => {
+                  if ((assignModal.status === 'unavailable' || assignModal.status === 'time-off') && !assignNote.trim()) {
+                    toast('A note is required when overriding availability', 'error')
+                    return
+                  }
+                  executeQuickAssign(assignModal.profile, assignModal.slotMin, assignNote)
+                }}
+                className="flex-1 px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                Assign
+              </button>
+              <button
+                onClick={() => setAssignModal(null)}
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
