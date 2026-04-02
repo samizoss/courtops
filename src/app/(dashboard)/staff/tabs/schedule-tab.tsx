@@ -2,7 +2,9 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useToast } from '@/components/toast'
 import type { Profile, ShiftRole } from '@/types/database'
+import type { OrgHours } from '../staff-module'
 
 const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const roleColors: Record<ShiftRole, string> = {
@@ -17,12 +19,31 @@ interface Props {
   profiles: Profile[]
   isAdmin: boolean
   orgId: string
+  availability: any[]
+  timeOffRequests: any[]
+  orgHours?: OrgHours
 }
 
-export function ScheduleTab({ shifts, profiles, isAdmin, orgId }: Props) {
+function timeToMinutes(t: string): number {
+  const [h, m] = t.split(':').map(Number)
+  return h * 60 + m
+}
+
+function minutesToTime(min: number): string {
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  const hh = h % 12 || 12
+  return `${hh}:${m.toString().padStart(2, '0')} ${ampm}`
+}
+
+export function ScheduleTab({ shifts, profiles, isAdmin, orgId, availability, timeOffRequests, orgHours }: Props) {
   const router = useRouter()
+  const { toast } = useToast()
   const [showAdd, setShowAdd] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [increment, setIncrement] = useState<15 | 30 | 60>(60)
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0])
   const [form, setForm] = useState({
     user_id: '',
     shift_date: new Date().toISOString().split('T')[0],
@@ -31,6 +52,97 @@ export function ScheduleTab({ shifts, profiles, isAdmin, orgId }: Props) {
     role: 'front-desk' as ShiftRole,
     notes: '',
   })
+  const [editingShift, setEditingShift] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState({ start_time: '', end_time: '', role: 'front-desk' as ShiftRole })
+
+  // Org hours with buffer — use per-day hours if available, else fallback
+  const openDays = orgHours?.open_days ?? [1, 2, 3, 4, 5, 6]
+  const dailyHours = orgHours?.daily_hours ?? {}
+
+  function getDayHours(dayOfWeek: number): { openMin: number; closeMin: number } {
+    const dayConfig = dailyHours[String(dayOfWeek)]
+    const buffer = orgHours?.staff_arrive_before_min ?? 0
+    const afterBuffer = orgHours?.staff_depart_after_min ?? 0
+    if (dayConfig) {
+      return {
+        openMin: timeToMinutes(dayConfig.open) - buffer,
+        closeMin: timeToMinutes(dayConfig.close) + afterBuffer,
+      }
+    }
+    return {
+      openMin: timeToMinutes(orgHours?.open_time?.slice(0, 5) || '08:00') - buffer,
+      closeMin: timeToMinutes(orgHours?.close_time?.slice(0, 5) || '17:00') + afterBuffer,
+    }
+  }
+
+  // Figure out which day of week the selected date is
+  const selectedDayOfWeek = new Date(selectedDate + 'T12:00:00').getDay()
+
+  const { openMin, closeMin } = getDayHours(selectedDayOfWeek)
+
+  // Generate time slots
+  const slots: number[] = []
+  for (let m = openMin; m < closeMin; m += increment) {
+    slots.push(m)
+  }
+
+  // Build availability map: userId → { day_of_week → { start_time, end_time, is_available } }
+  const availMap: Record<string, Record<number, { start: number; end: number; available: boolean }>> = {}
+  for (const a of availability) {
+    const uid = a.user_id
+    if (!availMap[uid]) availMap[uid] = {}
+    availMap[uid][a.day_of_week] = {
+      start: a.start_time ? timeToMinutes(a.start_time.slice(0, 5)) : 0,
+      end: a.end_time ? timeToMinutes(a.end_time.slice(0, 5)) : 0,
+      available: a.is_available,
+    }
+  }
+
+  // Build approved time-off set: userId → Set of date strings
+  const timeOffMap: Record<string, Set<string>> = {}
+  for (const req of timeOffRequests) {
+    if (req.status !== 'approved') continue
+    const uid = req.user_id
+    if (!timeOffMap[uid]) timeOffMap[uid] = new Set()
+    const start = new Date(req.start_date)
+    const end = new Date(req.end_date)
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      timeOffMap[uid].add(d.toISOString().split('T')[0])
+    }
+  }
+
+  // Check if a staff member is available at a given slot on the selected date
+  // Returns: 'available' | 'unavailable' | 'time-off' | 'not-set'
+  function getAvailabilityStatus(userId: string, slotMin: number): 'available' | 'unavailable' | 'time-off' | 'not-set' {
+    if (timeOffMap[userId]?.has(selectedDate)) return 'time-off'
+
+    const dayAvail = availMap[userId]?.[selectedDayOfWeek]
+    if (!dayAvail) return 'not-set'
+    if (!dayAvail.available) return 'unavailable'
+    if (slotMin >= dayAvail.start && slotMin < dayAvail.end) return 'available'
+    return 'unavailable'
+  }
+
+  // Get available staff for each slot (includes "not-set" as potentially available)
+  function getAvailableStaff(slotMin: number): { profile: Profile; status: 'available' | 'not-set' }[] {
+    const result: { profile: Profile; status: 'available' | 'not-set' }[] = []
+    for (const p of profiles) {
+      const status = getAvailabilityStatus(p.id, slotMin)
+      if (status === 'available' || status === 'not-set') {
+        result.push({ profile: p, status })
+      }
+    }
+    return result
+  }
+
+  // Get availability summary for a staff member on the selected day
+  function getAvailSummary(userId: string): string {
+    if (timeOffMap[userId]?.has(selectedDate)) return 'Time off'
+    const dayAvail = availMap[userId]?.[selectedDayOfWeek]
+    if (!dayAvail) return 'Not set'
+    if (!dayAvail.available) return 'Off'
+    return `${minutesToTime(dayAvail.start)} – ${minutesToTime(dayAvail.end)}`
+  }
 
   // Group shifts by date
   const grouped: Record<string, typeof shifts> = {}
@@ -39,36 +151,95 @@ export function ScheduleTab({ shifts, profiles, isAdmin, orgId }: Props) {
     grouped[s.shift_date].push(s)
   })
 
+  // Next 7 days for date selector
+  const next7: string[] = []
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(Date.now() + i * 86400000)
+    next7.push(d.toISOString().split('T')[0])
+  }
+
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true)
-    const { createClient } = await import('@/lib/supabase/client')
-    const supabase = createClient()
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
 
-    await supabase.from('shifts').insert({
-      org_id: orgId,
-      user_id: form.user_id,
-      shift_date: form.shift_date,
-      start_time: form.start_time,
-      end_time: form.end_time,
-      role: form.role,
-      notes: form.notes || null,
-    })
+      // #25: Check for conflicts
+      const { data: existing } = await supabase
+        .from('shifts')
+        .select('id')
+        .eq('user_id', form.user_id)
+        .eq('shift_date', form.shift_date)
+        .lt('start_time', form.end_time)
+        .gt('end_time', form.start_time)
 
-    setSaving(false)
-    setShowAdd(false)
-    router.refresh()
+      if (existing && existing.length > 0) {
+        const staff = profiles.find(p => p.id === form.user_id)
+        if (!confirm(`${staff?.full_name ?? 'This person'} already has an overlapping shift on this date. Add anyway?`)) {
+          setSaving(false)
+          return
+        }
+      }
+
+      const { error } = await supabase.from('shifts').insert({
+        org_id: orgId,
+        user_id: form.user_id,
+        shift_date: form.shift_date,
+        start_time: form.start_time,
+        end_time: form.end_time,
+        role: form.role,
+        notes: form.notes || null,
+      })
+
+      if (error) throw error
+      toast('Shift added')
+      setShowAdd(false)
+      router.refresh()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed to add shift', 'error')
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function deleteShift(id: string) {
-    const { createClient } = await import('@/lib/supabase/client')
-    const supabase = createClient()
-    await supabase.from('shifts').delete().eq('id', id)
-    router.refresh()
+    if (!confirm('Remove this shift?')) return
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      const { error } = await supabase.from('shifts').delete().eq('id', id)
+      if (error) throw error
+      toast('Shift removed')
+      router.refresh()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed to remove shift', 'error')
+    }
   }
 
+  async function updateShift(id: string) {
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      const { error } = await supabase.from('shifts').update({
+        start_time: editForm.start_time,
+        end_time: editForm.end_time,
+        role: editForm.role,
+      }).eq('id', id)
+      if (error) throw error
+      toast('Shift updated')
+      setEditingShift(null)
+      router.refresh()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed to update shift', 'error')
+    }
+  }
+
+  const isOpenDay = openDays.includes(selectedDayOfWeek)
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      {/* Add Shift */}
       {isAdmin && (
         <div className="flex justify-end">
           <button
@@ -119,37 +290,177 @@ export function ScheduleTab({ shifts, profiles, isAdmin, orgId }: Props) {
         </form>
       )}
 
-      {Object.keys(grouped).length === 0 ? (
-        <div className="bg-gray-900 rounded-xl p-8 text-center">
-          <p className="text-gray-400">No shifts scheduled for the next 7 days.</p>
+      {/* Availability Grid */}
+      <div className="bg-gray-900 rounded-xl p-5">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+          <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">Staff Availability</h3>
+          <div className="flex items-center gap-3">
+            <select
+              value={increment}
+              onChange={(e) => setIncrement(Number(e.target.value) as 15 | 30 | 60)}
+              className="px-2 py-1 bg-gray-800 border border-gray-700 rounded-lg text-white text-xs focus:outline-none focus:ring-2 focus:ring-orange-500"
+            >
+              <option value={60}>1 hour</option>
+              <option value={30}>30 min</option>
+              <option value={15}>15 min</option>
+            </select>
+          </div>
         </div>
-      ) : (
-        <div className="space-y-4">
-          {Object.entries(grouped).map(([date, dayShifts]) => (
-            <div key={date}>
-              <h3 className="text-sm font-semibold text-gray-400 mb-2">
-                {dayNames[new Date(date + 'T12:00:00').getDay()]} — {new Date(date + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}
-              </h3>
-              <div className="space-y-2">
-                {dayShifts.map((shift: any) => (
-                  <div key={shift.id} className="bg-gray-900 rounded-lg p-3 flex items-center gap-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium text-white">{shift.profile?.full_name}</p>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded border ${roleColors[shift.role as ShiftRole]}`}>{shift.role}</span>
-                      </div>
-                      <p className="text-xs text-gray-500 mt-0.5">{shift.start_time.slice(0, 5)} — {shift.end_time.slice(0, 5)}</p>
+
+        {/* Date selector */}
+        <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
+          {next7.map((date) => {
+            const d = new Date(date + 'T12:00:00')
+            const dayNum = d.getDay()
+            const isOpen = openDays.includes(dayNum)
+            return (
+              <button
+                key={date}
+                onClick={() => setSelectedDate(date)}
+                className={`flex-shrink-0 px-3 py-2 rounded-lg text-center transition-colors ${
+                  selectedDate === date
+                    ? 'bg-orange-600 text-white'
+                    : isOpen
+                    ? 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                    : 'bg-gray-800/50 text-gray-600'
+                }`}
+              >
+                <p className="text-xs font-medium">{dayNames[dayNum]}</p>
+                <p className="text-lg font-bold">{d.getDate()}</p>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Staff summary for selected day */}
+        {isOpenDay && (
+          <div className="mb-4 flex flex-wrap gap-2">
+            {profiles.map((p) => {
+              const summary = getAvailSummary(p.id)
+              const isOff = summary === 'Off' || summary === 'Time off'
+              const isNotSet = summary === 'Not set'
+              return (
+                <span key={p.id} className={`text-[10px] px-2 py-1 rounded ${
+                  isOff ? 'bg-red-500/10 text-red-400' :
+                  isNotSet ? 'bg-yellow-500/10 text-yellow-400' :
+                  'bg-green-500/10 text-green-400'
+                }`}>
+                  {p.full_name?.split(' ')[0]}: {summary}
+                </span>
+              )
+            })}
+          </div>
+        )}
+
+        {!isOpenDay ? (
+          <p className="text-gray-500 text-sm text-center py-4">Facility is closed on {dayNames[selectedDayOfWeek]}s</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-800">
+                  <th className="text-left text-xs font-medium text-gray-500 py-2 pr-4 whitespace-nowrap">Time</th>
+                  <th className="text-left text-xs font-medium text-gray-500 py-2 pr-4">Available Staff</th>
+                  <th className="text-right text-xs font-medium text-gray-500 py-2">#</th>
+                </tr>
+              </thead>
+              <tbody>
+                {slots.map((slotMin) => {
+                  const available = getAvailableStaff(slotMin)
+                  const count = available.length
+                  return (
+                    <tr key={slotMin} className="border-b border-gray-800/50">
+                      <td className="py-2 pr-4 text-xs text-gray-400 whitespace-nowrap font-mono">
+                        {minutesToTime(slotMin)}
+                      </td>
+                      <td className="py-2 pr-4">
+                        {count === 0 ? (
+                          <span className="text-red-400 text-xs">No one available</span>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {available.map(({ profile: p, status }) => (
+                              <span key={p.id} className={`text-[10px] px-1.5 py-0.5 rounded ${
+                                status === 'not-set' ? 'bg-yellow-500/10 text-yellow-400' : 'bg-green-500/10 text-green-400'
+                              }`}>
+                                {p.full_name?.split(' ')[0]}{status === 'not-set' ? '?' : ''}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-2 text-right">
+                        <span className={`text-xs font-medium ${
+                          count === 0 ? 'text-red-400' : count === 1 ? 'text-yellow-400' : 'text-green-400'
+                        }`}>
+                          {count}
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Existing Shifts */}
+      <div>
+        <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wide mb-3">Scheduled Shifts</h3>
+        {Object.keys(grouped).length === 0 ? (
+          <div className="bg-gray-900 rounded-xl p-8 text-center">
+            <p className="text-gray-400">No shifts scheduled for the next 7 days.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {Object.entries(grouped).map(([date, dayShifts]) => (
+              <div key={date}>
+                <h4 className="text-sm font-semibold text-gray-400 mb-2">
+                  {dayNames[new Date(date + 'T12:00:00').getDay()]} — {new Date(date + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}
+                </h4>
+                <div className="space-y-2">
+                  {dayShifts.map((shift: any) => (
+                    <div key={shift.id} className="bg-gray-900 rounded-lg p-3">
+                      {editingShift === shift.id ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-medium text-white mr-2">{shift.profile?.full_name}</p>
+                          <input type="time" value={editForm.start_time} onChange={e => setEditForm(f => ({ ...f, start_time: e.target.value }))} className="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-white text-xs focus:outline-none focus:ring-1 focus:ring-orange-500" />
+                          <span className="text-gray-600 text-xs">to</span>
+                          <input type="time" value={editForm.end_time} onChange={e => setEditForm(f => ({ ...f, end_time: e.target.value }))} className="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-white text-xs focus:outline-none focus:ring-1 focus:ring-orange-500" />
+                          <select value={editForm.role} onChange={e => setEditForm(f => ({ ...f, role: e.target.value as ShiftRole }))} className="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-white text-xs focus:outline-none focus:ring-1 focus:ring-orange-500">
+                            <option value="front-desk">Front Desk</option>
+                            <option value="coaching">Coaching</option>
+                            <option value="management">Management</option>
+                            <option value="other">Other</option>
+                          </select>
+                          <button onClick={() => updateShift(shift.id)} className="px-2 py-1 bg-orange-600 hover:bg-orange-500 text-white text-xs rounded transition-colors">Save</button>
+                          <button onClick={() => setEditingShift(null)} className="px-2 py-1 text-gray-500 hover:text-gray-300 text-xs transition-colors">Cancel</button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-medium text-white">{shift.profile?.full_name}</p>
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded border ${roleColors[shift.role as ShiftRole]}`}>{shift.role}</span>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-0.5">{shift.start_time.slice(0, 5)} — {shift.end_time.slice(0, 5)}</p>
+                          </div>
+                          {isAdmin && (
+                            <div className="flex gap-2">
+                              <button onClick={() => { setEditingShift(shift.id); setEditForm({ start_time: shift.start_time.slice(0, 5), end_time: shift.end_time.slice(0, 5), role: shift.role }) }} className="text-gray-600 hover:text-orange-400 text-xs transition-colors">Edit</button>
+                              <button onClick={() => deleteShift(shift.id)} className="text-gray-600 hover:text-red-400 text-xs transition-colors">Remove</button>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    {isAdmin && (
-                      <button onClick={() => deleteShift(shift.id)} className="text-gray-600 hover:text-red-400 text-xs transition-colors">Remove</button>
-                    )}
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

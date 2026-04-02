@@ -1,0 +1,180 @@
+/**
+ * Court Reserve API client.
+ * Ported from C:\Users\samiz\courtreserve-sync\courtreserve.js
+ */
+
+const BASE_URL = 'https://api.courtreserve.com/api/v1'
+
+export class CourtReserveAPI {
+  private orgId: string
+  private authHeader: string
+
+  constructor(apiUser: string, apiPass: string, orgId: string) {
+    this.orgId = orgId
+    this.authHeader = 'Basic ' + Buffer.from(`${apiUser}:${apiPass}`).toString('base64')
+  }
+
+  async request(endpoint: string, params: Record<string, string | number> = {}): Promise<Record<string, unknown>> {
+    const url = new URL(`${BASE_URL}${endpoint}`)
+    url.searchParams.set('OrgId', this.orgId)
+    for (const [key, val] of Object.entries(params)) {
+      if (val !== undefined && val !== null) url.searchParams.set(key, String(val))
+    }
+
+    const res = await fetch(url.toString(), {
+      headers: { 'Authorization': this.authHeader, 'Content-Type': 'application/json' },
+    })
+
+    if (res.status === 429) {
+      const retryAfter = res.headers.get('Retry-After') || '60'
+      await new Promise((r) => setTimeout(r, parseInt(retryAfter) * 1000))
+      return this.request(endpoint, params)
+    }
+
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(`CourtReserve API ${res.status}: ${text}`)
+    }
+
+    return res.json() as Promise<Record<string, unknown>>
+  }
+
+  async getAllMembers(): Promise<CRMemberRaw[]> {
+    const members: CRMemberRaw[] = []
+    let page = 1
+    const pageSize = 100
+
+    while (true) {
+      const raw = await this.request('/member/get', { pageNumber: page, pageSize })
+      const wrapper = (raw.Data || raw.data || raw) as Record<string, unknown>
+      const items = (wrapper.Members || wrapper.members || (Array.isArray(wrapper) ? wrapper : [])) as CRMemberRaw[]
+      const totalPages = (wrapper.TotalPages || wrapper.totalPages || 0) as number
+
+      if (!Array.isArray(items) || items.length === 0) break
+      members.push(...items)
+
+      if (page >= totalPages || items.length < pageSize) break
+      page++
+      await new Promise((r) => setTimeout(r, 350))
+    }
+
+    return members
+  }
+
+  async getMembershipTypes(): Promise<CRMembershipType[]> {
+    const data = await this.request('/membershiptype/get')
+    const result = data.Data || data.data || data
+    return Array.isArray(result) ? result : []
+  }
+
+  async getAttendance(fromDate: string, toDate: string): Promise<CRAttendanceRecord[]> {
+    const data = await this.request('/attendancereport/detailed', {
+      attendedFrom: fromDate,
+      attendedTo: toDate,
+    })
+    const result = data.Data || data.data || data
+    return Array.isArray(result) ? result : []
+  }
+
+  async getTransactions(startDate: string, endDate: string): Promise<CRTransaction[]> {
+    const data = await this.request('/transactions/list', {
+      transactionStartDate: startDate,
+      transactionEndDate: endDate,
+    })
+    const result = data.Data || data.data || data
+    return Array.isArray(result) ? result : []
+  }
+}
+
+// --- Types ---
+
+export interface CRMemberRaw {
+  Id?: string
+  id?: string
+  OrganizationMemberId?: string
+  FirstName?: string
+  firstName?: string
+  LastName?: string
+  lastName?: string
+  Email?: string
+  email?: string
+  Phone?: string
+  phone?: string
+  MembershipTypeId?: number
+  membershipTypeId?: number
+  MembershipTypeName?: string
+  membershipTypeName?: string
+  MembershipStatus?: string
+  IsActive?: boolean
+  isActive?: boolean
+  City?: string
+  State?: string
+  MemberSince?: string
+  DateCreated?: string
+}
+
+export interface CRMembershipType {
+  Id: number
+  Name: string
+  IsActive: boolean
+  MonthlyMembershipPrice?: number
+  AnnualMembershipPrice?: number
+}
+
+export interface CRAttendanceRecord {
+  OrganizationMemberId: string
+  DateTime: string
+  [key: string]: unknown
+}
+
+export interface CRTransaction {
+  OrganizationMemberId: string
+  Total?: number
+  Subtotal?: number
+  [key: string]: unknown
+}
+
+// --- Tier mapping (from courtreserve-sync/sync.js) ---
+
+const TIER_MAP: Record<string, string> = {
+  'Daily Player': 'Daily',
+  'Daily Player +': 'Daily +',
+  'Star Membership': 'Star',
+  'Star + Family': 'Star +',
+  'Star SFAP': 'Star',
+  'Star + SFAP': 'Star +',
+  'Patriot Membership': 'Patriot',
+  'Patriot + Family': 'Patriot +',
+  'Patriot SFAP': 'Patriot',
+  'Patriot + SFAP': 'Patriot +',
+  'Freedom Membership': 'Freedom',
+  'Freedom + Family': 'Freedom +',
+  'Freedom SFAP': 'Freedom',
+  'Freedom + SFAP': 'Freedom +',
+  'Founders Membership': 'Founders',
+  'Founders + Family': 'Founders +',
+  'Founders SFAP': 'Founders',
+  'Founders + SFAP': 'Founders +',
+}
+
+export function mapTier(crMembershipName: string | null | undefined): string | null {
+  if (!crMembershipName) return null
+  if (TIER_MAP[crMembershipName]) return TIER_MAP[crMembershipName]
+  // Fuzzy match
+  const tiers = ['Daily +', 'Daily', 'Star +', 'Star', 'Patriot +', 'Patriot', 'Freedom +', 'Freedom', 'Founders +', 'Founders']
+  for (const tier of tiers) {
+    if (crMembershipName.toLowerCase().includes(tier.toLowerCase())) return tier
+  }
+  return null
+}
+
+export function toISODate(d: string | null | undefined): string | null {
+  if (!d) return null
+  const date = new Date(d)
+  if (isNaN(date.getTime())) return null
+  return date.toISOString().split('T')[0]
+}
+
+export function fmt(d: Date): string {
+  return d.toISOString().split('T')[0]
+}

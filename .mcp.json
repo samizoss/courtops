@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "supabase": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=facrogjtbtvhuxzaboln&read_only=false"
+    },
+    "google-sheets": {
+      "command": "npx.cmd",
+      "args": ["mcp-google-sheets@latest"],
+      "env": {
+        "GOOGLE_APPLICATION_CREDENTIALS": "C:/Users/samiz/.config/google-sheets/service-account-key.json"
+      }
+    }
+  }
+}

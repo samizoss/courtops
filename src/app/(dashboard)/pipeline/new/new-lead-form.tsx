@@ -1,8 +1,8 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
-import type { LeadSource } from '@/types/database'
+import { useState, useMemo } from 'react'
+import type { Pipeline, PipelineStage, LeadSource } from '@/types/database'
 
 const sources: { value: LeadSource; label: string }[] = [
   { value: 'syndicate-ltp', label: 'Syndicate - LTP' },
@@ -13,10 +13,40 @@ const sources: { value: LeadSource; label: string }[] = [
   { value: 'other', label: 'Other' },
 ]
 
-export function NewLeadForm({ orgId }: { orgId: string }) {
+interface Props {
+  orgId: string
+  pipelines: Pipeline[]
+  stages: PipelineStage[]
+  staff: { id: string; full_name: string }[]
+}
+
+export function NewLeadForm({ orgId, pipelines, stages, staff }: Props) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [selectedPipelineId, setSelectedPipelineId] = useState(
+    pipelines.length > 0 ? pipelines[0].id : ''
+  )
+
+  // Group stages by pipeline and find first non-terminal stage
+  const stagesByPipeline = useMemo(() => {
+    return stages.reduce<Record<string, PipelineStage[]>>((acc, s) => {
+      if (!acc[s.pipeline_id]) acc[s.pipeline_id] = []
+      acc[s.pipeline_id].push(s)
+      return acc
+    }, {})
+  }, [stages])
+
+  const initialStageId = useMemo(() => {
+    if (!selectedPipelineId) return ''
+    const pStages = stagesByPipeline[selectedPipelineId] ?? []
+    const firstNonTerminal = pStages.find((s) => !s.is_terminal)
+    return firstNonTerminal?.id ?? pStages[0]?.id ?? ''
+  }, [selectedPipelineId, stagesByPipeline])
+
+  // Derive pipeline_type from the pipeline's slug
+  const selectedPipeline = pipelines.find((p) => p.id === selectedPipelineId)
+  const pipelineType = selectedPipeline?.slug ?? null
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -34,6 +64,10 @@ export function NewLeadForm({ orgId }: { orgId: string }) {
       phone: (form.get('phone') as string) || null,
       source: form.get('source') as LeadSource,
       notes: (form.get('notes') as string) || null,
+      assigned_to: (form.get('assigned_to') as string) || null,
+      pipeline_id: selectedPipelineId || null,
+      current_stage_id: initialStageId || null,
+      pipeline_type: pipelineType,
       next_action_date: new Date().toISOString().split('T')[0],
     })
 
@@ -46,17 +80,47 @@ export function NewLeadForm({ orgId }: { orgId: string }) {
     }
   }
 
+  const inputClass =
+    'w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500'
+
   return (
     <div className="max-w-lg">
       <h2 className="text-2xl font-bold mb-6">Add Lead</h2>
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Pipeline selector */}
+        {pipelines.length > 0 && (
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">Pipeline *</label>
+            <select
+              value={selectedPipelineId}
+              onChange={(e) => setSelectedPipelineId(e.target.value)}
+              className={inputClass}
+              required
+            >
+              {pipelines.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.icon || ''} {p.name}
+                </option>
+              ))}
+            </select>
+            {initialStageId && (
+              <p className="text-xs text-gray-500 mt-1">
+                Starting stage:{' '}
+                <span className="text-gray-400">
+                  {stages.find((s) => s.id === initialStageId)?.name}
+                </span>
+              </p>
+            )}
+          </div>
+        )}
+
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-1">Name *</label>
           <input
             name="name"
             required
-            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+            className={inputClass}
             placeholder="John Smith"
           />
         </div>
@@ -67,7 +131,7 @@ export function NewLeadForm({ orgId }: { orgId: string }) {
             <input
               name="email"
               type="email"
-              className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+              className={inputClass}
               placeholder="john@email.com"
             />
           </div>
@@ -76,23 +140,34 @@ export function NewLeadForm({ orgId }: { orgId: string }) {
             <input
               name="phone"
               type="tel"
-              className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+              className={inputClass}
               placeholder="(605) 555-0123"
             />
           </div>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1">Source *</label>
-          <select
-            name="source"
-            required
-            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
-          >
-            {sources.map((s) => (
-              <option key={s.value} value={s.value}>{s.label}</option>
-            ))}
-          </select>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">Source *</label>
+            <select name="source" required className={inputClass}>
+              {sources.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">Assign To</label>
+            <select name="assigned_to" className={inputClass}>
+              <option value="">Unassigned</option>
+              {staff.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.full_name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div>
@@ -100,7 +175,7 @@ export function NewLeadForm({ orgId }: { orgId: string }) {
           <textarea
             name="notes"
             rows={3}
-            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+            className={inputClass}
             placeholder="Any context about this lead..."
           />
         </div>

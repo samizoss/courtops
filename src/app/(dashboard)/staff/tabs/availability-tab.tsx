@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useToast } from '@/components/toast'
 import type { Profile } from '@/types/database'
 
 const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -13,8 +14,17 @@ interface Props {
   currentUser: { userId: string; orgId: string; role: string; fullName: string }
 }
 
+function formatShortTime(t: string | null): string {
+  if (!t) return ''
+  const [h, m] = t.slice(0, 5).split(':').map(Number)
+  const ampm = h >= 12 ? 'p' : 'a'
+  const hh = h % 12 || 12
+  return m === 0 ? `${hh}${ampm}` : `${hh}:${m.toString().padStart(2, '0')}${ampm}`
+}
+
 export function AvailabilityTab({ availability, profiles, currentUser }: Props) {
   const router = useRouter()
+  const { toast } = useToast()
   const [saving, setSaving] = useState(false)
   const [editMode, setEditMode] = useState(false)
 
@@ -35,38 +45,48 @@ export function AvailabilityTab({ availability, profiles, currentUser }: Props) 
 
   async function handleSave() {
     setSaving(true)
-    const { createClient } = await import('@/lib/supabase/client')
-    const supabase = createClient()
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
 
-    for (let i = 0; i < 7; i++) {
-      const d = days[i]
-      await supabase.from('availability').upsert({
-        org_id: currentUser.orgId,
-        user_id: currentUser.userId,
-        day_of_week: i,
-        is_available: d.is_available,
-        start_time: d.is_available ? d.start_time : null,
-        end_time: d.is_available ? d.end_time : null,
-      }, { onConflict: 'user_id,day_of_week' })
+      for (let i = 0; i < 7; i++) {
+        const d = days[i]
+        const { error } = await supabase.from('availability').upsert({
+          org_id: currentUser.orgId,
+          user_id: currentUser.userId,
+          day_of_week: i,
+          is_available: d.is_available,
+          start_time: d.is_available ? d.start_time : null,
+          end_time: d.is_available ? d.end_time : null,
+        }, { onConflict: 'user_id,day_of_week' })
+        if (error) throw error
+      }
+
+      toast('Availability saved')
+      setEditMode(false)
+      router.refresh()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed to save availability', 'error')
+    } finally {
+      setSaving(false)
     }
-
-    setSaving(false)
-    setEditMode(false)
-    router.refresh()
   }
 
-  // Build team availability grid
-  const staffAvail: Record<string, { name: string; days: Record<number, { is_available: boolean; start_time: string | null; end_time: string | null }> }> = {}
+  // Build team availability grid — track which users have set their availability
+  const usersWithAvail = new Set(availability.map((a: any) => a.user_id))
+
+  const staffAvail: Record<string, { name: string; hasSet: boolean; days: Record<number, { is_available: boolean; start_time: string | null; end_time: string | null; hasRecord: boolean }> }> = {}
   profiles.forEach(p => {
-    staffAvail[p.id] = { name: p.full_name, days: {} }
-    for (let i = 0; i < 7; i++) staffAvail[p.id].days[i] = { is_available: true, start_time: null, end_time: null }
+    staffAvail[p.id] = { name: p.full_name, hasSet: usersWithAvail.has(p.id), days: {} }
+    for (let i = 0; i < 7; i++) staffAvail[p.id].days[i] = { is_available: true, start_time: null, end_time: null, hasRecord: false }
   })
-  availability.forEach(a => {
+  availability.forEach((a: any) => {
     if (staffAvail[a.user_id]) {
       staffAvail[a.user_id].days[a.day_of_week] = {
         is_available: a.is_available,
         start_time: a.start_time,
         end_time: a.end_time,
+        hasRecord: true,
       }
     }
   })
@@ -92,15 +112,14 @@ export function AvailabilityTab({ availability, profiles, currentUser }: Props) 
             <div key={d} className={`bg-gray-900 rounded-lg p-3 ${!days[d].is_available ? 'opacity-50' : ''}`}>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-white">{dayShort[d]}</span>
-                {editMode && (
+                {editMode ? (
                   <button
                     onClick={() => setDays(prev => ({ ...prev, [d]: { ...prev[d], is_available: !prev[d].is_available } }))}
                     className={`text-[10px] px-2 py-0.5 rounded ${days[d].is_available ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}
                   >
                     {days[d].is_available ? 'Available' : 'Off'}
                   </button>
-                )}
-                {!editMode && (
+                ) : (
                   <span className={`text-[10px] px-2 py-0.5 rounded ${days[d].is_available ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
                     {days[d].is_available ? 'Available' : 'Off'}
                   </span>
@@ -134,16 +153,37 @@ export function AvailabilityTab({ availability, profiles, currentUser }: Props) 
             <tbody>
               {Object.values(staffAvail).map((s) => (
                 <tr key={s.name} className="border-b border-gray-800/50">
-                  <td className="px-4 py-2 text-white whitespace-nowrap">{s.name}</td>
-                  {[0, 1, 2, 3, 4, 5, 6].map(d => (
-                    <td key={d} className="text-center px-2 py-2">
-                      {s.days[d].is_available ? (
-                        <span className="inline-block w-6 h-6 rounded bg-green-500/20 text-green-400 text-[10px] leading-6">Y</span>
-                      ) : (
-                        <span className="inline-block w-6 h-6 rounded bg-gray-800 text-gray-600 text-[10px] leading-6">-</span>
-                      )}
-                    </td>
-                  ))}
+                  <td className="px-4 py-2 text-white whitespace-nowrap">
+                    {s.name}
+                    {!s.hasSet && <span className="ml-1 text-[10px] text-yellow-400">(not set)</span>}
+                  </td>
+                  {[0, 1, 2, 3, 4, 5, 6].map(d => {
+                    const day = s.days[d]
+                    if (!day.hasRecord) {
+                      return (
+                        <td key={d} className="text-center px-2 py-2">
+                          <span className="inline-block px-1 py-0.5 rounded bg-yellow-500/10 text-yellow-400 text-[9px]">?</span>
+                        </td>
+                      )
+                    }
+                    if (!day.is_available) {
+                      return (
+                        <td key={d} className="text-center px-2 py-2">
+                          <span className="inline-block px-1 py-0.5 rounded bg-gray-800 text-gray-600 text-[9px]">Off</span>
+                        </td>
+                      )
+                    }
+                    return (
+                      <td key={d} className="text-center px-2 py-2">
+                        <span className="inline-block px-1 py-0.5 rounded bg-green-500/10 text-green-400 text-[9px]">
+                          {day.start_time && day.end_time
+                            ? `${formatShortTime(day.start_time)}-${formatShortTime(day.end_time)}`
+                            : 'Y'
+                          }
+                        </span>
+                      </td>
+                    )
+                  })}
                 </tr>
               ))}
             </tbody>

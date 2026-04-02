@@ -1,8 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import type { Profile, Role } from '@/types/database'
+import type { Profile } from '@/types/database'
 import { ClockTab } from './tabs/clock-tab'
 import { RosterTab } from './tabs/roster-tab'
 import { ScheduleTab } from './tabs/schedule-tab'
@@ -19,6 +18,15 @@ const tabs = [
 
 type TabId = typeof tabs[number]['id']
 
+export interface OrgHours {
+  open_time: string | null
+  close_time: string | null
+  open_days: number[] | null
+  staff_arrive_before_min: number | null
+  staff_depart_after_min: number | null
+  daily_hours: Record<string, { open: string; close: string }> | null
+}
+
 interface Props {
   profiles: Profile[]
   activeClocks: any[]
@@ -27,9 +35,10 @@ interface Props {
   availability: any[]
   recentClocks: any[]
   currentUser: { userId: string; orgId: string; role: string; fullName: string }
+  orgHours?: OrgHours
 }
 
-export function StaffModule({ profiles, activeClocks, timeOffRequests, shifts, availability, recentClocks, currentUser }: Props) {
+export function StaffModule({ profiles, activeClocks, timeOffRequests, shifts, availability, recentClocks, currentUser, orgHours }: Props) {
   const [tab, setTab] = useState<TabId>('clock')
   const isAdmin = currentUser.role === 'owner' || currentUser.role === 'admin'
 
@@ -58,33 +67,19 @@ export function StaffModule({ profiles, activeClocks, timeOffRequests, shifts, a
       </div>
 
       {tab === 'clock' && (
-        <ClockTab
-          activeClocks={activeClocks}
-          recentClocks={recentClocks}
-          currentUser={currentUser}
-          profiles={profiles}
-          isAdmin={isAdmin}
-        />
+        <ClockTab activeClocks={activeClocks} recentClocks={recentClocks} currentUser={currentUser} profiles={profiles} isAdmin={isAdmin} />
       )}
       {tab === 'roster' && (
         <RosterTab profiles={profiles} isAdmin={isAdmin} orgId={currentUser.orgId} />
       )}
       {tab === 'schedule' && (
-        <ScheduleTab shifts={shifts} profiles={profiles} isAdmin={isAdmin} orgId={currentUser.orgId} />
+        <ScheduleTab shifts={shifts} profiles={profiles} isAdmin={isAdmin} orgId={currentUser.orgId} availability={availability} timeOffRequests={timeOffRequests} orgHours={orgHours} />
       )}
       {tab === 'timeoff' && (
-        <TimeOffTab
-          requests={timeOffRequests}
-          currentUser={currentUser}
-          isAdmin={isAdmin}
-        />
+        <TimeOffTab requests={timeOffRequests} currentUser={currentUser} isAdmin={isAdmin} availability={availability} />
       )}
       {tab === 'availability' && (
-        <AvailabilityTab
-          availability={availability}
-          profiles={profiles}
-          currentUser={currentUser}
-        />
+        <AvailabilityTab availability={availability} profiles={profiles} currentUser={currentUser} />
       )}
     </div>
   )

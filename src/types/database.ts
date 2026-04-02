@@ -8,6 +8,14 @@ export type TaskType = 'admin' | 'content' | 'janitorial' | 'sales' | 'events' |
 export type SopCategory = 'operations' | 'front-desk' | 'sales' | 'content' | 'emergency' | 'equipment' | 'general'
 export type TimeOffStatus = 'pending' | 'approved' | 'denied'
 export type ShiftRole = 'front-desk' | 'coaching' | 'management' | 'other'
+export type ActivityType = 'call' | 'text' | 'email' | 'in_person' | 'voicemail' | 'note' | 'status_change' | 'system'
+export type ActivityDirection = 'outbound' | 'inbound' | 'internal'
+export type ActivityOutcome = 'connected' | 'voicemail' | 'no_answer' | 'booked' | 'converted' | 'not_interested' | 'follow_up'
+export type NotificationType = 'cadence_overdue' | 'task_assigned' | 'task_due' | 'time_off_response' | 'new_lead' | 'system'
+export type ContentPlatform = 'instagram' | 'facebook' | 'tiktok' | 'email' | 'other'
+export type ContentType = 'post' | 'story' | 'reel' | 'email' | 'other'
+export type ContentStatus = 'planned' | 'draft' | 'ready' | 'posted' | 'skipped'
+export type BillingPlan = 'free' | 'pro' | 'enterprise'
 
 export interface Org {
   id: string
@@ -16,6 +24,9 @@ export interface Org {
   logo_url: string | null
   timezone: string
   courtreserve_org_id: string | null
+  plan: string
+  billing_status: string
+  onboarding_completed: boolean
   created_at: string
 }
 
@@ -26,6 +37,7 @@ export interface Profile {
   email: string
   role: Role
   avatar_url: string | null
+  is_active: boolean
   created_at: string
 }
 
@@ -58,6 +70,31 @@ export interface ChecklistCompletion {
   notes: string | null
 }
 
+export interface Pipeline {
+  id: string
+  org_id: string
+  name: string
+  slug: string
+  description: string | null
+  icon: string | null
+  sort_order: number
+  is_active: boolean
+  created_at: string
+}
+
+export interface PipelineStage {
+  id: string
+  pipeline_id: string
+  org_id: string
+  name: string
+  slug: string
+  sort_order: number
+  cadence_days: number | null
+  is_terminal: boolean
+  color: string | null
+  created_at: string
+}
+
 export interface Lead {
   id: string
   org_id: string
@@ -76,8 +113,40 @@ export interface Lead {
   membership_type: string | null
   courtreserve_member_id: string | null
   notes: string | null
+  pipeline_id: string | null
+  current_stage_id: string | null
+  pipeline_type: string | null
+  cr_visit_count: number | null
+  cr_monthly_spend: number | null
+  cr_membership_tier: string | null
   created_at: string
   updated_at: string
+}
+
+export interface Activity {
+  id: string
+  org_id: string
+  lead_id: string
+  activity_type: ActivityType
+  direction: ActivityDirection | null
+  outcome: ActivityOutcome | null
+  performed_by: string | null
+  notes: string | null
+  metadata: Record<string, unknown> | null
+  created_at: string
+}
+
+export interface CadenceRule {
+  id: string
+  pipeline_id: string
+  org_id: string
+  stage_id: string
+  day_offset: number
+  touch_type: string
+  script_key: string | null
+  description: string | null
+  sort_order: number
+  created_at: string
 }
 
 export interface Sop {
@@ -90,6 +159,9 @@ export interface Sop {
   is_published: boolean
   created_by: string | null
   updated_by: string | null
+  pipeline_id: string | null
+  version: number
+  tags: string[] | null
   created_at: string
   updated_at: string
 }
@@ -153,6 +225,137 @@ export interface Task {
   assigned_to: string | null
   due_date: string | null
   completed_at: string | null
+  lead_id: string | null
+  recurring_rule: string | null
+  parent_task_id: string | null
   created_at: string
   updated_at: string
+}
+
+export interface Notification {
+  id: string
+  org_id: string
+  user_id: string
+  type: NotificationType
+  title: string
+  body: string | null
+  link: string | null
+  read: boolean
+  read_at: string | null
+  metadata: Record<string, unknown> | null
+  created_at: string
+}
+
+export interface OrgInvite {
+  id: string
+  org_id: string
+  email: string
+  role: string
+  invited_by: string
+  token: string
+  expires_at: string
+  accepted_at: string | null
+  created_at: string
+}
+
+export interface ContentCalendar {
+  id: string
+  org_id: string
+  title: string
+  description: string | null
+  platform: ContentPlatform
+  content_type: ContentType
+  scheduled_date: string
+  scheduled_time: string | null
+  status: ContentStatus
+  assigned_to: string | null
+  media_url: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface OrgSettings {
+  id: string
+  org_id: string
+  billing_plan: BillingPlan
+  stripe_customer_id: string | null
+  stripe_subscription_id: string | null
+  features: Record<string, unknown>
+  cr_api_user: string | null
+  cr_api_pass: string | null
+  cr_sync_enabled: boolean
+  cr_last_synced_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface CrMember {
+  id: string
+  org_id: string
+  cr_member_id: string
+  first_name: string
+  last_name: string
+  email: string | null
+  phone: string | null
+  membership_tier: string | null
+  cr_membership_type: string | null
+  membership_status: string
+  visit_count_6mo: number
+  last_visit_date: string | null
+  monthly_spend: number | null
+  member_since: string | null
+  city: string | null
+  state: string | null
+  upgrade_candidate: boolean
+  recommended_tier: string | null
+  projected_savings: number | null
+  last_synced_at: string
+  created_at: string
+  updated_at: string
+}
+
+export interface CrSyncLog {
+  id: string
+  org_id: string
+  started_at: string
+  completed_at: string | null
+  members_synced: number
+  members_created: number
+  members_updated: number
+  upgrade_candidates_found: number
+  leads_auto_created: number
+  error: string | null
+  status: string
+}
+
+export interface OrgMessagingConfig {
+  id: string
+  org_id: string
+  twilio_phone: string | null
+  twilio_subaccount_sid: string | null
+  monthly_cap_cents: number
+  warn_threshold_pct: number
+  current_spend_cents: number
+  spend_month: string | null
+  paused: boolean
+  alert_phone: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface Message {
+  id: string
+  org_id: string
+  lead_id: string | null
+  direction: 'inbound' | 'outbound'
+  body: string
+  from_number: string
+  to_number: string
+  twilio_sid: string | null
+  status: string
+  cost_cents: number
+  sent_by: string | null
+  sent_at: string
+  created_at: string
 }

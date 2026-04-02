@@ -2,21 +2,71 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 const nav = [
-  { href: '/', label: 'Dashboard', icon: '⊞' },
-  { href: '/checklists', label: 'Checklists', icon: '☑' },
-  { href: '/pipeline', label: 'Pipeline', icon: '◎' },
-  { href: '/tasks', label: 'Tasks', icon: '▤' },
-  { href: '/staff', label: 'Staff', icon: '◇' },
-  { href: '/sops', label: 'SOPs', icon: '◉' },
+  { href: '/', label: 'Dashboard', icon: '⊞', roles: ['owner', 'admin', 'staff', 'viewer'] },
+  { href: '/checklists', label: 'Checklists', icon: '☑', roles: ['owner', 'admin', 'staff', 'viewer'] },
+  { href: '/staff', label: 'Staff', icon: '◇', roles: ['owner', 'admin', 'staff', 'viewer'] },
+  { href: '/sops', label: 'SOPs', icon: '◉', roles: ['owner', 'admin', 'staff', 'viewer'] },
+  { href: '/pipeline', label: 'Pipeline', icon: '◎', roles: ['owner'] },
+  { href: '/tasks', label: 'Tasks', icon: '▤', roles: ['owner', 'admin'] },
+  { href: '/content', label: 'Content', icon: '📅', roles: ['owner'] },
+  { href: '/messaging', label: 'Messages', icon: '💬', roles: ['owner'] },
+  { href: '/reports', label: 'Reports', icon: '📊', roles: ['owner'] },
+  { href: '/settings', label: 'Settings', icon: '⚙', roles: ['owner', 'admin'] },
 ]
 
 export function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const [open, setOpen] = useState(false)
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [userRole, setUserRole] = useState<string>('viewer')
+
+  useEffect(() => {
+    async function init() {
+      try {
+        const { createClient } = await import('@/lib/supabase/client')
+        const supabase = createClient()
+
+        // Fetch role
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single()
+          if (profile?.role) setUserRole(profile.role)
+        }
+
+        // Fetch unread notifications
+        const { count } = await supabase
+          .from('notifications')
+          .select('*', { count: 'exact', head: true })
+          .eq('read', false)
+        setUnreadCount(count ?? 0)
+      } catch {
+        // ignore
+      }
+    }
+    init()
+    const interval = setInterval(async () => {
+      try {
+        const { createClient } = await import('@/lib/supabase/client')
+        const supabase = createClient()
+        const { count } = await supabase
+          .from('notifications')
+          .select('*', { count: 'exact', head: true })
+          .eq('read', false)
+        setUnreadCount(count ?? 0)
+      } catch {}
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const visibleNav = nav.filter((item) => item.roles.includes(userRole))
 
   async function handleSignOut() {
     const { createClient } = await import('@/lib/supabase/client')
@@ -33,20 +83,35 @@ export function Sidebar() {
         <h1 className="text-lg font-bold text-white tracking-tight">
           Court<span className="text-orange-500">Ops</span>
         </h1>
-        <button
-          onClick={() => setOpen(!open)}
-          className="text-gray-400 hover:text-white p-1"
-        >
-          {open ? (
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+        <div className="flex items-center gap-2">
+          <Link
+            href="/notifications"
+            className="relative text-gray-400 hover:text-white p-1"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
             </svg>
-          ) : (
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          )}
-        </button>
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </Link>
+          <button
+            onClick={() => setOpen(!open)}
+            className="text-gray-400 hover:text-white p-1"
+          >
+            {open ? (
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            ) : (
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Mobile overlay */}
@@ -73,7 +138,7 @@ export function Sidebar() {
         <div className="h-14 md:hidden" />
 
         <nav className="flex-1 p-3 space-y-1">
-          {nav.map((item) => {
+          {visibleNav.map((item) => {
             const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
             return (
               <Link
@@ -91,6 +156,25 @@ export function Sidebar() {
               </Link>
             )
           })}
+
+          {/* Notifications link */}
+          <Link
+            href="/notifications"
+            onClick={() => setOpen(false)}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              pathname.startsWith('/notifications')
+                ? 'bg-orange-600/15 text-orange-400'
+                : 'text-gray-400 hover:text-white hover:bg-gray-800'
+            }`}
+          >
+            <span className="text-base">🔔</span>
+            Notifications
+            {unreadCount > 0 && (
+              <span className="ml-auto bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                {unreadCount}
+              </span>
+            )}
+          </Link>
         </nav>
 
         <div className="p-3 border-t border-gray-800">
