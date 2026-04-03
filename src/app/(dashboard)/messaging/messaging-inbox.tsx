@@ -26,7 +26,6 @@ interface MessagingConfig {
 export function MessagingInbox({
   initialMessages,
   config,
-  orgId,
 }: {
   initialMessages: MessageWithLead[]
   config: MessagingConfig | null

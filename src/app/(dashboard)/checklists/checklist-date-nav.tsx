@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { useMemo } from 'react'
 
 const dayShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -12,12 +13,16 @@ interface Props {
 export function ChecklistDateNav({ selectedDate, today }: Props) {
   const router = useRouter()
 
-  // Show 7 days: 6 days back + today
-  const days: string[] = []
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(Date.now() - i * 86400000)
-    days.push(d.toISOString().split('T')[0])
-  }
+  // Show 7 days: 6 days back + today (derived from the today prop)
+  const days = useMemo(() => {
+    const result: string[] = []
+    const todayMs = new Date(today).getTime()
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(todayMs - i * 86400000)
+      result.push(d.toISOString().split('T')[0])
+    }
+    return result
+  }, [today])
 
   function navigate(date: string) {
     if (date === today) {

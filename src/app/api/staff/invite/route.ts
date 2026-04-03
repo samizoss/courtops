@@ -31,7 +31,7 @@ export async function POST(request: Request) {
 
   // Create auth user via Supabase admin (we use the service role for this)
   // Since we don't have service role key client-side, we create via SQL
-  const { data: newUser, error: createError } = await supabase.rpc('create_staff_user', {
+  const { error: createError } = await supabase.rpc('create_staff_user', {
     p_email: email,
     p_password: password,
     p_full_name: full_name,

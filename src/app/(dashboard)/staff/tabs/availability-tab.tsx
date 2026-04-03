@@ -3,13 +3,12 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/toast'
-import type { Profile } from '@/types/database'
+import type { Profile, Availability } from '@/types/database'
 
-const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 const dayShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 interface Props {
-  availability: any[]
+  availability: Availability[]
   profiles: Profile[]
   currentUser: { userId: string; orgId: string; role: string; fullName: string }
 }
@@ -73,14 +72,14 @@ export function AvailabilityTab({ availability, profiles, currentUser }: Props) 
   }
 
   // Build team availability grid — track which users have set their availability
-  const usersWithAvail = new Set(availability.map((a: any) => a.user_id))
+  const usersWithAvail = new Set(availability.map((a) => a.user_id))
 
   const staffAvail: Record<string, { name: string; hasSet: boolean; days: Record<number, { is_available: boolean; start_time: string | null; end_time: string | null; hasRecord: boolean }> }> = {}
   profiles.forEach(p => {
     staffAvail[p.id] = { name: p.full_name, hasSet: usersWithAvail.has(p.id), days: {} }
     for (let i = 0; i < 7; i++) staffAvail[p.id].days[i] = { is_available: true, start_time: null, end_time: null, hasRecord: false }
   })
-  availability.forEach((a: any) => {
+  availability.forEach((a) => {
     if (staffAvail[a.user_id]) {
       staffAvail[a.user_id].days[a.day_of_week] = {
         is_available: a.is_available,

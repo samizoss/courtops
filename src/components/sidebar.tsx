@@ -15,6 +15,7 @@ const nav = [
   { href: '/messaging', label: 'Messages', icon: '💬', roles: ['owner'] },
   { href: '/reports', label: 'Reports', icon: '📊', roles: ['owner'] },
   { href: '/settings', label: 'Settings', icon: '⚙', roles: ['owner', 'admin'] },
+  { href: '/getting-started', label: 'Guide', icon: '?', roles: ['owner', 'admin', 'staff', 'viewer'] },
 ]
 
 export function Sidebar() {

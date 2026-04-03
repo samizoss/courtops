@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/toast'
-import type { Profile, ShiftRole } from '@/types/database'
+import type { Profile, ShiftRole, ScheduleShift, Availability, TimeOffRequest } from '@/types/database'
 import type { OrgHours } from '../staff-module'
 
 const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -14,13 +14,21 @@ const roleColors: Record<ShiftRole, string> = {
   other: 'bg-gray-500/15 text-gray-400 border-gray-500/30',
 }
 
+interface ShiftWithProfile extends ScheduleShift {
+  profile?: { full_name: string }
+}
+
+interface TimeOffWithProfile extends TimeOffRequest {
+  profile?: { full_name: string }
+}
+
 interface Props {
-  shifts: any[]
+  shifts: ShiftWithProfile[]
   profiles: Profile[]
   isAdmin: boolean
   orgId: string
-  availability: any[]
-  timeOffRequests: any[]
+  availability: Availability[]
+  timeOffRequests: TimeOffWithProfile[]
   orgHours?: OrgHours
 }
 
@@ -550,7 +558,7 @@ export function ScheduleTab({ shifts, profiles, isAdmin, orgId, availability, ti
                   {dayNames[new Date(date + 'T12:00:00').getDay()]} — {new Date(date + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}
                 </h4>
                 <div className="space-y-2">
-                  {dayShifts.map((shift: any) => (
+                  {dayShifts.map((shift: ShiftWithProfile) => (
                     <div key={shift.id} className="bg-gray-900 rounded-lg p-3">
                       {editingShift === shift.id ? (
                         <div className="flex flex-wrap items-center gap-2">

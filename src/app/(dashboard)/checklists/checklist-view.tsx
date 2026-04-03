@@ -44,7 +44,7 @@ function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
 }
 
-export function ChecklistView({ checklist, orgId, userId, isAdmin, readOnly = false }: Props) {
+export function ChecklistView({ checklist, orgId, userId, readOnly = false }: Props) {
   const router = useRouter()
   const { toast } = useToast()
   const [loading, setLoading] = useState<string | null>(null)

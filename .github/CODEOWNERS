@@ -1,0 +1,32 @@
+# CourtOps Code Ownership
+#
+# When a PR touches files matching these patterns, the listed owner(s)
+# are automatically requested for review. This is informational — it
+# doesn't block merging, it just flags "hey, this touches something core."
+#
+# HOW TO USE: If you build something a specific way for a specific reason,
+# add yourself here with a comment explaining why. Example:
+#
+#   # Auth rework — uses specific session handling for multi-tenant isolation
+#   src/lib/auth/                        @your-github-username
+#
+# Since .github/ is owned below, your CODEOWNERS change will flag Sami
+# for review — so both of you know what's protected and why.
+
+# Database migrations — schema changes affect the live database
+supabase/migrations/                     @samizoss
+
+# Auth + multi-tenancy middleware — a bug here locks everyone out
+src/middleware.ts                         @samizoss
+
+# Supabase client config — wrong config = app can't talk to DB
+src/lib/supabase/                        @samizoss
+
+# Multi-tenancy logic — a bug here leaks data between orgs
+src/lib/org.ts                           @samizoss
+src/lib/get-user-org.ts                  @samizoss
+
+# Infrastructure config
+.env*                                    @samizoss
+vercel.json                              @samizoss
+.github/                                 @samizoss

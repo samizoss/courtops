@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useState, useRef } from 'react'
+import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useToast } from '@/components/toast'
@@ -99,9 +100,9 @@ export function NewSopForm({ orgId, userId }: { orgId: string; userId: string })
 
   return (
     <div>
-      <a href="/sops" className="text-sm text-gray-400 hover:text-white mb-4 inline-block">
+      <Link href="/sops" className="text-sm text-gray-400 hover:text-white mb-4 inline-block">
         &larr; All SOPs
-      </a>
+      </Link>
 
       <h2 className="text-2xl font-bold mb-6">New SOP</h2>
 

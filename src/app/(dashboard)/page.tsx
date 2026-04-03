@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { createClient } from '@/lib/supabase/server'
 import { getUserOrg } from '@/lib/get-user-org'
 import { TaskCheckbox } from './dashboard-interactive'
@@ -147,6 +148,8 @@ export default async function DashboardPage() {
     href: '/notifications',
   })
 
+  const now = new Date().getTime()
+
   return (
     <div>
       {/* Header */}
@@ -194,7 +197,7 @@ export default async function DashboardPage() {
               const stage = lead.stage as { name: string; cadence_days: number | null } | null
               const assignedProfile = lead.assigned_profile as { full_name: string } | null
               const nextDate = lead.next_action_date as string
-              const daysOverdue = Math.floor((Date.now() - new Date(nextDate).getTime()) / 86400000)
+              const daysOverdue = Math.floor((now - new Date(nextDate).getTime()) / 86400000)
               return (
                 <div key={lead.id as string} className="flex items-center gap-3 py-2">
                   <div className={`w-2 h-2 rounded-full flex-shrink-0 ${daysOverdue > 3 ? 'bg-red-500' : daysOverdue > 0 ? 'bg-yellow-500' : 'bg-blue-500'}`} />
@@ -233,7 +236,7 @@ export default async function DashboardPage() {
                 return (
                   <div key={entry.id as string} className="flex items-center gap-3">
                     {avatarUrl ? (
-                      <img src={avatarUrl} alt={name} className="w-8 h-8 rounded-full object-cover" />
+                      <Image src={avatarUrl} alt={name} width={32} height={32} className="w-8 h-8 rounded-full object-cover" />
                     ) : (
                       <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-sm font-medium text-gray-300">{name.charAt(0).toUpperCase()}</div>
                     )}
