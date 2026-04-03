@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import type { Sop, SopCategory } from '@/types/database'
 
 const categoryMeta: Record<SopCategory, { label: string; color: string }> = {
@@ -58,12 +59,12 @@ export function SopList({ sops, canEdit }: { sops: Sop[]; canEdit: boolean }) {
           <p className="text-gray-400 text-sm mt-1">Staff reference guides and procedures</p>
         </div>
         {canEdit && (
-          <a
+          <Link
             href="/sops/new"
             className="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white text-sm font-medium rounded-lg transition-colors"
           >
             + New SOP
-          </a>
+          </Link>
         )}
       </div>
 

@@ -1,6 +1,5 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import type { TaskStatus, TaskPriority, TaskType } from '@/types/database'
 
@@ -71,7 +70,6 @@ export function TaskManager({
   orgId: string
   staff: StaffMember[]
 }) {
-  const router = useRouter()
   const [tasks, setTasks] = useState(initialTasks)
   const [filter, setFilter] = useState<FilterTab>('open')
   const [showForm, setShowForm] = useState(false)

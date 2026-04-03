@@ -37,11 +37,11 @@ export default async function ChecklistsPage({ searchParams }: { searchParams: P
     ...template,
     items: (template.checklist_items ?? [])
       .sort((a: { sort_order: number }, b: { sort_order: number }) => a.sort_order - b.sort_order)
-      .map((item: any) => ({
+      .map((item: { id: string; label: string; sort_order: number; checklist_completions?: { id: string; completed_by: string; completed_at: string; notes?: string; profile?: { full_name: string } }[] }) => ({
         id: item.id,
         label: item.label,
         sort_order: item.sort_order,
-        completed: item.checklist_completions?.length > 0,
+        completed: (item.checklist_completions?.length ?? 0) > 0,
         completion: item.checklist_completions?.[0]
           ? {
               id: item.checklist_completions[0].id,

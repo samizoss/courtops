@@ -40,8 +40,8 @@ export function RosterTab({ profiles, isAdmin, orgId }: Props) {
       setShowAdd(false)
       setForm({ full_name: '', email: '', password: '', role: 'staff' })
       router.refresh()
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to add staff')
     }
     setAdding(false)
   }

@@ -9,9 +9,10 @@ export default async function StaffPage() {
   const userOrg = await getUserOrg()
   if (!userOrg) return null
 
-  const today = new Date().toISOString().split('T')[0]
-  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0]
-  const weekFromNow = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]
+  const now = new Date()
+  const today = now.toISOString().split('T')[0]
+  const weekAgo = new Date(now.getTime() - 7 * 86400000).toISOString().split('T')[0]
+  const weekFromNow = new Date(now.getTime() + 7 * 86400000).toISOString().split('T')[0]
 
   const [
     { data: profiles },

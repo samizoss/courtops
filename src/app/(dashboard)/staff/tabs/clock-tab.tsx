@@ -3,11 +3,15 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/toast'
-import type { Profile } from '@/types/database'
+import type { Profile, TimeClock } from '@/types/database'
+
+interface ClockWithProfile extends TimeClock {
+  profile?: { full_name: string }
+}
 
 interface Props {
-  activeClocks: any[]
-  recentClocks: any[]
+  activeClocks: ClockWithProfile[]
+  recentClocks: ClockWithProfile[]
   currentUser: { userId: string; orgId: string; role: string; fullName: string }
   profiles: Profile[]
   isAdmin: boolean

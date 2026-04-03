@@ -1,6 +1,5 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import type { ContentPlatform, ContentType, ContentStatus } from '@/types/database'
 
@@ -56,7 +55,6 @@ export function ContentCalendarView({
   orgId: string
   staff: StaffMember[]
 }) {
-  const router = useRouter()
   const [content, setContent] = useState(initialContent)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -247,7 +245,6 @@ export function ContentCalendarView({
                 <div className={`text-xs mb-1 ${isToday ? 'text-orange-400 font-bold' : 'text-gray-500'}`}>{day}</div>
                 {dayContent.map((item) => {
                   const plat = platformOptions.find((p) => p.value === item.platform)
-                  const stat = statusOptions.find((s) => s.value === item.status)
                   return (
                     <button
                       key={item.id}

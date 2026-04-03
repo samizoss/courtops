@@ -437,7 +437,7 @@ export function LeadDetail({ lead, activities: initialActivities, stages, pipeli
           ) : (
             <div className="space-y-3">
               {activities.map(a => (
-                <ActivityRow key={a.id} activity={a} stages={stages} />
+                <ActivityRow key={a.id} activity={a} />
               ))}
             </div>
           )}
@@ -499,12 +499,10 @@ function outcomeBadge(outcome: string | null) {
   )
 }
 
-function ActivityRow({ activity, stages }: {
+function ActivityRow({ activity }: {
   activity: Activity & { performer?: { full_name: string } | null }
-  stages: PipelineStage[]
 }) {
   const isSystem = activity.activity_type === 'system'
-  const isStageChange = activity.activity_type === 'status_change'
   const time = new Date(activity.created_at)
   const timeStr = time.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
     ' ' + time.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })

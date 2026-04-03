@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import type { Profile } from '@/types/database'
+import type { Profile, TimeClock, TimeOffRequest, ScheduleShift, Availability } from '@/types/database'
 import { ClockTab } from './tabs/clock-tab'
 import { RosterTab } from './tabs/roster-tab'
 import { ScheduleTab } from './tabs/schedule-tab'
@@ -29,11 +29,11 @@ export interface OrgHours {
 
 interface Props {
   profiles: Profile[]
-  activeClocks: any[]
-  timeOffRequests: any[]
-  shifts: any[]
-  availability: any[]
-  recentClocks: any[]
+  activeClocks: TimeClock[]
+  timeOffRequests: TimeOffRequest[]
+  shifts: ScheduleShift[]
+  availability: Availability[]
+  recentClocks: TimeClock[]
   currentUser: { userId: string; orgId: string; role: string; fullName: string }
   orgHours?: OrgHours
 }

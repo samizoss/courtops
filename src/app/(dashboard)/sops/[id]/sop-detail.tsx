@@ -2,9 +2,9 @@
 
 import { useRouter } from 'next/navigation'
 import { useState, useRef } from 'react'
+import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { useToast } from '@/components/toast'
 import type { Sop, SopCategory } from '@/types/database'
 
 const categoryOptions: { value: SopCategory; label: string }[] = [
@@ -31,7 +31,6 @@ export function SopDetail({
   userId: string
 }) {
   const router = useRouter()
-  const { toast } = useToast()
   const [editing, setEditing] = useState(false)
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -294,9 +293,9 @@ export function SopDetail({
     <div>
       {/* Back + actions */}
       <div className="flex items-center justify-between mb-6">
-        <a href="/sops" className="text-sm text-gray-400 hover:text-white">
+        <Link href="/sops" className="text-sm text-gray-400 hover:text-white">
           &larr; All SOPs
-        </a>
+        </Link>
         {canEdit && (
           <button
             onClick={() => setEditing(true)}

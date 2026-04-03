@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/toast'
+import type { TimeOffRequest, Availability } from '@/types/database'
 
 const statusBadge: Record<string, string> = {
   pending: 'bg-yellow-500/10 text-yellow-400',
@@ -10,11 +11,16 @@ const statusBadge: Record<string, string> = {
   denied: 'bg-red-500/10 text-red-400',
 }
 
+interface TimeOffWithProfile extends TimeOffRequest {
+  profile?: { full_name: string }
+  reviewer?: { full_name: string }
+}
+
 interface Props {
-  requests: any[]
+  requests: TimeOffWithProfile[]
   currentUser: { userId: string; orgId: string; role: string; fullName: string }
   isAdmin: boolean
-  availability: any[]
+  availability: Availability[]
 }
 
 export function TimeOffTab({ requests, currentUser, isAdmin, availability }: Props) {
@@ -42,7 +48,7 @@ export function TimeOffTab({ requests, currentUser, isAdmin, availability }: Pro
     }
 
     // Count how many staff have availability set for the date range
-    const availableUsers = new Set(availability.filter((a: any) => a.is_available).map((a: any) => a.user_id))
+    const availableUsers = new Set(availability.filter((a) => a.is_available).map((a) => a.user_id))
     return { overlapping, totalAvailable: availableUsers.size }
   }
 
