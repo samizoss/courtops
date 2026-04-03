@@ -72,6 +72,8 @@ vercel.json                              @samizoss
 
 **Behavior:** When the dev opens a PR that touches any of these paths, GitHub automatically adds Sami as a reviewer. The dev sees "Sami was requested for review" — a signal to double-check. But since reviews aren't required, he can still merge if Sami's unavailable.
 
+**Inverse flag:** Either developer can add themselves to CODEOWNERS for code they built with specific intent. Since `.github/` is owned by Sami, the CODEOWNERS change itself triggers a review request — so both parties know what's being protected and why. Convention: always include a comment explaining the reasoning.
+
 ---
 
 ## 4. PR Template
