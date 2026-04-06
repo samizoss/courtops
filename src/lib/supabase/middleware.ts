@@ -18,6 +18,11 @@ export function getOrgSlug(request: NextRequest): string | null {
     return null
   }
 
+  // Vercel preview deploys: treat like localhost (no subdomain)
+  if (hostname.endsWith('.vercel.app')) {
+    return null
+  }
+
   // Check if it's a subdomain of ROOT_DOMAIN
   if (hostname.endsWith(`.${ROOT_DOMAIN}`)) {
     const slug = hostname.replace(`.${ROOT_DOMAIN}`, '')
