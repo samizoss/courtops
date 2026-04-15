@@ -16,6 +16,21 @@ const categoryMeta: Record<SopCategory, { label: string; color: string }> = {
 
 const allCategories = Object.keys(categoryMeta) as SopCategory[]
 
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/^#{1,6}\s+/gm, '')       // headings
+    .replace(/\*\*(.+?)\*\*/g, '$1')   // bold
+    .replace(/\*(.+?)\*/g, '$1')       // italic
+    .replace(/!\[.*?\]\(.*?\)/g, '')    // images
+    .replace(/\[(.+?)\]\(.*?\)/g, '$1') // links
+    .replace(/^[-*]\s+/gm, '')         // list items
+    .replace(/^\d+\.\s+/gm, '')        // numbered lists
+    .replace(/`(.+?)`/g, '$1')         // inline code
+    .replace(/\n{2,}/g, ' ')           // collapse newlines
+    .replace(/\n/g, ' ')
+    .trim()
+}
+
 export function SopList({ sops, canEdit }: { sops: Sop[]; canEdit: boolean }) {
   const [search, setSearch] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<SopCategory | 'all'>('all')
@@ -157,7 +172,7 @@ export function SopList({ sops, canEdit }: { sops: Sop[]; canEdit: boolean }) {
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {catSops.map((sop) => (
-                    <a
+                    <Link
                       key={sop.id}
                       href={`/sops/${sop.id}`}
                       className="bg-gray-900 rounded-lg p-4 border border-gray-800 hover:border-gray-700 transition-colors block"
@@ -174,7 +189,7 @@ export function SopList({ sops, canEdit }: { sops: Sop[]; canEdit: boolean }) {
                         )}
                       </div>
                       <p className="text-xs text-gray-500 mt-1 line-clamp-2">
-                        {sop.content.slice(0, 120)}{sop.content.length > 120 ? '...' : ''}
+                        {(() => { const plain = stripMarkdown(sop.content); return plain.slice(0, 120) + (plain.length > 120 ? '...' : '') })()}
                       </p>
                       {sop.tags && sop.tags.length > 0 && (
                         <div className="flex gap-1 mt-2">
@@ -185,7 +200,7 @@ export function SopList({ sops, canEdit }: { sops: Sop[]; canEdit: boolean }) {
                           ))}
                         </div>
                       )}
-                    </a>
+                    </Link>
                   ))}
                 </div>
               </div>

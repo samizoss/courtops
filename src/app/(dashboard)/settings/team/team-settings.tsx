@@ -86,32 +86,28 @@ export function TeamSettings({ profiles, invites: initialInvites, currentUser }:
     setCreatedLink(null)
 
     try {
-      const { createClient } = await import('@/lib/supabase/client')
-      const supabase = createClient()
+      const res = await fetch('/api/invites/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
+      })
 
-      const token = crypto.randomUUID()
-      const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
-      // Note: invite link expires in 48 hours
+      const payload = await res.json()
+      if (!res.ok) throw new Error(payload.error || 'Failed to send invite.')
 
-      const { data, error } = await supabase
-        .from('org_invites')
-        .insert({
-          org_id: currentUser.orgId,
-          email: inviteEmail,
-          role: inviteRole,
-          invited_by: currentUser.userId,
-          token,
-          expires_at: expiresAt,
-        })
-        .select('*, inviter:profiles!org_invites_invited_by_fkey(full_name)')
-        .single()
-
-      if (error) throw error
-
-      setInvites((prev) => [data, ...prev])
-      setCreatedLink(`${window.location.origin}/invite/${token}`)
+      setInvites((prev) => [payload.invite, ...prev])
+      setCreatedLink(payload.inviteLink)
+      const sentTo = inviteEmail
       setInviteEmail('')
-      setMessage({ type: 'success', text: `Invite sent to ${inviteEmail}.` })
+
+      if (payload.emailSent) {
+        setMessage({ type: 'success', text: `Invite email sent to ${sentTo}.` })
+      } else {
+        setMessage({
+          type: 'error',
+          text: `Invite link created for ${sentTo}, but email failed to send${payload.emailError ? `: ${payload.emailError}` : ''}. Copy the link below and share it directly.`,
+        })
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to send invite.'
       setMessage({ type: 'error', text: msg })
