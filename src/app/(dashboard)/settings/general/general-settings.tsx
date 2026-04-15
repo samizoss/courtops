@@ -215,16 +215,16 @@ export function GeneralSettings({ org, orgSettings }: { org: Org; orgSettings: O
         </div>
 
         <div>
-          <label htmlFor="logoUrl" className="block text-sm font-medium text-gray-300 mb-1">
-            Logo URL
+          <label className="block text-sm font-medium text-gray-300 mb-1">
+            Logo
           </label>
-          <input
-            id="logoUrl"
-            type="url"
-            value={logoUrl}
-            onChange={(e) => setLogoUrl(e.target.value)}
-            placeholder="https://example.com/logo.png"
-            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+          <LogoUpload
+            orgId={org.id}
+            currentUrl={logoUrl}
+            onChange={(url) => {
+              setLogoUrl(url)
+              markDirty()
+            }}
           />
         </div>
 
@@ -330,6 +330,147 @@ export function GeneralSettings({ org, orgSettings }: { org: Org; orgSettings: O
           {saving ? 'Saving...' : 'Save Changes'}
         </button>
       </form>
+    </div>
+  )
+}
+
+function LogoUpload({
+  orgId,
+  currentUrl,
+  onChange,
+}: {
+  orgId: string
+  currentUrl: string
+  onChange: (url: string) => void
+}) {
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [pasting, setPasting] = useState(false)
+  const [pasteUrl, setPasteUrl] = useState('')
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      setError('Please select an image file (PNG, JPG, SVG, etc.)')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Image must be under 5MB')
+      return
+    }
+
+    setError(null)
+    setUploading(true)
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+
+      const ext = file.name.split('.').pop()?.toLowerCase() ?? 'png'
+      const path = `${orgId}/logo-${Date.now()}.${ext}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('logos')
+        .upload(path, file, { upsert: true, contentType: file.type })
+
+      if (uploadError) throw uploadError
+
+      const { data } = supabase.storage.from('logos').getPublicUrl(path)
+      onChange(data.publicUrl)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to upload logo')
+    } finally {
+      setUploading(false)
+      e.target.value = ''
+    }
+  }
+
+  function handlePaste() {
+    if (pasteUrl.trim()) {
+      onChange(pasteUrl.trim())
+      setPasteUrl('')
+      setPasting(false)
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-4">
+        {currentUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={currentUrl}
+            alt="Org logo"
+            className="w-16 h-16 rounded-lg bg-gray-800 object-contain border border-gray-700"
+          />
+        ) : (
+          <div className="w-16 h-16 rounded-lg bg-gray-800 border border-gray-700 flex items-center justify-center text-xs text-gray-500">
+            No logo
+          </div>
+        )}
+
+        <div className="flex-1 space-y-2">
+          <label className="inline-block">
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleFile}
+              disabled={uploading}
+              className="hidden"
+            />
+            <span className="inline-block px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer disabled:opacity-50">
+              {uploading ? 'Uploading...' : currentUrl ? 'Replace logo' : 'Upload logo'}
+            </span>
+          </label>
+          {currentUrl && (
+            <button
+              type="button"
+              onClick={() => onChange('')}
+              className="ml-2 text-sm text-gray-400 hover:text-red-400 transition-colors"
+            >
+              Remove
+            </button>
+          )}
+          <p className="text-xs text-gray-500">PNG, JPG, or SVG · max 5MB</p>
+        </div>
+      </div>
+
+      {!pasting ? (
+        <button
+          type="button"
+          onClick={() => setPasting(true)}
+          className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+        >
+          Or paste a URL instead
+        </button>
+      ) : (
+        <div className="flex gap-2">
+          <input
+            type="url"
+            value={pasteUrl}
+            onChange={(e) => setPasteUrl(e.target.value)}
+            placeholder="https://example.com/logo.png"
+            className="flex-1 px-3 py-1.5 bg-gray-900 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+          />
+          <button
+            type="button"
+            onClick={handlePaste}
+            className="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white text-sm rounded-lg transition-colors"
+          >
+            Use URL
+          </button>
+          <button
+            type="button"
+            onClick={() => { setPasting(false); setPasteUrl('') }}
+            className="px-3 py-1.5 text-sm text-gray-400 hover:text-white transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {error && <p className="text-red-400 text-xs">{error}</p>}
     </div>
   )
 }

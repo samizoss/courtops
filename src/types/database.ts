@@ -38,6 +38,7 @@ export interface Profile {
   role: Role
   avatar_url: string | null
   is_active: boolean
+  is_operational_staff: boolean
   created_at: string
 }
 
@@ -174,7 +175,23 @@ export interface TimeClock {
   clock_out: string | null
   total_minutes: number | null
   notes: string | null
+  is_manual_entry: boolean
+  admin_note: string | null
+  last_edited_by: string | null
+  last_edited_at: string | null
   created_at: string
+}
+
+export interface TimeClockEdit {
+  id: string
+  time_clock_id: string
+  org_id: string
+  edited_by: string
+  edited_at: string
+  action: 'create' | 'edit' | 'delete'
+  old_values: Record<string, unknown> | null
+  new_values: Record<string, unknown> | null
+  reason: string | null
 }
 
 export interface TimeOffRequest {
@@ -286,6 +303,7 @@ export interface OrgSettings {
   cr_api_pass: string | null
   cr_sync_enabled: boolean
   cr_last_synced_at: string | null
+  clock_notes_visibility: 'all_staff' | 'admin_only'
   created_at: string
   updated_at: string
 }

@@ -15,6 +15,7 @@ interface Props {
   currentUser: { userId: string; orgId: string; role: string; fullName: string }
   profiles: Profile[]
   isAdmin: boolean
+  clockNotesVisibility?: 'all_staff' | 'admin_only'
 }
 
 function formatDuration(minutes: number | null) {
@@ -39,11 +40,20 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
-export function ClockTab({ activeClocks, recentClocks, currentUser, profiles, isAdmin }: Props) {
+// Converts ISO string to the value format expected by datetime-local input.
+function toDatetimeLocal(iso: string): string {
+  const d = new Date(iso)
+  const pad = (n: number) => n.toString().padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+export function ClockTab({ activeClocks, recentClocks, currentUser, profiles, isAdmin, clockNotesVisibility = 'all_staff' }: Props) {
   const router = useRouter()
   const { toast } = useToast()
   const [loading, setLoading] = useState(false)
   const [notes, setNotes] = useState('')
+  const [showMissed, setShowMissed] = useState(false)
+  const [editingClock, setEditingClock] = useState<ClockWithProfile | null>(null)
 
   const myClock = activeClocks.find(c => c.user_id === currentUser.userId)
   const isClockedIn = !!myClock
@@ -79,6 +89,13 @@ export function ClockTab({ activeClocks, recentClocks, currentUser, profiles, is
     } finally {
       setLoading(false)
     }
+  }
+
+  // Whether to show someone else's staff-added note to the current user.
+  function canSeeNote(clock: ClockWithProfile): boolean {
+    if (isAdmin) return true
+    if (clock.user_id === currentUser.userId) return true
+    return clockNotesVisibility === 'all_staff'
   }
 
   return (
@@ -120,6 +137,17 @@ export function ClockTab({ activeClocks, recentClocks, currentUser, profiles, is
             {loading ? 'Saving...' : isClockedIn ? 'Clock Out' : 'Clock In'}
           </button>
         </div>
+
+        {!isClockedIn && (
+          <div className="mt-3 flex justify-end">
+            <button
+              onClick={() => setShowMissed(true)}
+              className="text-xs text-orange-400 hover:text-orange-300 transition-colors"
+            >
+              Forgot to clock in? Log a missed entry →
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Who's clocked in now */}
@@ -150,23 +178,388 @@ export function ClockTab({ activeClocks, recentClocks, currentUser, profiles, is
           <p className="text-gray-500 text-sm">No clock entries yet.</p>
         ) : (
           <div className="bg-gray-900 rounded-xl overflow-hidden divide-y divide-gray-800/50">
-            {recentClocks.map((clock) => (
-              <div key={clock.id} className="flex items-center gap-4 px-5 py-3">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-white">{clock.profile?.full_name}</p>
-                  <p className="text-xs text-gray-500">{formatDate(clock.clock_in)}</p>
+            {recentClocks.map((clock) => {
+              const showNote = clock.notes && canSeeNote(clock)
+              return (
+                <div key={clock.id} className="flex items-start gap-4 px-5 py-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm text-white">{clock.profile?.full_name}</p>
+                      {clock.is_manual_entry && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/10 text-yellow-400">
+                          Manual entry
+                        </span>
+                      )}
+                      {clock.last_edited_at && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400" title={`Edited ${new Date(clock.last_edited_at).toLocaleString()}`}>
+                          Edited
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500">{formatDate(clock.clock_in)}</p>
+                    {showNote && (
+                      <p className="text-xs text-gray-400 mt-1 italic">&ldquo;{clock.notes}&rdquo;</p>
+                    )}
+                    {isAdmin && clock.admin_note && (
+                      <p className="text-xs text-purple-400 mt-1 italic">
+                        <span className="text-[10px] uppercase font-semibold tracking-wider mr-1 not-italic">Admin:</span>
+                        &ldquo;{clock.admin_note}&rdquo;
+                      </p>
+                    )}
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-sm text-gray-300">
+                      {formatTime(clock.clock_in)} {clock.clock_out ? `— ${formatTime(clock.clock_out)}` : '— active'}
+                    </p>
+                    <p className="text-xs text-gray-500">{formatDuration(clock.total_minutes)}</p>
+                    {isAdmin && (
+                      <button
+                        onClick={() => setEditingClock(clock)}
+                        className="text-xs text-orange-400 hover:text-orange-300 mt-1 transition-colors"
+                      >
+                        Edit
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <div className="text-right flex-shrink-0">
-                  <p className="text-sm text-gray-300">
-                    {formatTime(clock.clock_in)} {clock.clock_out ? `— ${formatTime(clock.clock_out)}` : '— active'}
-                  </p>
-                  <p className="text-xs text-gray-500">{formatDuration(clock.total_minutes)}</p>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
+
+      {showMissed && (
+        <MissedClockInModal
+          currentUser={currentUser}
+          onClose={() => setShowMissed(false)}
+          onSaved={() => {
+            setShowMissed(false)
+            router.refresh()
+          }}
+        />
+      )}
+
+      {editingClock && (
+        <EditClockModal
+          clock={editingClock}
+          currentUser={currentUser}
+          onClose={() => setEditingClock(null)}
+          onSaved={() => {
+            setEditingClock(null)
+            router.refresh()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function MissedClockInModal({
+  currentUser,
+  onClose,
+  onSaved,
+}: {
+  currentUser: { userId: string; orgId: string }
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const { toast } = useToast()
+  const [saving, setSaving] = useState(false)
+  const nowLocal = toDatetimeLocal(new Date().toISOString())
+  const defaultClockIn = toDatetimeLocal(new Date(Date.now() - 60 * 60 * 1000).toISOString())
+  const [clockIn, setClockIn] = useState(defaultClockIn)
+  const [clockOut, setClockOut] = useState('')
+  const [noteText, setNoteText] = useState('')
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault()
+    if (!clockIn) return
+    const clockInDate = new Date(clockIn)
+    const now = new Date()
+    if (clockInDate > now) {
+      toast('Clock-in time cannot be in the future', 'error')
+      return
+    }
+    let clockOutIso: string | null = null
+    if (clockOut) {
+      const clockOutDate = new Date(clockOut)
+      if (clockOutDate <= clockInDate) {
+        toast('Clock-out must be after clock-in', 'error')
+        return
+      }
+      if (clockOutDate > now) {
+        toast('Clock-out time cannot be in the future', 'error')
+        return
+      }
+      clockOutIso = clockOutDate.toISOString()
+    }
+
+    setSaving(true)
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      const { error } = await supabase.from('time_clock').insert({
+        org_id: currentUser.orgId,
+        user_id: currentUser.userId,
+        clock_in: clockInDate.toISOString(),
+        clock_out: clockOutIso,
+        notes: noteText || null,
+        is_manual_entry: true,
+      })
+      if (error) throw error
+      toast('Missed clock-in logged')
+      onSaved()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed to save', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <form
+        onClick={(e) => e.stopPropagation()}
+        onSubmit={handleSave}
+        className="bg-gray-900 rounded-xl max-w-md w-full p-6 space-y-4 border border-gray-800"
+      >
+        <div>
+          <h3 className="text-lg font-semibold text-white">Log Missed Clock-In</h3>
+          <p className="text-sm text-gray-400 mt-1">
+            Enter when you actually started working. An admin may review this entry.
+          </p>
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-gray-400 mb-1">Clock in time *</label>
+          <input
+            required
+            type="datetime-local"
+            value={clockIn}
+            max={nowLocal}
+            onChange={(e) => setClockIn(e.target.value)}
+            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-gray-400 mb-1">
+            Clock out time <span className="text-gray-500 font-normal">(optional — leave empty if still working)</span>
+          </label>
+          <input
+            type="datetime-local"
+            value={clockOut}
+            max={nowLocal}
+            min={clockIn}
+            onChange={(e) => setClockOut(e.target.value)}
+            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-gray-400 mb-1">
+            Note <span className="text-gray-500 font-normal">(optional)</span>
+          </label>
+          <input
+            type="text"
+            value={noteText}
+            onChange={(e) => setNoteText(e.target.value)}
+            placeholder="Forgot to clock in at start of shift"
+            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+          />
+        </div>
+
+        <div className="flex gap-3 justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving}
+            className="px-4 py-2 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            {saving ? 'Saving...' : 'Log Entry'}
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
+function EditClockModal({
+  clock,
+  currentUser,
+  onClose,
+  onSaved,
+}: {
+  clock: ClockWithProfile
+  currentUser: { userId: string; orgId: string }
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const { toast } = useToast()
+  const [saving, setSaving] = useState(false)
+  const [clockIn, setClockIn] = useState(toDatetimeLocal(clock.clock_in))
+  const [clockOut, setClockOut] = useState(clock.clock_out ? toDatetimeLocal(clock.clock_out) : '')
+  const [noteText, setNoteText] = useState(clock.notes ?? '')
+  const [adminNote, setAdminNote] = useState(clock.admin_note ?? '')
+  const [reason, setReason] = useState('')
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault()
+    if (!clockIn) return
+    const clockInDate = new Date(clockIn)
+    const clockOutDate = clockOut ? new Date(clockOut) : null
+    if (clockOutDate && clockOutDate <= clockInDate) {
+      toast('Clock-out must be after clock-in', 'error')
+      return
+    }
+
+    setSaving(true)
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+
+      const oldValues = {
+        clock_in: clock.clock_in,
+        clock_out: clock.clock_out,
+        notes: clock.notes,
+        admin_note: clock.admin_note,
+      }
+      const newValues = {
+        clock_in: clockInDate.toISOString(),
+        clock_out: clockOutDate?.toISOString() ?? null,
+        notes: noteText || null,
+        admin_note: adminNote || null,
+      }
+
+      const { error: updateError } = await supabase
+        .from('time_clock')
+        .update({
+          ...newValues,
+          last_edited_by: currentUser.userId,
+          last_edited_at: new Date().toISOString(),
+        })
+        .eq('id', clock.id)
+      if (updateError) throw updateError
+
+      // Log to audit trail (best-effort — don't fail the save if this fails)
+      await supabase.from('time_clock_edits').insert({
+        time_clock_id: clock.id,
+        org_id: currentUser.orgId,
+        edited_by: currentUser.userId,
+        action: 'edit',
+        old_values: oldValues,
+        new_values: newValues,
+        reason: reason || null,
+      })
+
+      toast('Clock record updated')
+      onSaved()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed to save', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <form
+        onClick={(e) => e.stopPropagation()}
+        onSubmit={handleSave}
+        className="bg-gray-900 rounded-xl max-w-md w-full p-6 space-y-4 border border-gray-800"
+      >
+        <div>
+          <h3 className="text-lg font-semibold text-white">Edit Clock Record</h3>
+          <p className="text-sm text-gray-400 mt-1">
+            {clock.profile?.full_name} · {formatDate(clock.clock_in)}
+          </p>
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-gray-400 mb-1">Clock in *</label>
+          <input
+            required
+            type="datetime-local"
+            value={clockIn}
+            onChange={(e) => setClockIn(e.target.value)}
+            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-gray-400 mb-1">
+            Clock out <span className="text-gray-500 font-normal">(leave empty for active shift)</span>
+          </label>
+          <input
+            type="datetime-local"
+            value={clockOut}
+            min={clockIn}
+            onChange={(e) => setClockOut(e.target.value)}
+            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-gray-400 mb-1">
+            Staff note <span className="text-gray-500 font-normal">(what staff entered)</span>
+          </label>
+          <input
+            type="text"
+            value={noteText}
+            onChange={(e) => setNoteText(e.target.value)}
+            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-purple-400 mb-1">
+            Admin note <span className="text-gray-500 font-normal">(visible only to admins)</span>
+          </label>
+          <input
+            type="text"
+            value={adminNote}
+            onChange={(e) => setAdminNote(e.target.value)}
+            placeholder="Internal note about this shift"
+            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-gray-400 mb-1">
+            Reason for edit <span className="text-gray-500 font-normal">(optional, logged in audit history)</span>
+          </label>
+          <input
+            type="text"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Fixed forgotten clock-out"
+            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+          />
+        </div>
+
+        <div className="flex gap-3 justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving}
+            className="px-4 py-2 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            {saving ? 'Saving...' : 'Save Changes'}
+          </button>
+        </div>
+      </form>
     </div>
   )
 }

@@ -36,17 +36,35 @@ interface Props {
   recentClocks: TimeClock[]
   currentUser: { userId: string; orgId: string; role: string; fullName: string }
   orgHours?: OrgHours
+  clockNotesVisibility?: 'all_staff' | 'admin_only'
 }
 
-export function StaffModule({ profiles, activeClocks, timeOffRequests, shifts, availability, recentClocks, currentUser, orgHours }: Props) {
+export function StaffModule({ profiles, activeClocks, timeOffRequests, shifts, availability, recentClocks, currentUser, orgHours, clockNotesVisibility }: Props) {
   const [tab, setTab] = useState<TabId>('clock')
   const isAdmin = currentUser.role === 'owner' || currentUser.role === 'admin'
+
+  // Operational staff are those who should appear on schedule/availability/hours reports.
+  // Non-operational accounts (dev/test/consultant) still log in but are hidden from ops views.
+  // Always include the current user so they can see their own clocks even if not operational.
+  const operationalProfiles = profiles.filter(
+    (p) => p.is_operational_staff || p.id === currentUser.userId
+  )
+  const opIds = new Set(operationalProfiles.map((p) => p.id))
+  const operationalActiveClocks = activeClocks.filter((c) => opIds.has(c.user_id))
+  const operationalRecentClocks = recentClocks.filter((c) => opIds.has(c.user_id))
+  const operationalShifts = shifts.filter((s) => opIds.has(s.user_id))
+  const operationalAvailability = availability.filter((a) => opIds.has(a.user_id))
+  const operationalTimeOff = timeOffRequests.filter((r) => opIds.has(r.user_id))
 
   return (
     <div>
       <div className="mb-6">
         <h2 className="text-2xl font-bold">Staff</h2>
-        <p className="text-gray-400 text-sm mt-1">{profiles.length} team members</p>
+        <p className="text-gray-400 text-sm mt-1">
+          {operationalProfiles.filter((p) => p.is_operational_staff).length} operational
+          {profiles.length !== operationalProfiles.filter((p) => p.is_operational_staff).length &&
+            ` · ${profiles.length - operationalProfiles.filter((p) => p.is_operational_staff).length} non-operational`}
+        </p>
       </div>
 
       {/* Tabs */}
@@ -67,19 +85,19 @@ export function StaffModule({ profiles, activeClocks, timeOffRequests, shifts, a
       </div>
 
       {tab === 'clock' && (
-        <ClockTab activeClocks={activeClocks} recentClocks={recentClocks} currentUser={currentUser} profiles={profiles} isAdmin={isAdmin} />
+        <ClockTab activeClocks={operationalActiveClocks} recentClocks={operationalRecentClocks} currentUser={currentUser} profiles={operationalProfiles} isAdmin={isAdmin} clockNotesVisibility={clockNotesVisibility} />
       )}
       {tab === 'roster' && (
         <RosterTab profiles={profiles} isAdmin={isAdmin} orgId={currentUser.orgId} />
       )}
       {tab === 'schedule' && (
-        <ScheduleTab shifts={shifts} profiles={profiles} isAdmin={isAdmin} orgId={currentUser.orgId} availability={availability} timeOffRequests={timeOffRequests} orgHours={orgHours} />
+        <ScheduleTab shifts={operationalShifts} profiles={operationalProfiles} isAdmin={isAdmin} orgId={currentUser.orgId} availability={operationalAvailability} timeOffRequests={operationalTimeOff} orgHours={orgHours} />
       )}
       {tab === 'timeoff' && (
-        <TimeOffTab requests={timeOffRequests} currentUser={currentUser} isAdmin={isAdmin} availability={availability} />
+        <TimeOffTab requests={operationalTimeOff} currentUser={currentUser} isAdmin={isAdmin} availability={operationalAvailability} />
       )}
       {tab === 'availability' && (
-        <AvailabilityTab availability={availability} profiles={profiles} currentUser={currentUser} />
+        <AvailabilityTab availability={operationalAvailability} profiles={operationalProfiles} currentUser={currentUser} />
       )}
     </div>
   )
