@@ -18,6 +18,8 @@ const allCategories = Object.keys(categoryMeta) as SopCategory[]
 
 function stripMarkdown(text: string): string {
   return text
+    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, '')  // iframe embeds (whole block)
+    .replace(/<[^>]+>/g, '')            // any other HTML tags
     .replace(/^#{1,6}\s+/gm, '')       // headings
     .replace(/\*\*(.+?)\*\*/g, '$1')   // bold
     .replace(/\*(.+?)\*/g, '$1')       // italic
@@ -29,6 +31,23 @@ function stripMarkdown(text: string): string {
     .replace(/\n{2,}/g, ' ')           // collapse newlines
     .replace(/\n/g, ' ')
     .trim()
+}
+
+/**
+ * Detect the embed provider from an iframe URL so we can badge the card
+ * appropriately. Extensible — add more providers as needed.
+ */
+function detectEmbed(content: string): { label: string } | null {
+  const match = content.match(/<iframe\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/i)
+  if (!match) return null
+  const src = match[1]
+  if (/tango\.us/i.test(src)) return { label: 'Tango walkthrough' }
+  if (/scribehow\.com/i.test(src)) return { label: 'Scribe walkthrough' }
+  if (/loom\.com/i.test(src)) return { label: 'Loom video' }
+  if (/youtube\.com|youtu\.be/i.test(src)) return { label: 'YouTube video' }
+  if (/docs\.google\.com/i.test(src)) return { label: 'Google Doc' }
+  if (/vimeo\.com/i.test(src)) return { label: 'Vimeo video' }
+  return { label: 'Embedded walkthrough' }
 }
 
 export function SopList({ sops, canEdit }: { sops: Sop[]; canEdit: boolean }) {
@@ -188,9 +207,28 @@ export function SopList({ sops, canEdit }: { sops: Sop[]; canEdit: boolean }) {
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-gray-500 mt-1 line-clamp-2">
-                        {(() => { const plain = stripMarkdown(sop.content); return plain.slice(0, 120) + (plain.length > 120 ? '...' : '') })()}
-                      </p>
+                      {(() => {
+                        const plain = stripMarkdown(sop.content)
+                        const embed = detectEmbed(sop.content)
+
+                        if (plain.length === 0 && embed) {
+                          // Embed-only SOP — show a walkthrough pill instead of raw HTML
+                          return (
+                            <div className="flex items-center gap-1.5 mt-1.5">
+                              <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-orange-500/10 text-orange-400 font-medium">
+                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M4 4l12 6-12 6V4z" /></svg>
+                                {embed.label}
+                              </span>
+                            </div>
+                          )
+                        }
+
+                        return (
+                          <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+                            {plain.slice(0, 120)}{plain.length > 120 ? '...' : ''}
+                          </p>
+                        )
+                      })()}
                       {sop.tags && sop.tags.length > 0 && (
                         <div className="flex gap-1 mt-2">
                           {sop.tags.map((tag) => (
