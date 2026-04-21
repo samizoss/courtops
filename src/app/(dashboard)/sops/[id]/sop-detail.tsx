@@ -3,8 +3,8 @@
 import { useRouter } from 'next/navigation'
 import { useState, useRef } from 'react'
 import Link from 'next/link'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import { SopContent } from '@/components/sop-content'
+import { EmbedModal } from '@/components/embed-modal'
 import type { Sop, SopCategory } from '@/types/database'
 
 const categoryOptions: { value: SopCategory; label: string }[] = [
@@ -39,8 +39,21 @@ export function SopDetail({
   const [content, setContent] = useState(sop.content)
   const [tags, setTags] = useState(sop.tags?.join(', ') ?? '')
   const [showPreview, setShowPreview] = useState(false)
+  const [showEmbed, setShowEmbed] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  function insertAtCursor(snippet: string) {
+    const textarea = textareaRef.current
+    if (textarea) {
+      const start = textarea.selectionStart
+      const before = content.slice(0, start)
+      const after = content.slice(start)
+      setContent(before + snippet + after)
+    } else {
+      setContent(content + snippet)
+    }
+  }
 
   async function handleImageUpload(file: File) {
     setUploading(true)
@@ -223,6 +236,13 @@ export function SopDetail({
                 </button>
                 <button
                   type="button"
+                  onClick={() => setShowEmbed(true)}
+                  className="text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded transition-colors"
+                >
+                  Add Embed
+                </button>
+                <button
+                  type="button"
                   onClick={() => setShowPreview(!showPreview)}
                   className={`text-xs px-2 py-1 rounded transition-colors ${
                     showPreview
@@ -237,9 +257,7 @@ export function SopDetail({
 
             {showPreview ? (
               <div className="w-full min-h-[480px] px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg">
-                <div className="prose prose-invert prose-sm max-w-none text-gray-300 leading-relaxed">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-                </div>
+                <SopContent content={content} />
               </div>
             ) : (
               <textarea
@@ -292,6 +310,13 @@ export function SopDetail({
             </button>
           </div>
         </form>
+
+        {showEmbed && (
+          <EmbedModal
+            onInsert={(snippet) => insertAtCursor(snippet)}
+            onClose={() => setShowEmbed(false)}
+          />
+        )}
       </div>
     )
   }
@@ -347,9 +372,7 @@ export function SopDetail({
 
       {/* Content — rendered markdown */}
       <div className="bg-gray-900 rounded-xl border border-gray-800 p-6 max-w-3xl">
-        <div className="prose prose-invert prose-sm max-w-none text-gray-300 leading-relaxed prose-img:rounded-lg prose-img:border prose-img:border-gray-700">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{currentSop.content}</ReactMarkdown>
-        </div>
+        <SopContent content={currentSop.content} />
       </div>
     </div>
   )
