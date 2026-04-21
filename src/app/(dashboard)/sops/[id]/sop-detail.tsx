@@ -84,39 +84,46 @@ export function SopDetail({
     setLoading(true)
     setError('')
 
-    const { createClient } = await import('@/lib/supabase/client')
-    const supabase = createClient()
     const form = new FormData(e.currentTarget)
 
-    const parsedTags = tags
-      .split(',')
-      .map((t) => t.trim().toLowerCase())
-      .filter(Boolean)
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
 
-    const { data, error: err } = await supabase
-      .from('sops')
-      .update({
-        title: form.get('title') as string,
-        content,
-        category: form.get('category') as SopCategory,
-        is_published: form.get('is_published') === 'on',
-        tags: parsedTags.length > 0 ? parsedTags : null,
-        version: (currentSop.version ?? 1) + 1,
-        updated_by: userId,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', sop.id)
-      .select()
-      .single()
+      const parsedTags = tags
+        .split(',')
+        .map((t) => t.trim().toLowerCase())
+        .filter(Boolean)
 
-    if (err) {
-      setError(err.message)
-    } else if (data) {
+      const { data, error: err } = await supabase
+        .from('sops')
+        .update({
+          title: form.get('title') as string,
+          content,
+          category: form.get('category') as SopCategory,
+          is_published: form.get('is_published') === 'on',
+          tags: parsedTags.length > 0 ? parsedTags : null,
+          version: (currentSop.version ?? 1) + 1,
+          updated_by: userId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', sop.id)
+        .select()
+        .single()
+
+      if (err) throw err
+      if (!data) throw new Error('No row returned — check permissions')
+
       setCurrentSop(data)
       setEditing(false)
       setShowPreview(false)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to save SOP'
+      setError(msg)
+      console.error('SOP save failed:', err)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   async function handleDelete() {
