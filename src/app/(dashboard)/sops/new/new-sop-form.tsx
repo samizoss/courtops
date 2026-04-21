@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { SopContent } from '@/components/sop-content'
 import { EmbedModal } from '@/components/embed-modal'
 import { useToast } from '@/components/toast'
+import { useSopSuggest, SopSuggestInline } from '@/components/sop-suggest'
 import type { SopCategory } from '@/types/database'
 
 const categoryOptions: { value: SopCategory; label: string }[] = [
@@ -24,12 +25,51 @@ export function NewSopForm({ orgId, userId }: { orgId: string; userId: string })
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
+  const [title, setTitle] = useState('')
+  const [category, setCategory] = useState<SopCategory>('general')
   const [content, setContent] = useState('')
   const [tags, setTags] = useState('')
   const [showPreview, setShowPreview] = useState(false)
   const [showEmbed, setShowEmbed] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const autoSuggestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const autoSuggestedSigRef = useRef<string>('')
+
+  const suggestCtl = useSopSuggest({
+    onAccept: ({ category: c, tags: t }) => {
+      setCategory(c)
+      // Merge, don't overwrite — keep any tags the user already typed
+      const existing = tags.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
+      const merged = Array.from(new Set([...existing, ...t]))
+      setTags(merged.join(', '))
+      toast('Applied AI suggestions')
+    },
+  })
+
+  function triggerSuggest() {
+    suggestCtl.suggest(title, content)
+  }
+
+  /**
+   * Auto-suggest on blur if the user has typed enough to analyze and we
+   * haven't already auto-suggested for this exact (title, content) pair.
+   * Debounced to coalesce rapid focus/blur cycles.
+   */
+  function maybeAutoSuggest() {
+    if (autoSuggestTimerRef.current) clearTimeout(autoSuggestTimerRef.current)
+    autoSuggestTimerRef.current = setTimeout(() => {
+      const plainContent = content
+        .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, '')
+        .trim()
+      // Either a non-trivial title OR non-trivial body — don't ask for a suggestion off an empty form
+      if (title.trim().length < 4 && plainContent.length < 40) return
+      const sig = `${title}|${content}`
+      if (sig === autoSuggestedSigRef.current) return
+      autoSuggestedSigRef.current = sig
+      triggerSuggest()
+    }, 600)
+  }
 
   function insertAtCursor(snippet: string) {
     const textarea = textareaRef.current
@@ -90,9 +130,9 @@ export function NewSopForm({ orgId, userId }: { orgId: string; userId: string })
         .from('sops')
         .insert({
           org_id: orgId,
-          title: form.get('title') as string,
+          title,
           content,
-          category: form.get('category') as SopCategory,
+          category,
           is_published: form.get('is_published') === 'on',
           tags: parsedTags.length > 0 ? parsedTags : null,
           created_by: userId,
@@ -128,21 +168,35 @@ export function NewSopForm({ orgId, userId }: { orgId: string; userId: string })
 
       <form onSubmit={handleSubmit} className="space-y-4 max-w-4xl">
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1">Title *</label>
+          <div className="flex items-center justify-between mb-1">
+            <label className="block text-sm font-medium text-gray-300">Title *</label>
+            <button
+              type="button"
+              onClick={triggerSuggest}
+              disabled={suggestCtl.state === 'loading' || (!title.trim() && !content.trim())}
+              className="text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed text-gray-300 rounded transition-colors"
+              title="Suggest category + tags based on title and content"
+            >
+              {suggestCtl.state === 'loading' ? '✨ Analyzing...' : '✨ Suggest category + tags'}
+            </button>
+          </div>
           <input
-            name="title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onBlur={maybeAutoSuggest}
             required
             className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
             placeholder="e.g. Opening Procedures"
           />
+          <SopSuggestInline {...suggestCtl} />
         </div>
 
         <div className="grid grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">Category</label>
             <select
-              name="category"
-              defaultValue="general"
+              value={category}
+              onChange={(e) => setCategory(e.target.value as SopCategory)}
               className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
             >
               {categoryOptions.map((c) => (
@@ -227,6 +281,7 @@ export function NewSopForm({ orgId, userId }: { orgId: string; userId: string })
               ref={textareaRef}
               value={content}
               onChange={(e) => setContent(e.target.value)}
+              onBlur={maybeAutoSuggest}
               required
               rows={20}
               className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono text-sm leading-relaxed"
