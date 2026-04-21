@@ -57,9 +57,9 @@ export default async function DashboardPage() {
     // 2: unread notifications (everyone)
     supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('user_id', userOrg.userId).eq('read', false),
     // 3: who's clocked in (everyone)
-    supabase.from('time_clock').select('id, user_id, clock_in, profile:profiles(full_name, avatar_url)').is('clock_out', null).order('clock_in', { ascending: true }),
+    supabase.from('time_clock').select('id, user_id, clock_in, profile:profiles!time_clock_user_id_fkey(full_name, avatar_url)').is('clock_out', null).order('clock_in', { ascending: true }),
     // 4: pending time off (everyone)
-    supabase.from('time_off_requests').select('id, start_date, end_date, reason, status, profile:profiles(full_name)').eq('status', 'pending').order('created_at', { ascending: false }).limit(5),
+    supabase.from('time_off_requests').select('id, start_date, end_date, reason, status, profile:profiles!time_off_requests_user_id_fkey(full_name)').eq('status', 'pending').order('created_at', { ascending: false }).limit(5),
   ]
 
   // Pipeline queries (owner only)
