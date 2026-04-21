@@ -29,8 +29,20 @@ export default async function StaffPage() {
     supabase.from('shifts').select('*, profile:profiles(full_name)').gte('shift_date', today).lte('shift_date', weekFromNow).order('shift_date').order('start_time'),
     supabase.from('availability').select('*, profile:profiles(full_name)').order('day_of_week'),
     supabase.from('time_clock').select('*, profile:profiles(full_name)').gte('clock_in', weekAgo).order('clock_in', { ascending: false }).limit(50),
-    supabase.from('org_settings').select('open_time, close_time, open_days, staff_arrive_before_min, staff_depart_after_min, daily_hours').eq('org_id', userOrg.orgId).single(),
+    supabase.from('org_settings').select('open_time, close_time, open_days, staff_arrive_before_min, staff_depart_after_min, daily_hours, clock_notes_visibility').eq('org_id', userOrg.orgId).single(),
   ])
+
+  const clockNotesVisibility = (orgSettings?.clock_notes_visibility as 'all_staff' | 'admin_only' | undefined) ?? 'all_staff'
+  const orgHours = orgSettings
+    ? {
+        open_time: orgSettings.open_time,
+        close_time: orgSettings.close_time,
+        open_days: orgSettings.open_days,
+        staff_arrive_before_min: orgSettings.staff_arrive_before_min,
+        staff_depart_after_min: orgSettings.staff_depart_after_min,
+        daily_hours: orgSettings.daily_hours,
+      }
+    : undefined
 
   return (
     <StaffModule
@@ -41,7 +53,8 @@ export default async function StaffPage() {
       availability={availability ?? []}
       recentClocks={recentClocks ?? []}
       currentUser={userOrg}
-      orgHours={orgSettings ?? undefined}
+      orgHours={orgHours}
+      clockNotesVisibility={clockNotesVisibility}
     />
   )
 }

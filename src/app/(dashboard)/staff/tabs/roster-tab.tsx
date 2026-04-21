@@ -22,7 +22,25 @@ export function RosterTab({ profiles, isAdmin, orgId }: Props) {
   const [showAdd, setShowAdd] = useState(false)
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState('')
+  const [togglingId, setTogglingId] = useState<string | null>(null)
   const [form, setForm] = useState({ full_name: '', email: '', password: '', role: 'staff' as Role })
+
+  async function handleToggleOperational(profileId: string, current: boolean) {
+    setTogglingId(profileId)
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ is_operational_staff: !current })
+        .eq('id', profileId)
+      if (updateError) throw updateError
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update')
+    }
+    setTogglingId(null)
+  }
 
   async function handleAddStaff(e: React.FormEvent) {
     e.preventDefault()
@@ -118,6 +136,12 @@ export function RosterTab({ profiles, isAdmin, orgId }: Props) {
         </form>
       )}
 
+      {isAdmin && (
+        <p className="text-xs text-gray-500 px-1">
+          Toggle <span className="text-green-400">Operational</span> off for accounts that shouldn&apos;t appear on the schedule, availability grid, or hours reports (e.g. dev/test accounts).
+        </p>
+      )}
+
       <div className="bg-gray-900 rounded-xl overflow-hidden divide-y divide-gray-800/50">
         {profiles.map((p) => (
           <div key={p.id} className="flex items-center gap-4 px-5 py-4">
@@ -131,6 +155,26 @@ export function RosterTab({ profiles, isAdmin, orgId }: Props) {
             <span className={`text-xs px-2 py-0.5 rounded-full ${roleBadge[p.role]}`}>
               {p.role}
             </span>
+            {isAdmin ? (
+              <button
+                onClick={() => handleToggleOperational(p.id, p.is_operational_staff)}
+                disabled={togglingId === p.id}
+                className={`text-xs px-2 py-0.5 rounded-full transition-colors disabled:opacity-50 ${
+                  p.is_operational_staff
+                    ? 'bg-green-500/10 text-green-400 hover:bg-green-500/20'
+                    : 'bg-gray-800 text-gray-500 hover:bg-gray-700'
+                }`}
+                title={p.is_operational_staff ? 'Click to mark as non-operational (hidden from schedule)' : 'Click to mark as operational staff'}
+              >
+                {p.is_operational_staff ? 'Operational' : 'Non-operational'}
+              </button>
+            ) : (
+              p.is_operational_staff && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/10 text-green-400">
+                  Operational
+                </span>
+              )
+            )}
           </div>
         ))}
       </div>
