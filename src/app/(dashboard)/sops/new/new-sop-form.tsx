@@ -62,39 +62,46 @@ export function NewSopForm({ orgId, userId }: { orgId: string; userId: string })
     setLoading(true)
     setError('')
 
-    const { createClient } = await import('@/lib/supabase/client')
-    const supabase = createClient()
     const form = new FormData(e.currentTarget)
 
-    const parsedTags = tags
-      .split(',')
-      .map((t) => t.trim().toLowerCase())
-      .filter(Boolean)
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
 
-    const { data, error: err } = await supabase
-      .from('sops')
-      .insert({
-        org_id: orgId,
-        title: form.get('title') as string,
-        content,
-        category: form.get('category') as SopCategory,
-        is_published: form.get('is_published') === 'on',
-        tags: parsedTags.length > 0 ? parsedTags : null,
-        created_by: userId,
-        updated_by: userId,
-        sort_order: 0,
-      })
-      .select()
-      .single()
+      const parsedTags = tags
+        .split(',')
+        .map((t) => t.trim().toLowerCase())
+        .filter(Boolean)
 
-    if (err) {
-      setError(err.message)
-      toast(err.message, 'error')
-      setLoading(false)
-    } else if (data) {
+      const { data, error: err } = await supabase
+        .from('sops')
+        .insert({
+          org_id: orgId,
+          title: form.get('title') as string,
+          content,
+          category: form.get('category') as SopCategory,
+          is_published: form.get('is_published') === 'on',
+          tags: parsedTags.length > 0 ? parsedTags : null,
+          created_by: userId,
+          updated_by: userId,
+          sort_order: 0,
+        })
+        .select()
+        .single()
+
+      if (err) throw err
+      if (!data) throw new Error('No row returned — check permissions')
+
       toast('SOP created')
       router.push(`/sops/${data.id}`)
       router.refresh()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to create SOP'
+      setError(msg)
+      toast(msg, 'error')
+      console.error('SOP create failed:', err)
+    } finally {
+      setLoading(false)
     }
   }
 

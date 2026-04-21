@@ -83,7 +83,8 @@ export function ClockTab({ activeClocks, recentClocks, currentUser, profiles, is
       }
 
       setNotes('')
-      router.refresh()
+      // Hard reload so the clocked-in/out state and hours summary are guaranteed fresh
+      window.location.reload()
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Failed to save clock entry', 'error')
     } finally {
@@ -234,7 +235,8 @@ export function ClockTab({ activeClocks, recentClocks, currentUser, profiles, is
           onClose={() => setShowMissed(false)}
           onSaved={() => {
             setShowMissed(false)
-            router.refresh()
+            // Hard reload — router.refresh() doesn't always pick up fresh server data
+            window.location.reload()
           }}
         />
       )}
@@ -246,7 +248,7 @@ export function ClockTab({ activeClocks, recentClocks, currentUser, profiles, is
           onClose={() => setEditingClock(null)}
           onSaved={() => {
             setEditingClock(null)
-            router.refresh()
+            window.location.reload()
           }}
         />
       )}
