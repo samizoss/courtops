@@ -1051,6 +1051,8 @@ Standard Operating Procedures wiki. Staff reference SOPs during their shift for 
 | SOP-6 | As staff, when working a lead, I can see "Related SOPs" for that pipeline type | P1 |
 | SOP-7 | As admin, I can unpublish an SOP without deleting it | P0 |
 | SOP-8 | As admin, I can track SOP versions (see edit history) | P2 |
+| SOP-9 | As admin, I can paste any iframe embed (Tango, Scribe, Loom, YouTube, Google Docs, etc.) inline in an SOP | Done (2026-04-21) |
+| SOP-10 | As admin, I can upload a Word doc or PDF and have AI convert it into an editable SOP (extract headings, screenshots as images, preserve structure as markdown) | P2 — future |
 
 #### Data Model
 Add to `sops` table (see 3.3):
