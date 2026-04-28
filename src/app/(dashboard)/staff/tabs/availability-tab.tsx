@@ -3,15 +3,20 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/toast'
-import type { Profile, Availability } from '@/types/database'
+import { AvailabilityByDateTab } from './availability-by-date'
+import type { Profile, Availability, AvailabilityEntry } from '@/types/database'
 
 const dayShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 interface Props {
   availability: Availability[]
+  availabilityEntries: AvailabilityEntry[]
   profiles: Profile[]
   currentUser: { userId: string; orgId: string; role: string; fullName: string }
+  isAdmin: boolean
 }
+
+type SubTab = 'by-date' | 'default'
 
 function formatShortTime(t: string | null): string {
   if (!t) return ''
@@ -21,11 +26,18 @@ function formatShortTime(t: string | null): string {
   return m === 0 ? `${hh}${ampm}` : `${hh}:${m.toString().padStart(2, '0')}${ampm}`
 }
 
-export function AvailabilityTab({ availability, profiles, currentUser }: Props) {
+export function AvailabilityTab({
+  availability,
+  availabilityEntries,
+  profiles,
+  currentUser,
+  isAdmin,
+}: Props) {
   const router = useRouter()
   const { toast } = useToast()
   const [saving, setSaving] = useState(false)
   const [editMode, setEditMode] = useState(false)
+  const [subTab, setSubTab] = useState<SubTab>('by-date')
 
   // Build my availability map (0-6)
   const myAvail = availability.filter(a => a.user_id === currentUser.userId)
@@ -90,8 +102,23 @@ export function AvailabilityTab({ availability, profiles, currentUser }: Props) 
     }
   })
 
+  if (subTab === 'by-date') {
+    return (
+      <div className="space-y-4">
+        <SubTabSwitcher subTab={subTab} setSubTab={setSubTab} />
+        <AvailabilityByDateTab
+          initialEntries={availabilityEntries}
+          profiles={profiles}
+          currentUser={currentUser}
+          isAdmin={isAdmin}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
+      <SubTabSwitcher subTab={subTab} setSubTab={setSubTab} />
       {/* My availability editor */}
       <div>
         <div className="flex items-center justify-between mb-3">
@@ -189,6 +216,36 @@ export function AvailabilityTab({ availability, profiles, currentUser }: Props) 
           </table>
         </div>
       </div>
+    </div>
+  )
+}
+
+function SubTabSwitcher({
+  subTab,
+  setSubTab,
+}: {
+  subTab: SubTab
+  setSubTab: (s: SubTab) => void
+}) {
+  return (
+    <div className="flex gap-1">
+      {([
+        ['by-date', 'By Date', 'What hours can you work on specific days?'],
+        ['default', 'Weekly Default', 'Recurring weekly availability template'],
+      ] as [SubTab, string, string][]).map(([key, label, hint]) => (
+        <button
+          key={key}
+          onClick={() => setSubTab(key)}
+          title={hint}
+          className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+            subTab === key
+              ? 'bg-gray-700 text-white'
+              : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'
+          }`}
+        >
+          {label}
+        </button>
+      ))}
     </div>
   )
 }

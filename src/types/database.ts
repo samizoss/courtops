@@ -219,6 +219,24 @@ export interface Availability {
   created_at: string
 }
 
+/**
+ * Date-specific availability entry — what a staff member submits when admin
+ * opens an availability window. Free-text `shifts` matches Geneva's existing
+ * scheduling format ("7 - 230", "open - 9", "5 - 7, 10 - 230, 5-630").
+ * Admins read it visually on the consolidated grid to build the schedule.
+ */
+export interface AvailabilityEntry {
+  id: string
+  org_id: string
+  user_id: string
+  entry_date: string             // 'YYYY-MM-DD'
+  shifts: string | null          // free text — what hours they can work
+  is_unavailable: boolean        // explicit "I cannot work this day"
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface ScheduleShift {
   id: string
   org_id: string
