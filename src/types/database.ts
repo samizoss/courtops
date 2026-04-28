@@ -39,6 +39,7 @@ export interface Profile {
   avatar_url: string | null
   is_active: boolean
   is_operational_staff: boolean
+  target_weekly_hours: number | null
   created_at: string
 }
 
@@ -223,7 +224,10 @@ export interface Availability {
  * Date-specific availability entry — what a staff member submits when admin
  * opens an availability window. Free-text `shifts` matches Geneva's existing
  * scheduling format ("7 - 230", "open - 9", "5 - 7, 10 - 230, 5-630").
- * Admins read it visually on the consolidated grid to build the schedule.
+ *
+ * Opt-in semantics: is_available defaults to false (no submission). Setting it
+ * to true is an explicit "yes I can work this day"; pair with non-null `shifts`
+ * to constrain the hours. Empty rows are deleted to keep the table clean.
  */
 export interface AvailabilityEntry {
   id: string
@@ -231,10 +235,30 @@ export interface AvailabilityEntry {
   user_id: string
   entry_date: string             // 'YYYY-MM-DD'
   shifts: string | null          // free text — what hours they can work
-  is_unavailable: boolean        // explicit "I cannot work this day"
+  is_available: boolean          // explicit "yes I can work this day"
   notes: string | null
   created_at: string
   updated_at: string
+}
+
+/**
+ * Admin opens an availability window for a date range; staff submits inside
+ * the window; admin locks before building the schedule. Locked windows make
+ * availability_entries inside the range read-only for staff (admins can still
+ * override).
+ */
+export interface AvailabilityWindow {
+  id: string
+  org_id: string
+  label: string
+  start_date: string
+  end_date: string
+  status: 'open' | 'locked'
+  opened_by: string | null
+  opened_at: string
+  locked_by: string | null
+  locked_at: string | null
+  created_at: string
 }
 
 export interface ScheduleShift {
