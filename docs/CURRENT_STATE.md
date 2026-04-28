@@ -221,6 +221,69 @@ Sami's direction (2026-04-21):
 - For staff users, default `filterMode='mine'` and hide the Staff Availability panel entirely.
 - Print stylesheet for the month view.
 
+### NEXT-SESSION BIG BUNDLE — Sami's directive 2026-04-21
+
+Sami wants the next session to ship **all of this together**:
+1. Release/lock workflow on availability (spec above)
+2. Schedule builder rebuild (spec above)
+3. The availability "By Date" redesign described below
+4. The admin schedule-builder UX described below
+
+He'll start a fresh conversation and say "read CURRENT_STATE.md" — make sure these specs are exact.
+
+#### Availability "By Date" tab redesign (replace current week-grid implementation)
+
+Sami's feedback after seeing what shipped (PR #11):
+
+**1. Make it look like an actual calendar**, not a stack of week-rows. A real month calendar grid (7 columns Sun-Sat × 4-6 rows of dates) with each day being a tappable cell. The current implementation is a series of "week blocks" stacked vertically — that doesn't match how she thinks about a month.
+
+**2. Swap the "Unavailable" checkbox for "Available" — opt-in, not opt-out.**
+- Default state: blank = not available (or no preference / didn't submit).
+- Staff checks "Available" + (optionally) types specific hours if their availability is constrained.
+- Removes the "is_unavailable" semantic — replace with `is_available` boolean.
+- Schema migration needed: rename column or add new boolean. **Recommendation:** in migration 006, also rename `availability_entries.is_unavailable` to `is_available` with inverted meaning, OR add a new column and migrate data. Simpler: drop `is_unavailable`, add `is_available` boolean default false, update component logic.
+
+**3. View modes: Day, Week (single week), Month — pick one at a time.** Remove the current "1wk / 2wk / 3wk / 4wk" multi-week toggle. Just three buttons: Day · Week · Month. Default to Month.
+
+**4. The "This month" button text is confusing when viewing other months.** Two issues:
+- The button still says "This month" even when navigated to e.g. June. Either always show it (and have it jump back to the current month), or rename/contextualize.
+- The date display next to the arrows currently shows `Mar 29 – Apr 4 – Apr 26 – May 2` (range of the first week dash range of the last week). Sami wants it to just be **the start date and end date of what's being displayed**, e.g. `Mar 29 – May 2`. One range, not two.
+
+**5. Remove or clarify the "Weekly Default" sub-tab.** Sami doesn't understand its role anymore. Decide: either remove the sub-tab entirely (and deprecate the recurring-weekly `availability` table), or rename it to something that makes sense in this context (e.g. "Default availability template" with a clear purpose: when a staffer hasn't filled in a specific date, fall back to this template). **Default action:** remove the sub-tab. The recurring `availability` table can stay in the DB unused; we can revisit if we ever want default templates.
+
+**6. Sunday-first** is correct (already shipped). Keep that.
+
+**7. Light validation on shifts** is fine as-is (trim whitespace, soft length cap). No semantic parsing yet.
+
+#### Admin Schedule Builder UX (the "Schedule" tab redesign)
+
+Sami's feedback (looking at the existing schedule tab):
+
+**1. Same view modes as availability:** Day · Week · Month. Calendar-style.
+
+**2. Calendar layout** (not the current grid of staff-rows × time-columns).
+
+**3. Inline click-to-assign:** click a day on the calendar → see who's available that day (from `availability_entries`) → click a staffer to assign them to a shift on that day. "Here's who can work these shifts."
+
+**4. Hours summary at top OR bottom of the schedule view, per staffer:**
+- This week / month: assigned hours vs their submitted availability hours.
+- Useful so Geneva can see "Maddie said she's available 30 hours but I've only scheduled her 12".
+- **Future iteration:** assigned hours vs **target/average hours** (set per staffer). Add `target_weekly_hours` (or similar) to `profiles` later. Editable in Roster tab. Don't build target-hours now — just the availability-hours comparison.
+
+**5. Filter toggles (already in spec above):**
+- "My schedule" vs "Total schedule" filter.
+- For staff: default to "my schedule".
+- For admin: default to "total schedule".
+
+**6. Privacy rule (already in spec above):** Staff users must not see other staff's availability data on the schedule view. Fine to see other staff's *shifts* (the published schedule), just not their availability.
+
+#### Implementation notes for next session
+
+- Both views (availability + schedule) should share a calendar grid component. Build once, use twice. Probably `src/components/calendar-month-grid.tsx` with day/week/month modes, accepting children renderers per cell.
+- All this work + the release/lock spec + the schedule-builder rebuild should land **as a bundle** in one big PR (or a series of small PRs in the same session). Sami's preference is to fix the availability look + the schedule-builder UX at the same time so Geneva sees a coherent change.
+- Migration 006 should bundle: `availability_windows` table (release/lock) AND any `availability_entries` schema changes (e.g. `is_unavailable` → `is_available`) AND optionally `profiles.target_weekly_hours` if you want to ship the future hours-target piece alongside.
+- Test as both an admin AND a staff user (use `sami+staffview@samizoss.com` and `sami+adminview@samizoss.com` accounts that already exist) before claiming complete.
+
 ---
 
 ---
