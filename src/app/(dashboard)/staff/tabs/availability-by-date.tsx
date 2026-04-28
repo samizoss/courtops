@@ -11,17 +11,37 @@ interface Props {
   isAdmin: boolean
 }
 
-const dayShort = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+const dayShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+const SHIFTS_MAX_LEN = 200 // soft cap; semantic parsing happens later in Schedule Builder
 
 /**
- * Given any date, return the Monday of that week (using local time).
+ * Given any date, return the Sunday of that week (using local time).
  */
 function startOfWeek(d: Date): Date {
   const out = new Date(d.getFullYear(), d.getMonth(), d.getDate())
-  const dow = out.getDay() // 0 = Sun, 1 = Mon, ...
-  const diff = dow === 0 ? -6 : 1 - dow // shift to Monday
-  out.setDate(out.getDate() + diff)
+  out.setDate(out.getDate() - out.getDay()) // shift to Sunday
   return out
+}
+
+/**
+ * Return the Sunday of the week containing the 1st of the month — anchors a
+ * calendar-month view that always shows complete weeks.
+ */
+function startOfMonthView(d: Date): Date {
+  const firstOfMonth = new Date(d.getFullYear(), d.getMonth(), 1)
+  return startOfWeek(firstOfMonth)
+}
+
+/**
+ * Return how many weeks to render to cover the entire month from a given
+ * Sunday-anchored start (always 4, 5, or 6).
+ */
+function weeksInMonthView(monthAnchor: Date): number {
+  const start = startOfMonthView(monthAnchor)
+  const lastOfMonth = new Date(monthAnchor.getFullYear(), monthAnchor.getMonth() + 1, 0)
+  const days = Math.ceil((lastOfMonth.getTime() - start.getTime()) / 86400000) + 1
+  return Math.ceil(days / 7)
 }
 
 function addDays(d: Date, n: number): Date {
@@ -72,10 +92,11 @@ export function AvailabilityByDateTab({
 }: Props) {
   const { toast } = useToast()
 
-  // Default view: Monday of the current week.
-  const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date()))
-  // How many weeks to show in the grid. Geneva's sheet shows ~3 weeks at a time.
-  const [weeksVisible, setWeeksVisible] = useState<number>(3)
+  // Default view: Sunday of the week containing the 1st of the current month,
+  // showing enough weeks to cover the whole calendar month (4-6 depending on
+  // how the month falls on weeks).
+  const [weekStart, setWeekStart] = useState<Date>(() => startOfMonthView(new Date()))
+  const [weeksVisible, setWeeksVisible] = useState<number>(() => weeksInMonthView(new Date()))
 
   // Keyed by `${user_id}|${YYYY-MM-DD}`
   const [cells, setCells] = useState<Record<string, CellState>>(() => {
@@ -244,22 +265,35 @@ export function AvailabilityByDateTab({
       {/* Range navigator */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <button
-          onClick={() => setWeekStart(addDays(weekStart, -7 * weeksVisible))}
+          onClick={() => {
+            // Step backward by one calendar month (anchor to that month)
+            const anchor = new Date(weekStart.getFullYear(), weekStart.getMonth() - 1, 1)
+            setWeekStart(startOfMonthView(anchor))
+            setWeeksVisible(weeksInMonthView(anchor))
+          }}
           className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm rounded-lg transition-colors"
-          title="Earlier"
+          title="Previous month"
         >
           ←
         </button>
         <button
-          onClick={() => setWeekStart(startOfWeek(new Date()))}
+          onClick={() => {
+            const now = new Date()
+            setWeekStart(startOfMonthView(now))
+            setWeeksVisible(weeksInMonthView(now))
+          }}
           className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm rounded-lg transition-colors"
         >
-          This week
+          This month
         </button>
         <button
-          onClick={() => setWeekStart(addDays(weekStart, 7 * weeksVisible))}
+          onClick={() => {
+            const anchor = new Date(weekStart.getFullYear(), weekStart.getMonth() + 1, 15)
+            setWeekStart(startOfMonthView(anchor))
+            setWeeksVisible(weeksInMonthView(anchor))
+          }}
           className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm rounded-lg transition-colors"
-          title="Later"
+          title="Next month"
         >
           →
         </button>

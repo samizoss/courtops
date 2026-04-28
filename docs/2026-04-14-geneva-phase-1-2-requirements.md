@@ -47,8 +47,15 @@ CourtOps is a SaaS platform designed to be the "ops layer that Court Reserve doe
 
 ## Phase 1: Staff Module — Production-Ready Features
 
-### 1.1 Monthly Availability Submission ⏳ Not started (HIGHEST PRIORITY — next up)
-**Current State:** Weekly (Sunday–Saturday) availability grid exists in `/staff` → Availability tab. Needs to be converted to a monthly per-slot flow, plus admin-release + staff-submission lifecycle.
+### 1.1 Monthly Availability Submission 🚧 Partial (v1 shipped 2026-04-21, refinements queued)
+**Shipped (PR #10):** New `availability_entries` table + "By Date" sub-tab on `/staff` → Availability. Free-text shifts (`7 - 230`, `open - 9`) matching Geneva's CSV format, multi-week grid, autosave on blur, range navigator.
+
+**Decisions confirmed with Sami 2026-04-21 (still to apply):**
+- Default view is the **calendar month**, not 3 weeks.
+- **Sunday-first** day ordering (revise from current Mon-first).
+- **Light validation only** — trim whitespace + soft length cap. No semantic parsing of shift strings until Schedule Builder needs it.
+- **Admin release/lock workflow required** before this is feature-complete: admin opens a window for a date range, staff submits during, admin locks → submissions become read-only. See `CURRENT_STATE.md` for the migration 006 + UI spec.
+- **Notification on window open** — roadmap, not yet.
 **User Story:** As a staff member, I can submit my availability for an entire month so Geneva can create the schedule.
 
 **Requirements:**
@@ -69,8 +76,16 @@ CourtOps is a SaaS platform designed to be the "ops layer that Court Reserve doe
 - Needs admin control to set deadline date and trigger notifications
 - Consider reminder notification 2 days before deadline
 
-### 1.2 Schedule Builder (One-Click Assign) 🚧 Partial
-**Current State:** Week view of shifts with click-to-assign exists. Missing: availability overlay, draft mode, publish control, month view, print-friendly export. Geneva's line: *"Once May gets completely scheduled out, is there a way that we could, like, see it all? Normally I print it out and have it on the desk."*
+### 1.2 Schedule Builder (One-Click Assign) 🚧 Partial — full spec captured for next-session rebuild
+**Current State:** Week view of shifts with click-to-assign exists. **Privacy bug discovered 2026-04-21:** staff users see a "Staff Availability" panel showing everyone's availability — they shouldn't. That panel must be admin-only.
+
+**Decisions from Sami 2026-04-21:**
+- Schedule view defaults to **read-only "what's the upcoming schedule"**.
+- **Filter toggle:** My schedule vs Total schedule.
+- **View toggle:** Day / Week / Month.
+- **Staff cannot see other staff's availability** uniformly. Only inside a future shift-swap flow ("who could cover this shift?").
+- **Quick fix:** hide the existing Staff Availability panel from non-admins.
+- **Full rebuild spec** lives in `CURRENT_STATE.md` § "Schedule Builder spec".
 **User Story:** As an admin, I can see who's available and assign shifts with one click.
 
 **Requirements:**
