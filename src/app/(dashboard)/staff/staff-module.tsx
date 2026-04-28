@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import type { Profile, TimeClock, TimeOffRequest, ScheduleShift, Availability } from '@/types/database'
+import type { Profile, TimeClock, TimeOffRequest, ScheduleShift, Availability, AvailabilityEntry } from '@/types/database'
 import { ClockTab } from './tabs/clock-tab'
 import { RosterTab } from './tabs/roster-tab'
 import { ScheduleTab } from './tabs/schedule-tab'
@@ -33,13 +33,14 @@ interface Props {
   timeOffRequests: TimeOffRequest[]
   shifts: ScheduleShift[]
   availability: Availability[]
+  availabilityEntries: AvailabilityEntry[]
   recentClocks: TimeClock[]
   currentUser: { userId: string; orgId: string; role: string; fullName: string }
   orgHours?: OrgHours
   clockNotesVisibility?: 'all_staff' | 'admin_only'
 }
 
-export function StaffModule({ profiles, activeClocks, timeOffRequests, shifts, availability, recentClocks, currentUser, orgHours, clockNotesVisibility }: Props) {
+export function StaffModule({ profiles, activeClocks, timeOffRequests, shifts, availability, availabilityEntries, recentClocks, currentUser, orgHours, clockNotesVisibility }: Props) {
   const [tab, setTab] = useState<TabId>('clock')
   const isAdmin = currentUser.role === 'owner' || currentUser.role === 'admin'
 
@@ -54,6 +55,7 @@ export function StaffModule({ profiles, activeClocks, timeOffRequests, shifts, a
   const operationalRecentClocks = recentClocks.filter((c) => opIds.has(c.user_id))
   const operationalShifts = shifts.filter((s) => opIds.has(s.user_id))
   const operationalAvailability = availability.filter((a) => opIds.has(a.user_id))
+  const operationalAvailabilityEntries = availabilityEntries.filter((e) => opIds.has(e.user_id))
   const operationalTimeOff = timeOffRequests.filter((r) => opIds.has(r.user_id))
 
   return (
@@ -97,7 +99,13 @@ export function StaffModule({ profiles, activeClocks, timeOffRequests, shifts, a
         <TimeOffTab requests={operationalTimeOff} currentUser={currentUser} isAdmin={isAdmin} availability={operationalAvailability} />
       )}
       {tab === 'availability' && (
-        <AvailabilityTab availability={operationalAvailability} profiles={operationalProfiles} currentUser={currentUser} />
+        <AvailabilityTab
+          availability={operationalAvailability}
+          availabilityEntries={operationalAvailabilityEntries}
+          profiles={operationalProfiles}
+          currentUser={currentUser}
+          isAdmin={isAdmin}
+        />
       )}
     </div>
   )

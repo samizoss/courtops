@@ -13,6 +13,11 @@ export default async function StaffPage() {
   const today = now.toISOString().split('T')[0]
   const weekAgo = new Date(now.getTime() - 7 * 86400000).toISOString().split('T')[0]
   const weekFromNow = new Date(now.getTime() + 7 * 86400000).toISOString().split('T')[0]
+  // Pull availability entries for current week + 5 weeks out (covers Geneva's
+  // typical 3-4 week planning horizon plus a buffer). The client can fetch
+  // additional ranges via the navigator.
+  const availabilityRangeStart = new Date(now.getTime() - 7 * 86400000).toISOString().split('T')[0]
+  const availabilityRangeEnd = new Date(now.getTime() + 42 * 86400000).toISOString().split('T')[0]
 
   const [
     { data: profiles },
@@ -20,6 +25,7 @@ export default async function StaffPage() {
     { data: timeOffRequests },
     { data: shifts },
     { data: availability },
+    { data: availabilityEntries },
     { data: recentClocks },
     { data: orgSettings },
   ] = await Promise.all([
@@ -28,6 +34,7 @@ export default async function StaffPage() {
     supabase.from('time_off_requests').select('*, profile:profiles!time_off_requests_user_id_fkey(full_name), reviewer:profiles!time_off_requests_reviewed_by_fkey(full_name)').order('created_at', { ascending: false }).limit(20),
     supabase.from('shifts').select('*, profile:profiles!shifts_user_id_fkey(full_name)').gte('shift_date', today).lte('shift_date', weekFromNow).order('shift_date').order('start_time'),
     supabase.from('availability').select('*, profile:profiles!availability_user_id_fkey(full_name)').order('day_of_week'),
+    supabase.from('availability_entries').select('*').gte('entry_date', availabilityRangeStart).lte('entry_date', availabilityRangeEnd),
     supabase.from('time_clock').select('*, profile:profiles!time_clock_user_id_fkey(full_name)').gte('clock_in', weekAgo).order('clock_in', { ascending: false }).limit(50),
     supabase.from('org_settings').select('open_time, close_time, open_days, staff_arrive_before_min, staff_depart_after_min, daily_hours, clock_notes_visibility').eq('org_id', userOrg.orgId).single(),
   ])
@@ -51,6 +58,7 @@ export default async function StaffPage() {
       timeOffRequests={timeOffRequests ?? []}
       shifts={shifts ?? []}
       availability={availability ?? []}
+      availabilityEntries={availabilityEntries ?? []}
       recentClocks={recentClocks ?? []}
       currentUser={userOrg}
       orgHours={orgHours}
