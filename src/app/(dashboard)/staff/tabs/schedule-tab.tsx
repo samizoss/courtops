@@ -374,7 +374,8 @@ export function ScheduleTab({ shifts, profiles, isAdmin, orgId, availability, ti
         </form>
       )}
 
-      {/* Availability Grid */}
+      {/* Availability Grid — admin-only. Privacy: staff must not see other staff's availability outside an explicit shift-swap flow. */}
+      {isAdmin && (
       <div className="bg-gray-900 rounded-xl p-5">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
           <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">Staff Availability</h3>
@@ -542,6 +543,7 @@ export function ScheduleTab({ shifts, profiles, isAdmin, orgId, availability, ti
           </div>
         )}
       </div>
+      )}
 
       {/* Existing Shifts */}
       <div>

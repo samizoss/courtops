@@ -136,6 +136,93 @@ Five tabs: **Clock In/Out**, **Roster**, **Schedule**, **Time Off**, **Availabil
 ### Guide (`/guide`)
 Client-facing getting-started doc at `/docs/getting-started.md` rendered inside the app. Explains Dashboard / Checklists / Pipeline / Tasks / Staff / SOPs at an end-user level.
 
+### Date-specific availability (`/staff` → Availability → "By Date" sub-tab) — partial, in active iteration
+
+Phase 1.1 from Geneva's requirements. As of 2026-04-21 a working v1 is shipped; refinements queued (see "Next up"). Geneva's existing scheduling sheet (the `Jar Employee Schedule` CSV she shared) uses date-specific free-text shifts like `7 - 230`, `open - 9`, `5 - 7, 10 - 230, 5-630`. The recurring weekly `availability` table couldn't represent any of that.
+
+**Built (PR #10, 2026-04-21):**
+- New `availability_entries` table (migration 005): `org_id`, `user_id`, `entry_date`, `shifts text` (free-text), `is_unavailable`, `notes`. Unique on `(org_id, user_id, entry_date)`.
+- New "By Date" sub-tab in the Availability tab (default sub-tab). Multi-week grid that mirrors Geneva's CSV layout: rows = employees, columns = dates, cells = free-text input + Unavailable toggle.
+- Range navigator (← / This week / →) and "Show 1wk / 2wk / 3wk / 4wk" toggle.
+- Autosaves on blur; empty cells delete the row.
+- Staff sees only their own row; admin sees all operational staff.
+- Existing weekly `availability` table → renamed in the UI to "Weekly Default" and stays as a recurring template.
+
+**Decisions confirmed with Sami (2026-04-21):**
+- **Calendar month is the default view**, not 3 weeks. View should anchor to "this calendar month" with navigation that snaps month-by-month.
+- **Sunday-first** day ordering (revise from Mon-first that we shipped).
+- **Free-text shifts stay free-text** for now — no parser. Geneva's team enters whatever format they're used to. Light input hygiene only (trim whitespace, cap length at e.g. 200 chars). Schema-aware parsing waits until Schedule Builder needs it.
+- **Validation:** trim whitespace, soft-cap length. Don't try to parse semantically (that's Schedule Builder's job).
+- **Notification on window open** is on the roadmap but waits until the rest of availability is solid.
+
+**Next up on this feature (release/lock workflow — top priority before next iteration):**
+The current implementation lets anyone edit any date freely. Geneva needs a controlled lifecycle:
+1. Admin "opens an availability window" for a date range (e.g. "May 4 – May 31").
+2. Staff submits during the window. They cannot edit dates outside an open window.
+3. Admin "locks" the window when ready to build the schedule. Submissions become read-only.
+
+**Spec for the release/lock workflow (implement next session):**
+
+```sql
+-- Migration 006
+CREATE TABLE availability_windows (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id UUID NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+  label TEXT NOT NULL,                -- e.g. "May 2026"
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'locked')),
+  opened_by UUID REFERENCES profiles(id),
+  opened_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  locked_by UUID REFERENCES profiles(id),
+  locked_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE availability_windows ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users manage org availability windows" ON availability_windows
+  FOR ALL USING (org_id IN (SELECT org_id FROM profiles WHERE id = auth.uid()));
+CREATE INDEX idx_availability_windows_org_status ON availability_windows(org_id, status);
+CREATE INDEX idx_availability_windows_dates ON availability_windows(start_date, end_date);
+```
+
+**UI changes:**
+- Above the grid in "By Date" tab, add a "Windows" strip: list of open + recently-locked windows with status badges.
+- Admin button: "Open availability window" → modal with label + start/end dates → inserts into `availability_windows` with status='open'.
+- Each open window has a "Lock window" button (admin only) that flips status to 'locked' + records `locked_by`/`locked_at`.
+- Staff: cells inside an open window are editable; cells outside any open window OR inside a locked window are read-only.
+- Admin: can always edit, but locked windows show a "Locked" badge and require an explicit "Unlock" or "Override" before editing.
+- Page query: also fetch `availability_windows` for the visible date range.
+- Helper: `getWindowForDate(date, windows)` returns the window containing that date or null.
+
+**After release/lock ships, the next big feature is Schedule Builder.** Confirmed with Sami: "Start with schedule builder we KNOW she needs/wants that."
+
+### Schedule Builder spec (next major build, replaces current `/staff` Schedule tab)
+
+Sami's direction (2026-04-21):
+
+> "The schedule view should literally just be what is the upcoming schedule, and you should be able to filter to my schedule versus total schedule and view by day, week, and month."
+
+> "When signed in as a staff, I shouldn't just automatically be able to see available staff. I think we could do that if it's like a need for a shift swap who had availability. Great, but staff availability should only be uniformly visible to admins."
+
+**Spec for the Schedule tab rebuild:**
+
+1. **Default: read-only schedule view of the upcoming schedule.**
+2. **Filter toggle:** "My schedule" (default for staff) vs "Total schedule" (default for admin). Staff CAN see total schedule (everyone's shifts) — that's fine. They just can't see *availability data* on this view.
+3. **View toggle:** Day / Week / Month.
+4. **Privacy rule (CRITICAL, currently violated):** the existing Schedule tab has a "Staff Availability" panel that shows everyone's recurring availability and unset state. **Staff users must NOT see this panel.** Hide it for non-admins. The only place staff should see other people's availability is inside an explicit shift-swap flow ("who could cover my Tuesday shift?").
+5. **Admin-only features:** click into a slot to assign / edit / unassign shifts, draft mode, publish button (notifies assigned staff once on publish), print-friendly month view (Geneva's "I print it and put it on the desk" use case from the April 14 meeting).
+
+**Files to update for the immediate privacy fix (quick):**
+- `src/app/(dashboard)/staff/tabs/schedule-tab.tsx` — gate the "Staff Availability" panel behind `if (isAdmin) { ... }`. The panel data is already passed in; we just don't render it for staff. The screenshot showing this panel for a staff session was the trigger.
+
+**Files to touch for the full rebuild:**
+- `src/app/(dashboard)/staff/tabs/schedule-tab.tsx` — likely a substantial rewrite. Keep the data fetched at the page level (shifts + profiles + availability + time-off + org-hours), reorganize the rendering around the new view-mode state machine.
+- Add `viewMode: 'day' | 'week' | 'month'` and `filterMode: 'mine' | 'all'` state.
+- For staff users, default `filterMode='mine'` and hide the Staff Availability panel entirely.
+- Print stylesheet for the month view.
+
+---
+
 ---
 
 ## Database (Supabase) — as of 2026-04-21
