@@ -1,7 +1,59 @@
 # CourtOps — Current State
 
-> **Snapshot date:** 2026-04-21
+> **Snapshot date:** 2026-04-28 (post-Geneva walkthrough)
 > **For a fresh Claude session:** read this first. It's the single source of truth for what's shipped, what's in progress, what's been tried-and-shelved, and what's next. When in doubt, trust `git log`, Supabase schema, and the Vercel production deployment over anything written anywhere else.
+
+> **PR #12 (2026-04-28) shipped:** Migration 006 (`availability_windows`, `is_unavailable` → `is_available`, `profiles.target_weekly_hours`), shared `<CalendarMonthGrid>` component, Availability tab rebuilt as month calendar with opt-in semantics + window release/lock workflow, Schedule tab rebuilt as calendar with click-to-assign popover + hours summary. The "NEXT-SESSION BIG BUNDLE" section below is now historic context — see new "Geneva walkthrough 2026-04-28" section for the actual current queue.
+
+---
+
+## Geneva walkthrough — 2026-04-28 outcomes
+
+Sami walked Geneva through PR #12 live. She liked the direction; specific feedback (in roughly the order she raised it) becomes the new ordered queue. **Next meeting ~2026-05-05** — Sami committed to having all of this ready, with the "magic schedule" button as the headline stretch item.
+
+### Bugs to fix first
+
+1. **Manual-entry note disappears after clock out** — When a staffer logs a missed clock-in with a note, the `admin_note` shows correctly while clocked in, but vanishes from the entry once they clock out. Make it persist on the row. (Likely a missing field in the clock-out update path; check `src/app/(dashboard)/staff/tabs/clock-tab.tsx` + the `time_clock` update query.)
+2. **Operational toggle bug** — pre-existing, Sami had it on his list before the meeting. Roster's "operational" flip doesn't always stick / refresh. Investigate the `RosterTab` → Supabase update flow.
+
+### Availability polish (PR #12 follow-ups)
+
+3. **Quick "Available all day" / "Unavailable all day" checkboxes per cell.** Geneva's reasoning: most days a staffer is just available the whole day and doesn't want to type "7 - close." Sami's design: green checkbox = available all day, red checkbox = unavailable all day, free-text shifts field still available for partial-day constraints. Replace the current single "Available" checkbox + free text with: two visible state toggles (green ✓ / red ✗) + an "or specify hours" text input that only appears when neither toggle is set OR when "Available" is checked.
+4. **Add `due_date` to `availability_windows`.** Geneva: "I am hounding people for their availability — give me a deadline I can put on the window." Migration 007 adds `due_date DATE` to the table; UI shows it on the pill ("Due May 15"); when admin opens a window the form gets a 3rd date field.
+5. **Add a "Submit" button on availability.** Today it autosaves silently. Geneva wants a clear "I'm done" action. Approach: keep autosave as draft persistence; add a "Submit availability" button that flips a per-user-per-window `submitted_at` timestamp. New table `availability_submissions(window_id, user_id, submitted_at)` or just a column on `availability_entries` aggregated. Decide during implementation; lean toward the table since it's per-window not per-entry.
+
+### Schedule polish (PR #12 follow-ups)
+
+6. **Day view shows start time only — needs start AND end.** The shift pill currently renders `Sami 8:00`; should render `Sami 8:00–14:00` (or similar). Day view in general is "wonky" per Sami; spend extra time tightening that mode's layout.
+7. **Schedule status state machine.** Today windows have status (open/locked) but the schedule itself doesn't. Add: schedule for a date range is `draft` (admin building it) → `published` (staff sees it). Only published shifts show in staff's "My schedule." Until then, staff sees "Schedule not published yet for this period." A `shift_publications` table or `shifts.published_at` column. Geneva mentioned this is the gate for shift-swap to be available — published is what staff can swap.
+
+### Roster edit modal
+
+8. **Edit-row modal on the Roster tab.** Fields: name, email, **cell phone (new column on `profiles` — needs migration 008)**, role, `target_weekly_hours` (column already exists from migration 006, no UI yet). Save updates the row. Phone is optional but adding the column now unblocks future Twilio per-staffer notifications.
+
+### Magic schedule button (the headline ask, stretch)
+
+9. **"Help schedule for me" button on the admin Schedule tab.** Auto-assigns shifts for the current view-mode range (week/month) based on (a) submitted availability, (b) target_weekly_hours per staffer, (c) approved time-off. Algorithm: greedy by day, prefer staffers furthest below their target; fall back to "no submission" staff with a tentative flag. Sami told Geneva: "won't be perfect but should at least be ready" by next meeting. Output is editable — admin sees the proposed assignments and can tweak before publishing.
+10. **Flag overscheduling.** When admin assigns a shift that would push a staffer over their `target_weekly_hours` for the visible week, show a warning indicator on the shift pill or the hours summary row.
+
+### Sidebar + Guide (small, but blocking the staff rollout)
+
+11. **Role-filtered sidebar.** Staff users see only: Staff, SOPs, Checklists, Tasks, Notifications. Admin/owner sees everything. Today the sidebar is one-size-fits-all. Edit `src/components/sidebar.tsx` to filter by `userOrg.role`.
+12. **Guide page should adapt to viewer role.** When a staff user is on `/guide`, hide the admin sections (Pipeline, Reports, Integrations, etc.). Either two markdown files or runtime filtering of the existing `docs/getting-started.md`.
+
+### Lower-priority asks (not committed for next week)
+
+- **Preferences** ("I prefer to close on Sunday nights") — soft hint per staffer the magic-schedule could weight, not a hard constraint. Geneva acknowledged this is nice-to-have.
+- **Window-open SMS notifications** — waits for Twilio provisioning.
+- **Per-staffer "preferred openers / preferred closers"** for the admin to lean on — Geneva mused about it but didn't ask for it explicitly.
+
+### Notes from the meeting worth remembering
+
+- Forgot-password URL bug (was hitting localhost) is fixed; Sami asked Geneva to retest. If she reports it still broken, that's a top-priority bug ahead of all of the above.
+- Tango walkthroughs are seeded in SOPs and Geneva's bought into the model — she'll edit them via Tango (Sami's logged-in copy on her main computer) when memberships/reservations change. No CourtOps work needed there.
+- The legacy weekly `availability` table is still in the DB unused (after PR #12 dropped the Weekly Default sub-tab). Do not delete yet — keep until June at the earliest.
+
+---
 
 ---
 
