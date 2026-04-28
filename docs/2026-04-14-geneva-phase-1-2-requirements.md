@@ -2,8 +2,16 @@
 
 **Product:** CourtOps — Operations platform for court sport clubs
 **Client:** The Jar Pickleball Club (thepbjar.courtops.app)
-**Date:** April 14, 2026
+**Date:** April 14, 2026 (status updated 2026-04-21)
 **Source:** Geneva Kickoff Meeting Transcript + Implementation Planning
+
+---
+
+## Status legend
+
+- ✅ **Done** — shipped to production
+- 🚧 **In progress / partial** — some acceptance criteria met, more to do
+- ⏳ **Not started** — still on the queue
 
 ---
 
@@ -11,59 +19,36 @@
 
 CourtOps is a SaaS platform designed to be the "ops layer that Court Reserve doesn't have." The Jar is the pilot client. Geneva Olson is the primary user (General Manager), with ~8-10 staff members who will use the system for clocking in/out, checklists, availability submission, and shift management.
 
-**Current State:** Basic scaffolding exists with admin views. Staff module is partially built but has bugs and missing features identified during the kickoff call.
+**Current State (2026-04-21):** Staff module is live with clock in/out, missed-clock-in, admin edits w/ audit trail, operational toggle, role management, and Resend-based invite emails. Remaining work centers on availability (week → month), schedule builder polish, hours variance reporting, and shift swap.
 
-**Goal:** Get Phase 1 (Staff Module) production-ready so Geneva can have her team submit May availability through the system by next week.
+**Goal:** Get Phase 1 (Staff Module) production-ready so Geneva can have her team submit May availability through the system.
 
 ---
 
-## CRITICAL: ASAP Fixes (Blocking Go-Live)
+## CRITICAL: ASAP Fixes — ALL DONE ✅
 
-These are bugs and broken features identified during the call that must be fixed before staff can use the system:
-
-### 1. Fix Broken Staff View Code
+### 1. Fix Broken Staff View Code ✅ Done
 **Location:** Staff module — availability/scheduling section
-**Issue:** "There's a broken code on the back end because I was trying to fix these and I'm in the middle of it."
-**Acceptance Criteria:**
-- Staff view loads without errors
-- All navigation elements work
-- Forms submit correctly
+**Resolved:** 2026-04-21 (PR #6 — PostgREST FK-ambiguity fix). Staff page now loads cleanly, active clocks + recent history populate, hours summary works.
 
-### 2. Fix Team Invite Flow
+### 2. Fix Team Invite Flow ✅ Done
 **Location:** Settings > Team
-**Issue:** `gen_salt` function error was blocking invites. Fixed today but needs full end-to-end verification.
-**Acceptance Criteria:**
-- Admin can add team member (name, email, temp password, role)
-- New team member receives invite notification
-- New team member can log in with temp password
-- New team member can set their own password on first login
+**Resolved:** PR #3 (Resend integration, 2026-04-14) + migration 003 (invite RLS fix). Admin sends invite via `POST /api/invites/send`; recipient gets a branded email from `hello@courtops.app`; invite acceptance page creates auth user + profile + marks accepted. "Copy Link" button on pending invites as fallback.
 
-### 3. Add "Missed Clock In" Button
+### 3. Add "Missed Clock In" Button ✅ Done
 **Location:** Staff view — Clock In/Out section
-**Issue:** Staff frequently forget to clock in. Need a way to retroactively mark clock-in when they remember.
-**Acceptance Criteria:**
-- Staff sees a "Missed Clock In" button alongside regular clock in
-- Clicking opens a form to enter the time they should have clocked in
-- Submission creates a clock-in record with that time
-- Record is flagged as "manual entry" for admin visibility
-- Optional: Staff can add a note explaining the miss
+**Resolved:** PR #4 (2026-04-21). "Forgot to clock in? Log a missed entry →" link next to Clock In. Modal captures clock_in (required) + optional clock_out + note; row is flagged `is_manual_entry = true`. PR #5 fixed a UI refresh bug where the entry saved but the page didn't re-render — now does a hard reload.
 
-### 4. Admin Ability to Edit Clock Times
+### 4. Admin Ability to Edit Clock Times ✅ Done
 **Location:** Admin view — Staff > Hours/Time Management
-**Issue:** "Some things that we will want to that are sort of like still in works is an admin ability to edit. Right. So like your ability to like edit someone's hours if they forgot to clock in or out."
-**Acceptance Criteria:**
-- Admin can view all clock in/out records
-- Admin can edit any clock in/out time
-- Admin can add a clock in or clock out record for a staff member
-- All admin edits are logged with timestamp and who made the edit
-- Admin can add a note to any clock record (visible only to admins)
+**Resolved:** PR #4 (2026-04-21). Admin can edit any clock in/out, add new clock records for anyone, and add admin-only notes. Every edit is logged in the `time_clock_edits` audit table (who, when, old values, new values, reason).
 
 ---
 
 ## Phase 1: Staff Module — Production-Ready Features
 
-### 1.1 Monthly Availability Submission (HIGHEST PRIORITY)
-**Current State:** Weekly availability view exists but needs to be converted to monthly
+### 1.1 Monthly Availability Submission ⏳ Not started (HIGHEST PRIORITY — next up)
+**Current State:** Weekly (Sunday–Saturday) availability grid exists in `/staff` → Availability tab. Needs to be converted to a monthly per-slot flow, plus admin-release + staff-submission lifecycle.
 **User Story:** As a staff member, I can submit my availability for an entire month so Geneva can create the schedule.
 
 **Requirements:**
@@ -84,8 +69,8 @@ These are bugs and broken features identified during the call that must be fixed
 - Needs admin control to set deadline date and trigger notifications
 - Consider reminder notification 2 days before deadline
 
-### 1.2 Schedule Builder (One-Click Assign)
-**Current State:** Basic grid exists but assignment flow needs improvement
+### 1.2 Schedule Builder (One-Click Assign) 🚧 Partial
+**Current State:** Week view of shifts with click-to-assign exists. Missing: availability overlay, draft mode, publish control, month view, print-friendly export. Geneva's line: *"Once May gets completely scheduled out, is there a way that we could, like, see it all? Normally I print it out and have it on the desk."*
 **User Story:** As an admin, I can see who's available and assign shifts with one click.
 
 **Requirements:**
@@ -100,8 +85,8 @@ These are bugs and broken features identified during the call that must be fixed
 
 **Geneva's Specific Request:** "Once May gets completely scheduled out, is there a way that we could, like, see it all? Normally I print it out and have it on the desk."
 
-### 1.3 Shift Swap Requests (Separate from Time Off)
-**Current State:** Combined with time off requests
+### 1.3 Shift Swap Requests (Separate from Time Off) ⏳ Not started (queued right after availability)
+**Current State:** Time Off tab handles only time-off requests. Shift swap does not exist yet — needs its own flow.
 **User Story:** As a staff member who already has a scheduled shift, I can request someone else take my shift.
 
 **Requirements:**
@@ -117,8 +102,8 @@ These are bugs and broken features identified during the call that must be fixed
 
 **Technical Notes:** This is distinct from availability submission (which is before schedule creation) and time-off requests (which is "I can't work at all on this day").
 
-### 1.4 Hours Summary Report (Scheduled vs. Actual)
-**Current State:** Basic total hours view exists
+### 1.4 Hours Summary Report (Scheduled vs. Actual) 🚧 Partial
+**Current State:** Admin sees actual hours (from `time_clock`) per staff with date range selector. Filters out non-operational staff. Missing: scheduled-hours side, variance column, threshold flagging, CSV export, admin-edit notation.
 **User Story:** As an admin preparing payroll, I can compare scheduled hours to actual hours worked.
 
 **Geneva's Specific Request:** "I'll go through and check like okay, Sammy was there from 8am till 5pm but her shift ended at 2. Why was she there for three extra hours?"
@@ -134,8 +119,8 @@ These are bugs and broken features identified during the call that must be fixed
 - Export to CSV for payroll processing
 - Show any admin-edited clock records with notation
 
-### 1.5 Clock Notes (Admin-Only Visibility Option)
-**Current State:** Notes exist but visibility unclear
+### 1.5 Clock Notes (Admin-Only Visibility Option) 🚧 Partial (column exists, no settings UI)
+**Current State:** `org_settings.clock_notes_visibility` column shipped in migration 004 with values `all_staff` | `admin_only`. Clock tab already respects it (`canSeeNote` honors the setting). Admin can always see all notes and add admin-only notes. Missing: a settings page toggle to actually set the value.
 **User Story:** As a staff member, I can add a note when clocking in/out. As an admin, I can choose whether notes are visible to all or admin-only.
 
 **Geneva's Specific Request:** Sensitive notes like "Sammy was a pain in the ass today" or "member going through an emotional time" should be admin-only.
@@ -147,8 +132,8 @@ These are bugs and broken features identified during the call that must be fixed
 - Admin sees all notes in Hours Summary view
 - Notes flagged appropriately in reporting
 
-### 1.6 Roster Management with Role Toggle
-**Current State:** Basic roster exists but includes non-operational users
+### 1.6 Roster Management with Role Toggle ✅ Done (PR #4, 2026-04-21)
+**Current State:** Every profile has both `is_active` and `is_operational_staff` toggles. Non-operational staff are filtered out of schedule/availability/time-off/hours-summary/clock-views while remaining able to log in. The current user is always included in their own views regardless of flag. Roles supported: owner, admin, staff, viewer.
 **User Story:** As an admin, I can distinguish between operational staff and system users who shouldn't appear on schedule.
 
 **Requirements:**
@@ -210,14 +195,15 @@ These are bugs and broken features identified during the call that must be fixed
 
 ## Configuration & Settings
 
-### Business Hours
+### Business Hours ⏳ Not started
 - Set open/close hours per day of week
 - Set staff buffer time before open and after close (for setup/cleanup)
 - Hours affect scheduling grid display
+- `org_settings` already has columns `open_time`, `close_time`, `open_days`, `staff_arrive_before_min`, `staff_depart_after_min`, `daily_hours` — needs a settings UI
 
-### Logo/Branding
+### Logo/Branding ✅ Done
 **Current limitation:** Logo requires URL input
-**Request:** Allow direct image upload instead of URL
+**Resolved:** PR #4 (2026-04-21). Settings > General now supports direct image upload to Supabase Storage bucket `org-logos`.
 
 ---
 
@@ -322,3 +308,21 @@ Geneva was assigned these tasks between meetings:
 ---
 
 *This document was generated from the April 14, 2026 CourtOps Weekly meeting transcript with Geneva Olson, Travis Thie, and Bilhah.*
+
+---
+
+## Ordered Next-Up (added 2026-04-21)
+
+The remaining work in this doc, in the order Sami wants it tackled:
+
+1. **Staff module walkthrough + troubleshooting** — whatever Geneva flags while actually using it. No new work until reported issues clear.
+2. **1.1 Monthly Availability Submission** — highest-priority feature. Week → month conversion, admin-release window, staff notifications, save-draft + submit lifecycle.
+3. **1.3 Shift Swap Requests** — split shift-swap out of Time Off into its own flow. Direct-to-coworker or open-to-anyone + admin approval + auto-update schedule.
+4. **1.2 Schedule Builder polish** — availability overlay, draft/publish, month view, print-friendly export.
+5. **1.4 Hours variance reporting** — scheduled-vs-actual with threshold flagging, CSV export.
+6. **1.5 Clock notes visibility toggle UI** — just needs a settings UI; DB + query already honor the flag.
+7. **Business Hours setting UI** — columns exist, needs settings page.
+8. **Admin visual differentiation** — distinct tint/indicator so it's obvious when you're in a privileged view.
+9. **Phase 2: Checklists** — frequency scheduling, SOP links per item, completion reporting.
+
+For the longer-tail product backlog beyond Phase 1-2 (Twilio, reporting, auto-cadence, landing page, etc.), see [`CURRENT_STATE.md`](./CURRENT_STATE.md) § Next up.
