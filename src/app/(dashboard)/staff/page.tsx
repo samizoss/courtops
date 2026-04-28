@@ -10,12 +10,9 @@ export default async function StaffPage() {
   if (!userOrg) return null
 
   const now = new Date()
-  const today = now.toISOString().split('T')[0]
   const weekAgo = new Date(now.getTime() - 7 * 86400000).toISOString().split('T')[0]
-  const weekFromNow = new Date(now.getTime() + 7 * 86400000).toISOString().split('T')[0]
-  // Pull availability entries for current week + 5 weeks out (covers Geneva's
-  // typical 3-4 week planning horizon plus a buffer). The client can fetch
-  // additional ranges via the navigator.
+  // Pull availability + shifts for -1 week to +6 weeks. Calendar consumers
+  // refetch on navigation to cover further horizons.
   const availabilityRangeStart = new Date(now.getTime() - 7 * 86400000).toISOString().split('T')[0]
   const availabilityRangeEnd = new Date(now.getTime() + 42 * 86400000).toISOString().split('T')[0]
 
@@ -26,15 +23,17 @@ export default async function StaffPage() {
     { data: shifts },
     { data: availability },
     { data: availabilityEntries },
+    { data: availabilityWindows },
     { data: recentClocks },
     { data: orgSettings },
   ] = await Promise.all([
     supabase.from('profiles').select('*').eq('org_id', userOrg.orgId).eq('is_active', true).order('full_name'),
     supabase.from('time_clock').select('*, profile:profiles!time_clock_user_id_fkey(full_name)').is('clock_out', null),
     supabase.from('time_off_requests').select('*, profile:profiles!time_off_requests_user_id_fkey(full_name), reviewer:profiles!time_off_requests_reviewed_by_fkey(full_name)').order('created_at', { ascending: false }).limit(20),
-    supabase.from('shifts').select('*, profile:profiles!shifts_user_id_fkey(full_name)').gte('shift_date', today).lte('shift_date', weekFromNow).order('shift_date').order('start_time'),
+    supabase.from('shifts').select('*, profile:profiles!shifts_user_id_fkey(full_name)').gte('shift_date', availabilityRangeStart).lte('shift_date', availabilityRangeEnd).order('shift_date').order('start_time'),
     supabase.from('availability').select('*, profile:profiles!availability_user_id_fkey(full_name)').order('day_of_week'),
     supabase.from('availability_entries').select('*').gte('entry_date', availabilityRangeStart).lte('entry_date', availabilityRangeEnd),
+    supabase.from('availability_windows').select('*').eq('org_id', userOrg.orgId).gte('end_date', availabilityRangeStart).lte('start_date', availabilityRangeEnd).order('start_date', { ascending: false }),
     supabase.from('time_clock').select('*, profile:profiles!time_clock_user_id_fkey(full_name)').gte('clock_in', weekAgo).order('clock_in', { ascending: false }).limit(50),
     supabase.from('org_settings').select('open_time, close_time, open_days, staff_arrive_before_min, staff_depart_after_min, daily_hours, clock_notes_visibility').eq('org_id', userOrg.orgId).single(),
   ])
@@ -59,6 +58,7 @@ export default async function StaffPage() {
       shifts={shifts ?? []}
       availability={availability ?? []}
       availabilityEntries={availabilityEntries ?? []}
+      availabilityWindows={availabilityWindows ?? []}
       recentClocks={recentClocks ?? []}
       currentUser={userOrg}
       orgHours={orgHours}
