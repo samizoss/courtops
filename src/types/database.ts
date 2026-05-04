@@ -7,7 +7,20 @@ export type TaskPriority = 'high' | 'medium' | 'low'
 export type TaskType = 'admin' | 'content' | 'janitorial' | 'sales' | 'events' | 'facility' | 'inventory' | 'other'
 export type SopCategory = 'operations' | 'front-desk' | 'sales' | 'content' | 'emergency' | 'equipment' | 'general'
 export type TimeOffStatus = 'pending' | 'approved' | 'denied'
-export type ShiftRole = 'front-desk' | 'coaching' | 'management' | 'other'
+export type ShiftRole = 'front-desk' | 'coaching' | 'instructor' | 'league-leader' | 'management' | 'other'
+
+export const SHIFT_ROLE_LABELS: Record<ShiftRole, string> = {
+  'front-desk': 'Front Desk',
+  coaching: 'Coaching',
+  instructor: 'Instructor',
+  'league-leader': 'League Leader',
+  management: 'Management',
+  other: 'Other',
+}
+
+export const ALL_SHIFT_ROLES: ShiftRole[] = [
+  'front-desk', 'coaching', 'instructor', 'league-leader', 'management', 'other',
+]
 export type ActivityType = 'call' | 'text' | 'email' | 'in_person' | 'voicemail' | 'note' | 'status_change' | 'system'
 export type ActivityDirection = 'outbound' | 'inbound' | 'internal'
 export type ActivityOutcome = 'connected' | 'voicemail' | 'no_answer' | 'booked' | 'converted' | 'not_interested' | 'follow_up'
@@ -35,11 +48,13 @@ export interface Profile {
   org_id: string
   full_name: string
   email: string
+  phone: string | null
   role: Role
   avatar_url: string | null
   is_active: boolean
   is_operational_staff: boolean
   target_weekly_hours: number | null
+  capabilities: ShiftRole[]
   created_at: string
 }
 

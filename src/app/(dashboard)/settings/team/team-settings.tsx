@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { EditStaffModal } from '@/components/edit-staff-modal'
 import type { Profile, Role } from '@/types/database'
 
 interface Invite {
@@ -38,6 +39,7 @@ export function TeamSettings({ profiles, invites: initialInvites, currentUser }:
   const [sending, setSending] = useState(false)
   const [createdLink, setCreatedLink] = useState<string | null>(null)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [editing, setEditing] = useState<Profile | null>(null)
 
   async function handleToggleActive(profileId: string, currentlyActive: boolean) {
     const member = members.find((m) => m.id === profileId)
@@ -174,9 +176,11 @@ export function TeamSettings({ profiles, invites: initialInvites, currentUser }:
               <tr className="text-gray-400 text-xs uppercase tracking-wide border-b border-gray-800">
                 <th className="text-left px-5 py-3">Name</th>
                 <th className="text-left px-5 py-3">Email</th>
+                <th className="text-left px-5 py-3">Phone</th>
                 <th className="text-left px-5 py-3">Role</th>
                 <th className="text-left px-5 py-3">Status</th>
                 <th className="text-left px-5 py-3">Joined</th>
+                <th className="text-right px-5 py-3"></th>
               </tr>
             </thead>
             <tbody>
@@ -184,6 +188,7 @@ export function TeamSettings({ profiles, invites: initialInvites, currentUser }:
                 <tr key={member.id} className={`border-b border-gray-800/50 last:border-0 ${!member.is_active ? 'opacity-50' : ''}`}>
                   <td className="px-5 py-3 text-white font-medium">{member.full_name}</td>
                   <td className="px-5 py-3 text-gray-400">{member.email}</td>
+                  <td className="px-5 py-3 text-gray-400">{member.phone ?? <span className="text-gray-700">—</span>}</td>
                   <td className="px-5 py-3">
                     {member.id === currentUser.userId || member.role === 'owner' ? (
                       <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${ROLE_COLORS[member.role] || ROLE_COLORS.viewer}`}>
@@ -219,6 +224,16 @@ export function TeamSettings({ profiles, invites: initialInvites, currentUser }:
                   </td>
                   <td className="px-5 py-3 text-gray-500">
                     {new Date(member.created_at).toLocaleDateString()}
+                  </td>
+                  <td className="px-5 py-3 text-right">
+                    {member.role !== 'owner' && (
+                      <button
+                        onClick={() => setEditing(member)}
+                        className="text-xs text-orange-400 hover:text-orange-300 transition-colors"
+                      >
+                        Edit
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -341,6 +356,18 @@ export function TeamSettings({ profiles, invites: initialInvites, currentUser }:
           </div>
         )}
       </div>
+
+      {editing && (
+        <EditStaffModal
+          profile={editing}
+          canChangeRole={editing.role !== 'owner'}
+          onClose={() => setEditing(null)}
+          onSaved={(updated) => {
+            setMembers((prev) => prev.map((m) => (m.id === updated.id ? updated : m)))
+            setEditing(null)
+          }}
+        />
+      )}
     </div>
   )
 }
