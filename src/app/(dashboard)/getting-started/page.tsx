@@ -1,27 +1,37 @@
 export const dynamic = 'force-dynamic'
 
-export default function GettingStartedPage() {
+import { getUserOrg } from '@/lib/get-user-org'
+
+export default async function GettingStartedPage() {
+  const userOrg = await getUserOrg()
+  const isAdmin = userOrg?.role === 'owner' || userOrg?.role === 'admin'
+
+  // Sections + their visibility. Admin-only sections are hidden from staff/viewer.
+  const tocItems = [
+    { id: 'setup',      label: '1. First-Time Setup (Admin)', adminOnly: true },
+    { id: 'team',       label: '2. Inviting Your Team',        adminOnly: true },
+    { id: 'checklists', label: '3. Daily Checklists',          adminOnly: false },
+    { id: 'staff',      label: '4. Staff & Scheduling',        adminOnly: false },
+    { id: 'sops',       label: '5. SOPs',                       adminOnly: false },
+    { id: 'dashboard',  label: '6. Dashboard Overview',         adminOnly: false },
+    { id: 'settings',   label: '7. Settings Reference',         adminOnly: true },
+    { id: 'faq',        label: '8. FAQ & Troubleshooting',      adminOnly: false },
+  ].filter((item) => isAdmin || !item.adminOnly)
+
   return (
     <div className="max-w-3xl mx-auto py-8 px-4">
       <h1 className="text-3xl font-bold text-white mb-2">Getting Started</h1>
       <p className="text-gray-400 mb-8">
-        Welcome to CourtOps! This guide walks you through initial setup and daily use of each module.
+        {isAdmin
+          ? 'Welcome to CourtOps! This guide walks you through initial setup and daily use of each module.'
+          : 'Welcome! This guide walks you through your day-to-day in CourtOps — clocking in, checklists, schedule, and more.'}
       </p>
 
       {/* Table of Contents */}
       <nav className="bg-gray-800/50 rounded-xl p-5 mb-10 border border-gray-700">
         <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Contents</h2>
         <ol className="space-y-1.5 text-sm">
-          {[
-            { id: 'setup', label: '1. First-Time Setup (Admin)' },
-            { id: 'team', label: '2. Inviting Your Team' },
-            { id: 'checklists', label: '3. Daily Checklists' },
-            { id: 'staff', label: '4. Staff & Scheduling' },
-            { id: 'sops', label: '5. SOPs' },
-            { id: 'dashboard', label: '6. Dashboard Overview' },
-            { id: 'settings', label: '7. Settings Reference' },
-            { id: 'faq', label: '8. FAQ & Troubleshooting' },
-          ].map((item) => (
+          {tocItems.map((item) => (
             <li key={item.id}>
               <a href={`#${item.id}`} className="text-orange-400 hover:text-orange-300 transition-colors">
                 {item.label}
@@ -32,6 +42,8 @@ export default function GettingStartedPage() {
       </nav>
 
       <div className="space-y-12">
+        {isAdmin && (
+        <>
         {/* Section 1 */}
         <section id="setup">
           <h2 className="text-2xl font-bold text-white mb-4 border-b border-gray-700 pb-2">1. First-Time Setup (Admin)</h2>
@@ -123,6 +135,8 @@ export default function GettingStartedPage() {
             </div>
           </div>
         </section>
+        </>
+        )}
 
         {/* Section 3 */}
         <section id="checklists">
@@ -142,6 +156,7 @@ export default function GettingStartedPage() {
               </ul>
             </div>
 
+            {isAdmin && (
             <div>
               <h3 className="text-lg font-semibold text-white mb-2">For Managers</h3>
               <p className="text-gray-300 mb-2">Everything staff sees, plus:</p>
@@ -151,6 +166,7 @@ export default function GettingStartedPage() {
                 <li>Click <span className="font-medium text-white">Admin</span> (top right) to manage checklist templates and items</li>
               </ul>
             </div>
+            )}
           </div>
         </section>
 
@@ -170,16 +186,20 @@ export default function GettingStartedPage() {
                 <li>Click <span className="font-medium text-white">Clock Out</span> when you&apos;re done</li>
                 <li>You can see who else is currently clocked in and for how long</li>
               </ul>
+              {isAdmin && (
+              <>
               <p className="text-gray-300 mb-1 font-medium">For managers:</p>
               <ul className="list-disc list-inside text-gray-300 space-y-1 ml-2">
                 <li><span className="font-medium text-white">Hours Summary</span> — pick a date range and click <span className="font-medium text-white">Load Hours</span> to see total hours per employee. Useful for payroll.</li>
               </ul>
+              </>
+              )}
             </div>
 
             <div>
               <h3 className="text-lg font-semibold text-white mb-2">Roster</h3>
               <p className="text-gray-300">
-                Shows all active team members with their name, email, and role. Admins can add new staff members from here (though inviting via <span className="text-orange-400 font-medium">Settings &gt; Team</span> is recommended).
+                Shows all active team members with their name, email, and role. {isAdmin && 'Admins can add new staff members from here (though inviting via '}{isAdmin && <span className="text-orange-400 font-medium">Settings &gt; Team</span>}{isAdmin && ' is recommended).'}
               </p>
             </div>
 
@@ -201,6 +221,7 @@ export default function GettingStartedPage() {
                 </li>
               </ul>
 
+              {isAdmin && (<>
               <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mt-3 mb-2">Assigning Shifts (Admin)</h4>
               <ul className="list-disc list-inside text-gray-300 space-y-1 ml-2 mb-4">
                 <li><span className="font-medium text-white">Click a name</span> in the grid to assign them to that time slot — one click</li>
@@ -222,6 +243,7 @@ export default function GettingStartedPage() {
                 <li>Click <span className="font-medium text-white">Edit</span> on any shift to change the time or role</li>
                 <li>Click <span className="font-medium text-white">Remove</span> to delete (you&apos;ll be asked to confirm)</li>
               </ul>
+              </>)}
             </div>
 
             <div>
@@ -232,12 +254,16 @@ export default function GettingStartedPage() {
                 <li>Enter start date, end date, and an optional reason</li>
                 <li>Submit and wait for approval</li>
               </ul>
+              {isAdmin && (
+              <>
               <p className="text-gray-300 mb-1 font-medium">For managers:</p>
               <ul className="list-disc list-inside text-gray-300 space-y-1 ml-2">
                 <li>Pending requests show with <span className="font-medium text-white">Approve</span> and <span className="font-medium text-white">Deny</span> buttons</li>
                 <li>If other staff also have time off during the same period, you&apos;ll see a <span className="text-yellow-400 font-medium">yellow warning</span></li>
                 <li>If approving would leave you short-staffed, you&apos;ll see a <span className="text-red-400 font-medium">red warning</span></li>
               </ul>
+              </>
+              )}
             </div>
 
             <div>
@@ -249,12 +275,16 @@ export default function GettingStartedPage() {
                 <li>If available, set your start and end times</li>
                 <li>Click <span className="font-medium text-white">Save</span> when done</li>
               </ul>
+              {isAdmin && (
+              <>
               <p className="text-gray-300 mb-1 font-medium">For managers:</p>
               <ul className="list-disc list-inside text-gray-300 space-y-1 ml-2">
                 <li>The <span className="font-medium text-white">Team Availability</span> grid shows everyone&apos;s schedule at a glance</li>
                 <li>Time ranges are shown (e.g., &quot;8a-5p&quot;) instead of just Y/N</li>
                 <li>Staff who haven&apos;t set their availability show a yellow <span className="text-yellow-400 font-medium">?</span></li>
               </ul>
+              </>
+              )}
             </div>
           </div>
         </section>
@@ -278,6 +308,7 @@ export default function GettingStartedPage() {
               </ul>
             </div>
 
+            {isAdmin && (
             <div>
               <h3 className="text-lg font-semibold text-white mb-2">Creating & Editing SOPs (Admin only)</h3>
               <ul className="list-disc list-inside text-gray-300 space-y-1 ml-2">
@@ -290,6 +321,7 @@ export default function GettingStartedPage() {
                 <li>Add <span className="font-medium text-white">tags</span> as comma-separated values for searchability</li>
               </ul>
             </div>
+            )}
           </div>
         </section>
 
@@ -309,6 +341,8 @@ export default function GettingStartedPage() {
               </ul>
             </div>
 
+            {isAdmin && (
+            <>
             <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
               <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Admins also see</h4>
               <ul className="list-disc list-inside text-gray-300 space-y-1 ml-2">
@@ -325,9 +359,13 @@ export default function GettingStartedPage() {
                 <li>Recent pipeline activity</li>
               </ul>
             </div>
+            </>
+            )}
           </div>
         </section>
 
+        {isAdmin && (
+        <>
         {/* Section 7 */}
         <section id="settings">
           <h2 className="text-2xl font-bold text-white mb-4 border-b border-gray-700 pb-2">7. Settings Reference</h2>
@@ -363,6 +401,8 @@ export default function GettingStartedPage() {
             </div>
           </div>
         </section>
+        </>
+        )}
 
         {/* Section 8 */}
         <section id="faq">
@@ -371,34 +411,46 @@ export default function GettingStartedPage() {
           <div className="space-y-4">
             {[
               {
-                q: "A staff member says they can't log in.",
-                a: 'Check Settings > Team — is their account active? Did their invite link expire? Click Resend to generate a new one.',
+                q: "I forgot to clock in at the start of my shift.",
+                a: 'Click the "Forgot to clock in?" link below the Clock In button, enter when you actually started, and add a note. Admins may review the entry.',
+                staff: true,
               },
               {
-                q: 'The schedule grid shows the wrong hours.',
-                a: 'Go to Settings > General and verify your business hours are correct for each day. The grid uses these hours plus the staff buffer.',
+                q: 'I marked myself Available but my hours field is greyed out.',
+                a: 'Make sure the date is inside an open availability window. If the window is locked or there\'s no window, cells outside an open window are read-only — wait for an admin to open one.',
+                staff: true,
               },
               {
                 q: "A checklist item was checked but nobody's name shows.",
                 a: 'This happens for items checked before we added name tracking (April 2, 2026). All new completions show who did it and when.',
+                staff: true,
               },
               {
-                q: 'Someone shows as "?" (yellow) in the availability grid.',
-                a: "They haven't submitted their availability yet. Ask them to go to Staff > Availability > Edit and set their weekly schedule.",
+                q: "A staff member says they can't log in.",
+                a: 'Check Settings > Team — is their account active? Did their invite link expire? Click Resend to generate a new one. If their email recently changed, they may need to use the password-reset flow on the new email.',
+                staff: false,
+              },
+              {
+                q: 'The schedule grid shows the wrong hours.',
+                a: 'Go to Settings > General and verify your business hours are correct for each day. The schedule timeline uses these hours plus the staff buffer.',
+                staff: false,
               },
               {
                 q: 'I deactivated someone but they can still log in.',
-                a: "Deactivation hides them from staff views but doesn't block login. To fully remove access, you'd need to delete their account from Supabase (not yet available in the UI — coming soon).",
+                a: "Deactivation hides them from staff views but doesn't block login. To fully revoke access, edit them in Roster or Settings > Team and use Remove staff (soft-delete that also flags them inactive).",
+                staff: false,
               },
               {
                 q: "The \"Import Leads\" button didn't import anything.",
                 a: 'Check that the Google Sheet is still published to web. If all leads were already imported (matching by email/phone), it\'ll show "0 new" — that means dedup is working.',
+                staff: false,
               },
               {
                 q: 'I approved time off but the person still shows as available in the schedule.',
                 a: "The schedule grid correctly filters approved time off. Make sure the time-off request dates match the day you're viewing. Pending (unapproved) requests don't affect the schedule grid.",
+                staff: false,
               },
-            ].map((faq) => (
+            ].filter((faq) => isAdmin || faq.staff).map((faq) => (
               <div key={faq.q} className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
                 <p className="font-medium text-white mb-1">Q: {faq.q}</p>
                 <p className="text-gray-300 text-sm">{faq.a}</p>
