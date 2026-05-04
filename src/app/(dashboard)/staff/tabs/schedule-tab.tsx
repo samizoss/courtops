@@ -12,10 +12,12 @@ import {
 } from '@/components/schedule-time-grid'
 import {
   ViewMode,
+  addDays,
   fmtDateKey,
   fmtDateRangeLabel,
   fmtShortDate,
   startOfDay,
+  startOfWeek,
   stepAnchor,
   visibleRange,
 } from '@/lib/calendar'
@@ -83,6 +85,148 @@ function approximateHours(shifts: string | null): number {
     total += dur
   }
   return total / 60
+}
+
+/** Parse free-text shifts into discrete (start_min, end_min) blocks. Used by
+ *  the magic-schedule algorithm to propose specific shifts from each
+ *  staffer's submitted availability. Returns [] if nothing parseable.
+ */
+function parseShiftBlocks(shifts: string | null): { start: number; end: number }[] {
+  if (!shifts) return []
+  const out: { start: number; end: number }[] = []
+  for (const tok of shifts.split(',')) {
+    const halves = tok.split(/[-–]/).map((s) => s.trim())
+    if (halves.length !== 2) continue
+    const a = parseLooseHHMM(halves[0])
+    const b = parseLooseHHMM(halves[1])
+    if (a == null || b == null || b <= a) continue
+    out.push({ start: a, end: b })
+  }
+  return out
+}
+
+/** Format minutes-since-midnight as HH:MM (00:00 - 23:59) for DB inserts. */
+function minutesToTime(min: number): string {
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
+interface MagicProposal {
+  user_id: string
+  shift_date: string
+  start_time: string
+  end_time: string
+  role: ShiftRole
+}
+
+/** Greedy magic-schedule algorithm. Reads submitted availability + capabilities
+ *  + target hours; proposes draft shifts. See docs/CURRENT_STATE.md item #9.
+ */
+function generateMagicProposals(args: {
+  anchor: Date
+  mode: ViewMode
+  profiles: Profile[]
+  availabilityEntries: AvailabilityEntry[]
+  timeOffMap: Record<string, Set<string>>
+  shifts: ShiftWithProfile[]
+}): MagicProposal[] {
+  const { anchor, mode, profiles, availabilityEntries, timeOffMap, shifts } = args
+  const range = visibleRange(anchor, mode)
+  const startKey = fmtDateKey(range.start)
+  const endKey = fmtDateKey(range.end)
+
+  // Index existing shifts (drafts + published) by user|date so we don't
+  // double-assign on a day a staffer already has something.
+  const existingByUserDate: Record<string, true> = {}
+  for (const s of shifts) {
+    existingByUserDate[`${s.user_id}|${s.shift_date}`] = true
+  }
+
+  // Index submitted availability by user|date for quick lookup.
+  const entryByUserDate: Record<string, AvailabilityEntry> = {}
+  for (const e of availabilityEntries) {
+    entryByUserDate[`${e.user_id}|${e.entry_date}`] = e
+  }
+
+  // Track running assigned-hours-this-range to respect target_weekly_hours
+  // (the spec says: skip assigning if it would push them over their target).
+  // Initialize from existing shifts.
+  const assignedHoursByUser: Record<string, number> = {}
+  for (const p of profiles) assignedHoursByUser[p.id] = 0
+  for (const s of shifts) {
+    if (s.shift_date < startKey || s.shift_date > endKey) continue
+    const a = parseTimeMinutes(s.start_time)
+    const b = parseTimeMinutes(s.end_time)
+    if (a == null || b == null) continue
+    assignedHoursByUser[s.user_id] = (assignedHoursByUser[s.user_id] ?? 0) + Math.max(0, b - a) / 60
+  }
+
+  const proposals: MagicProposal[] = []
+
+  // Iterate days in the range
+  const dayCount = Math.round((range.end.getTime() - range.start.getTime()) / 86400000) + 1
+  for (let i = 0; i < dayCount; i++) {
+    const day = addDays(range.start, i)
+    const dayKey = fmtDateKey(day)
+
+    // Sort profiles by "furthest below target" so we spread proposed shifts.
+    const candidates = profiles
+      .filter((p) => p.is_operational_staff)
+      .filter((p) => !timeOffMap[p.id]?.has(dayKey))
+      .filter((p) => !existingByUserDate[`${p.id}|${dayKey}`])
+      .filter((p) => entryByUserDate[`${p.id}|${dayKey}`]?.is_available === true)
+      .filter((p) => (p.target_weekly_hours ?? 1) > 0) // 0 means "don't auto-schedule"
+      .sort((a, b) => {
+        const aRem = (a.target_weekly_hours ?? 40) - (assignedHoursByUser[a.id] ?? 0)
+        const bRem = (b.target_weekly_hours ?? 40) - (assignedHoursByUser[b.id] ?? 0)
+        return bRem - aRem // furthest below target first
+      })
+
+    for (const p of candidates) {
+      const entry = entryByUserDate[`${p.id}|${dayKey}`]
+      const target = p.target_weekly_hours
+      const assigned = assignedHoursByUser[p.id] ?? 0
+      // Skip if adding even an hour would push them over target.
+      if (target != null && assigned >= target) continue
+
+      // Try to parse the staffer's stated hours into discrete blocks.
+      const blocks = parseShiftBlocks(entry?.shifts ?? null)
+      const role: ShiftRole =
+        p.capabilities?.find((c) => c !== 'management') ??
+        p.capabilities?.[0] ??
+        'front-desk'
+
+      if (blocks.length > 0) {
+        for (const blk of blocks) {
+          const hrs = (blk.end - blk.start) / 60
+          if (target != null && assigned + hrs > target) continue
+          proposals.push({
+            user_id: p.id,
+            shift_date: dayKey,
+            start_time: minutesToTime(blk.start),
+            end_time: minutesToTime(blk.end),
+            role,
+          })
+          assignedHoursByUser[p.id] = assigned + hrs
+        }
+      } else {
+        // Available with no specific hours: default to a 9 AM – 2 PM block (5 hours).
+        const fallbackHrs = 5
+        if (target != null && assigned + fallbackHrs > target) continue
+        proposals.push({
+          user_id: p.id,
+          shift_date: dayKey,
+          start_time: '09:00',
+          end_time: '14:00',
+          role,
+        })
+        assignedHoursByUser[p.id] = assigned + fallbackHrs
+      }
+    }
+  }
+
+  return proposals
 }
 
 function parseLooseHHMM(raw: string): number | null {
@@ -251,8 +395,102 @@ export function ScheduleTab({
       .sort((a, b) => a.profile.full_name.localeCompare(b.profile.full_name))
   }, [profiles, shifts, availabilityEntries, anchor, mode])
 
+  const draftCount = useMemo(() => shifts.filter((s) => s.published_at == null).length, [shifts])
+  const draftCountInRange = useMemo(() => {
+    const range = visibleRange(anchor, mode)
+    const startKey = fmtDateKey(range.start)
+    const endKey = fmtDateKey(range.end)
+    return shifts.filter(
+      (s) => s.published_at == null && s.shift_date >= startKey && s.shift_date <= endKey
+    ).length
+  }, [shifts, anchor, mode])
+
+  const [magicRunning, setMagicRunning] = useState(false)
+  const [publishing, setPublishing] = useState(false)
+
+  async function handlePublishDrafts() {
+    if (publishing) return
+    if (draftCountInRange === 0) {
+      toast('No drafts to publish in this view', 'error')
+      return
+    }
+    if (!confirm(`Publish ${draftCountInRange} draft shift${draftCountInRange === 1 ? '' : 's'} in this ${mode}? Staff will see them immediately.`)) return
+
+    setPublishing(true)
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      const range = visibleRange(anchor, mode)
+      const startKey = fmtDateKey(range.start)
+      const endKey = fmtDateKey(range.end)
+      const { error } = await supabase
+        .from('shifts')
+        .update({ published_at: new Date().toISOString() })
+        .is('published_at', null)
+        .gte('shift_date', startKey)
+        .lte('shift_date', endKey)
+        .eq('org_id', orgId)
+      if (error) throw error
+      toast(`Published ${draftCountInRange} shift${draftCountInRange === 1 ? '' : 's'}`)
+      router.refresh()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed to publish', 'error')
+      console.error(err)
+    } finally {
+      setPublishing(false)
+    }
+  }
+
+  async function handleMagicSchedule() {
+    if (magicRunning) return
+    if (mode === 'day') {
+      toast('Switch to week or month to use magic schedule', 'error')
+      return
+    }
+    const proposals = generateMagicProposals({
+      anchor,
+      mode,
+      profiles,
+      availabilityEntries,
+      timeOffMap,
+      shifts,
+    })
+    if (proposals.length === 0) {
+      toast('No magic proposals — no submitted availability in this range', 'error')
+      return
+    }
+    if (!confirm(
+      `Propose ${proposals.length} draft shift${proposals.length === 1 ? '' : 's'} based on submitted availability + capabilities + target hours? Drafts only — review before publishing.`
+    )) return
+
+    setMagicRunning(true)
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      const rows = proposals.map((p) => ({
+        org_id: orgId,
+        user_id: p.user_id,
+        shift_date: p.shift_date,
+        start_time: p.start_time,
+        end_time: p.end_time,
+        role: p.role,
+        notes: 'Magic-scheduled draft',
+        published_at: null,
+      }))
+      const { error } = await supabase.from('shifts').insert(rows)
+      if (error) throw error
+      toast(`Proposed ${proposals.length} draft${proposals.length === 1 ? '' : 's'} — review and publish when ready`)
+      router.refresh()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Magic schedule failed', 'error')
+      console.error(err)
+    } finally {
+      setMagicRunning(false)
+    }
+  }
+
   const toolbarRight = (
-    <div className="flex items-center gap-1 ml-2">
+    <div className="flex items-center gap-1 ml-2 flex-wrap">
       {(['mine', 'all'] as FilterMode[]).map((f) => (
         <button
           key={f}
@@ -266,6 +504,26 @@ export function ScheduleTab({
           {f === 'mine' ? 'My schedule' : 'Total schedule'}
         </button>
       ))}
+      {isAdmin && mode !== 'day' && (
+        <button
+          onClick={handleMagicSchedule}
+          disabled={magicRunning}
+          className="text-xs px-3 py-1.5 rounded bg-purple-600/30 hover:bg-purple-600/50 disabled:opacity-50 text-purple-200 border border-purple-500/40 transition-colors"
+          title="Auto-propose draft shifts from submitted availability + capabilities + target hours"
+        >
+          {magicRunning ? 'Running…' : '✨ Magic schedule'}
+        </button>
+      )}
+      {isAdmin && draftCountInRange > 0 && (
+        <button
+          onClick={handlePublishDrafts}
+          disabled={publishing}
+          className="text-xs px-3 py-1.5 rounded bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white transition-colors"
+          title={`Publish ${draftCountInRange} drafts in this ${mode}`}
+        >
+          {publishing ? 'Publishing…' : `Publish ${draftCountInRange} draft${draftCountInRange === 1 ? '' : 's'}`}
+        </button>
+      )}
     </div>
   )
 
@@ -276,6 +534,23 @@ export function ScheduleTab({
   const handleEmptyDayClick = (d: Date) => {
     if (!isAdmin) return
     setDayPopover(d)
+  }
+
+  async function handlePublishOne(id: string) {
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      const { error } = await supabase
+        .from('shifts')
+        .update({ published_at: new Date().toISOString() })
+        .eq('id', id)
+      if (error) throw error
+      toast('Shift published')
+      setShiftDetail(null)
+      router.refresh()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed', 'error')
+    }
   }
 
   const handleDeleteShift = async (id: string) => {
@@ -311,22 +586,25 @@ export function ScheduleTab({
                 )}
                 {dayShifts.map((s) => {
                   const firstName = s.profile?.full_name?.split(' ')[0] ?? '?'
+                  const isDraft = s.published_at == null
                   return (
                     <button
                       key={s.id}
                       type="button"
                       onClick={() => handleShiftClick(s)}
-                      className={`w-full text-[10px] px-1 py-0.5 rounded border truncate text-left flex items-center gap-1 hover:opacity-80 transition-opacity ${monthPillColors[s.role]}`}
-                      title={`${s.profile?.full_name ?? ''}\n${fmtTimeRange12h(s.start_time, s.end_time)}\n${SHIFT_ROLE_LABELS[s.role]}${s.notes ? `\n${s.notes}` : ''}`}
+                      className={`w-full text-[10px] px-1 py-0.5 rounded truncate text-left flex items-center gap-1 hover:opacity-80 transition-opacity ${monthPillColors[s.role]} ${
+                        isDraft ? 'border-2 border-dashed opacity-70' : 'border'
+                      }`}
+                      title={`${s.profile?.full_name ?? ''}\n${fmtTimeRange12h(s.start_time, s.end_time)}\n${SHIFT_ROLE_LABELS[s.role]}${isDraft ? ' (DRAFT)' : ''}${s.notes ? `\n${s.notes}` : ''}`}
                     >
                       <span className="font-medium truncate">{firstName}</span>
                       <span className="opacity-70 font-mono shrink-0">
-                        {fmtTime12h(s.start_time).replace(' AM', 'a').replace(' PM', 'p')}
+                        {fmtTimeRange12hCompact(s.start_time, s.end_time)}
                       </span>
                       <span
                         className={`ml-auto text-[8px] uppercase tracking-wide px-1 rounded border ${getRoleBadgeColor(s.role)}`}
                       >
-                        {getRoleShortLabel(s.role)}
+                        {isDraft ? 'DRAFT' : getRoleShortLabel(s.role)}
                       </span>
                     </button>
                   )
@@ -380,6 +658,18 @@ export function ScheduleTab({
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
             {hoursSummary.map((r) => {
               const target = r.profile.target_weekly_hours
+              // Overscheduling: assigned > target (and target is set + > 0).
+              // For 'month' mode the target is per-week so multiply by ~4.
+              // For 'week'/'day' the target is per-week as-is.
+              const targetForRange = target == null
+                ? null
+                : mode === 'month'
+                  ? target * 4
+                  : target
+              const overBy = targetForRange != null && targetForRange > 0
+                ? r.assignedHours - targetForRange
+                : null
+              const isOver = overBy != null && overBy > 0
               return (
                 <div
                   key={r.profile.id}
@@ -387,14 +677,20 @@ export function ScheduleTab({
                 >
                   <span className="text-gray-300 truncate">{r.profile.full_name}</span>
                   <span className="text-xs text-gray-500 font-mono whitespace-nowrap">
-                    <span className="text-white font-semibold">{r.assignedHours.toFixed(1)}h</span>
+                    <span
+                      className={isOver ? 'text-red-400 font-semibold' : 'text-white font-semibold'}
+                      title={isOver ? `Over target by ${overBy!.toFixed(1)}h` : undefined}
+                    >
+                      {isOver && '⚠ '}
+                      {r.assignedHours.toFixed(1)}h
+                    </span>
                     {' / '}
                     <span title="Estimated from availability submissions (free-text — approximate)">
                       ~{r.availableHours.toFixed(0)}h avail
                     </span>
-                    {target != null && (
-                      <span className="ml-2 text-orange-300" title="Target weekly hours">
-                        target {target}h
+                    {target != null && target > 0 && (
+                      <span className={`ml-2 ${isOver ? 'text-red-300' : 'text-orange-300'}`} title="Target weekly hours">
+                        target {target}h{mode === 'month' ? '/wk' : ''}
                       </span>
                     )}
                   </span>
@@ -413,6 +709,7 @@ export function ScheduleTab({
           entryMap={entryMap}
           timeOffMap={timeOffMap}
           existingShifts={shiftsByDate[fmtDateKey(dayPopover)] ?? []}
+          allShifts={shifts}
           onClose={() => setDayPopover(null)}
           onAssigned={() => {
             setDayPopover(null)
@@ -428,6 +725,11 @@ export function ScheduleTab({
           isAdmin={isAdmin}
           onClose={() => setShiftDetail(null)}
           onDelete={handleDeleteShift}
+          onPublish={handlePublishOne}
+          onRoleChanged={() => {
+            setShiftDetail(null)
+            router.refresh()
+          }}
         />
       )}
     </div>
@@ -510,11 +812,37 @@ interface ShiftDetailPopoverProps {
   isAdmin: boolean
   onClose: () => void
   onDelete: (id: string) => void
+  onPublish: (id: string) => void
+  onRoleChanged: () => void
 }
 
-/** Click-to-detail popover for a single shift. Admin can delete; staff sees details. */
-function ShiftDetailPopover({ shift, isAdmin, onClose, onDelete }: ShiftDetailPopoverProps) {
+/** Click-to-detail popover for a single shift. Admin can change role, publish (if draft), or remove. */
+function ShiftDetailPopover({ shift, isAdmin, onClose, onDelete, onPublish, onRoleChanged }: ShiftDetailPopoverProps) {
+  const { toast } = useToast()
   const date = new Date(shift.shift_date + 'T12:00:00')
+  const isDraft = shift.published_at == null
+  const [role, setRole] = useState<ShiftRole>(shift.role)
+  const [savingRole, setSavingRole] = useState(false)
+  const roleDirty = role !== shift.role
+
+  async function handleSaveRole() {
+    if (!roleDirty || savingRole) return
+    setSavingRole(true)
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      const { error } = await supabase.from('shifts').update({ role }).eq('id', shift.id)
+      if (error) throw error
+      toast('Role updated')
+      onRoleChanged()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed to update role', 'error')
+      console.error(err)
+    } finally {
+      setSavingRole(false)
+    }
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
@@ -526,7 +854,14 @@ function ShiftDetailPopover({ shift, isAdmin, onClose, onDelete }: ShiftDetailPo
       >
         <div className="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-semibold">{shift.profile?.full_name ?? 'Shift'}</h3>
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              {shift.profile?.full_name ?? 'Shift'}
+              {isDraft && (
+                <span className="text-[10px] uppercase font-bold tracking-wide px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-300 border border-yellow-500/40">
+                  Draft
+                </span>
+              )}
+            </h3>
             <p className="text-xs text-gray-500">
               {date.toLocaleDateString('en-US', {
                 weekday: 'long',
@@ -556,11 +891,34 @@ function ShiftDetailPopover({ shift, isAdmin, onClose, onDelete }: ShiftDetailPo
             <span className="text-gray-500 text-xs uppercase tracking-wide w-16 shrink-0">
               Role
             </span>
-            <span
-              className={`text-xs px-2 py-0.5 rounded border ${getRoleBadgeColor(shift.role)}`}
-            >
-              {SHIFT_ROLE_LABELS[shift.role]}
-            </span>
+            {isAdmin ? (
+              <>
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value as ShiftRole)}
+                  className="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-sm text-white focus:outline-none focus:ring-1 focus:ring-orange-500"
+                >
+                  {ALL_SHIFT_ROLES.map((r) => (
+                    <option key={r} value={r}>{SHIFT_ROLE_LABELS[r]}</option>
+                  ))}
+                </select>
+                {roleDirty && (
+                  <button
+                    onClick={handleSaveRole}
+                    disabled={savingRole}
+                    className="text-xs px-2 py-1 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white rounded transition-colors"
+                  >
+                    {savingRole ? 'Saving…' : 'Save'}
+                  </button>
+                )}
+              </>
+            ) : (
+              <span
+                className={`text-xs px-2 py-0.5 rounded border ${getRoleBadgeColor(shift.role)}`}
+              >
+                {SHIFT_ROLE_LABELS[shift.role]}
+              </span>
+            )}
           </div>
           {shift.notes && (
             <div className="flex items-start gap-2">
@@ -573,13 +931,21 @@ function ShiftDetailPopover({ shift, isAdmin, onClose, onDelete }: ShiftDetailPo
         </div>
 
         {isAdmin && (
-          <div className="px-5 py-3 border-t border-gray-800 flex justify-end gap-2">
+          <div className="px-5 py-3 border-t border-gray-800 flex justify-end gap-2 flex-wrap">
             <button
               onClick={onClose}
               className="px-3 py-1.5 text-sm text-gray-400 hover:text-white"
             >
               Close
             </button>
+            {isDraft && (
+              <button
+                onClick={() => onPublish(shift.id)}
+                className="px-3 py-1.5 text-sm bg-orange-600 hover:bg-orange-500 text-white rounded transition-colors"
+              >
+                Publish
+              </button>
+            )}
             <button
               onClick={() => onDelete(shift.id)}
               className="px-3 py-1.5 text-sm bg-red-600/20 hover:bg-red-600/30 text-red-300 rounded border border-red-500/30 transition-colors"
@@ -600,6 +966,7 @@ interface DayAssignPopoverProps {
   entryMap: Record<string, AvailabilityEntry>
   timeOffMap: Record<string, Set<string>>
   existingShifts: ShiftWithProfile[]
+  allShifts: ShiftWithProfile[]
   onClose: () => void
   onAssigned: () => void
   onDeleteShift: (id: string) => void
@@ -612,6 +979,7 @@ function DayAssignPopover({
   entryMap,
   timeOffMap,
   existingShifts,
+  allShifts,
   onClose,
   onAssigned,
   onDeleteShift,
@@ -650,6 +1018,35 @@ function DayAssignPopover({
       })
   }, [profiles, entryMap, timeOffMap, dateKey])
 
+  // Weekly hours load for the picked staffer — for the week containing this popover's date.
+  // Used to surface "this week: assigned X.Y / target Z.Z" + over-target warning.
+  const weekStart = useMemo(() => fmtDateKey(startOfWeek(date)), [date])
+  const weekEnd = useMemo(() => fmtDateKey(addDays(startOfWeek(date), 6)), [date])
+
+  const pickedHours = useMemo(() => {
+    if (!form.user_id) return null
+    const profile = profiles.find((p) => p.id === form.user_id)
+    if (!profile) return null
+    let weeklyAssigned = 0
+    for (const s of allShifts) {
+      if (s.user_id !== form.user_id) continue
+      if (s.shift_date < weekStart || s.shift_date > weekEnd) continue
+      const a = parseTimeMinutes(s.start_time)
+      const b = parseTimeMinutes(s.end_time)
+      if (a == null || b == null) continue
+      weeklyAssigned += Math.max(0, b - a) / 60
+    }
+    const a = parseTimeMinutes(form.start_time)
+    const b = parseTimeMinutes(form.end_time)
+    const proposedHours = a != null && b != null ? Math.max(0, b - a) / 60 : 0
+    return {
+      profile,
+      weeklyAssigned,
+      proposedHours,
+      target: profile.target_weekly_hours,
+    }
+  }, [form.user_id, form.start_time, form.end_time, allShifts, profiles, weekStart, weekEnd])
+
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (!form.user_id) {
@@ -668,6 +1065,9 @@ function DayAssignPopover({
         end_time: form.end_time,
         role: form.role,
         notes: form.notes || null,
+        // Manual admin assigns publish immediately. Magic-schedule paths go
+        // through bulk INSERT with published_at=null instead.
+        published_at: new Date().toISOString(),
       })
       if (error) throw error
       toast('Shift assigned')
@@ -837,6 +1237,30 @@ function DayAssignPopover({
               />
             </div>
           </div>
+          {pickedHours && pickedHours.target != null && pickedHours.target > 0 && (() => {
+            const totalAfter = pickedHours.weeklyAssigned + pickedHours.proposedHours
+            const isOver = totalAfter > pickedHours.target
+            const overBy = totalAfter - pickedHours.target
+            return (
+              <div
+                className={`text-[11px] px-3 py-2 rounded border ${
+                  isOver
+                    ? 'bg-red-500/10 border-red-500/30 text-red-300'
+                    : 'bg-gray-800/40 border-gray-700 text-gray-400'
+                }`}
+              >
+                {isOver && <span className="font-bold mr-1">⚠</span>}
+                This week:{' '}
+                <span className="font-mono">
+                  {pickedHours.weeklyAssigned.toFixed(1)}h
+                </span>
+                {' + '}
+                <span className="font-mono">{pickedHours.proposedHours.toFixed(1)}h</span> proposed{' '}
+                <span className="opacity-75">/ target {pickedHours.target}h</span>
+                {isOver && <span className="ml-1">(over by {overBy.toFixed(1)}h)</span>}
+              </div>
+            )
+          })()}
           <button
             type="submit"
             disabled={saving || !form.user_id}

@@ -312,6 +312,8 @@ export interface ScheduleShift {
   end_time: string
   role: ShiftRole
   notes: string | null
+  /** Null = draft (admin-only). Non-null = published timestamp (visible to staff). */
+  published_at: string | null
   created_at: string
 }
 
