@@ -5,6 +5,8 @@
 
 > **PR #12 (2026-04-28) shipped:** Migration 006 (`availability_windows`, `is_unavailable` → `is_available`, `profiles.target_weekly_hours`), shared `<CalendarMonthGrid>` component, Availability tab rebuilt as month calendar with opt-in semantics + window release/lock workflow, Schedule tab rebuilt as calendar with click-to-assign popover + hours summary. The "NEXT-SESSION BIG BUNDLE" section below is now historic context — see new "Geneva walkthrough 2026-04-28" section for the actual current queue.
 
+> **Placeholder May seed (2026-04-28):** The Jar's prod tenant has 7 placeholder staff profiles (Julio, Alesia, Ella, Cody, Daniel, Cade, Conner) seeded from Geneva's "Jar Employee Schedule" PDF, plus Geneva and Maddie (real). Emails are `<firstname>@placeholder.thepbjar.club` so they're easy to find. May 4-31 availability + schedule (~99 availability entries, ~92 shifts) loaded so Geneva can preview the system. Window "May 2026" is open. **Cleanup when done:** `DELETE FROM auth.users WHERE email LIKE '%@placeholder.thepbjar.club';` cascades through profile + shifts + availability_entries. **When Geneva sends real emails/last names:** UPDATE the `email` + `full_name` on the existing profile rows rather than creating new ones — preserves the seeded data and triggers a Supabase password-reset flow on the new email.
+
 ---
 
 ## Geneva walkthrough — 2026-04-28 outcomes
