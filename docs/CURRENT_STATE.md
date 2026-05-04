@@ -3,6 +3,14 @@
 > **Snapshot date:** 2026-05-04 (post-Geneva-queue cleanup)
 > **For a fresh Claude session:** read this first. It's the single source of truth for what's shipped, what's been tried-and-shelved, and what's next. When in doubt, trust `git log`, Supabase schema, and the Vercel production deployment over anything written anywhere else.
 
+## Other 2026-05-04 QA items parked for later
+
+- **Daily checklists historical view.** Geneva wants to look back at completed checklists by date or pull a month-range report. Today the daily view shows today only. Add a date picker (admin sees any past day, read-only) + a "Date range report" view that aggregates completion %/who-completed-what across N days. Possibly an export-to-CSV. Mid-effort.
+- **Membership types + Court Reserve scan.** Sami's instinct: scan what CR API exposes that's club-level config we could surface in CourtOps Settings. **What I found:** the existing `src/lib/courtreserve.ts` already has `getMembershipTypes()` — CR has the endpoint, we just don't store/display the result anywhere. To ship membership-type display in Settings, the lift is: (1) cache CR membership types in a `cr_membership_types` table on each sync, (2) Settings → Memberships sub-page reads from there. Worth investigating other CR endpoints for org-level info (location, hours, courts, programs) — that would inform whether address/hours fields in Settings should be auto-populated from CR vs manually entered. Current approach: address/website are manual, hours are manual via Settings → General.
+- **Checklists admin under Settings (IA question).** Sami mused that maybe Checklists Admin shouldn't be a top-level destination — could fit under Settings as a config page. Open question. No action; revisit when more module IA decisions come up.
+
+---
+
 ## Next-up redesign — split "operational" into "schedulable" vs "expected to submit availability"
 
 Sami flagged 2026-05-04 (during testing): the current `is_operational_staff` flag conflates two different concepts and the language doesn't match what either word actually means. We need three orthogonal axes on a profile:
