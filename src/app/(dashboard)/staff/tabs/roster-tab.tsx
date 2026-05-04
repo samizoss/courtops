@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import type { Profile, Role } from '@/types/database'
+import { EditStaffModal } from '@/components/edit-staff-modal'
+import { SHIFT_ROLE_LABELS, type Profile, type Role } from '@/types/database'
 
 const roleBadge: Record<Role, string> = {
   owner: 'bg-orange-500/10 text-orange-400',
@@ -17,12 +18,14 @@ interface Props {
   orgId: string
 }
 
-export function RosterTab({ profiles, isAdmin, orgId }: Props) {
+export function RosterTab({ profiles: initial, isAdmin, orgId }: Props) {
   const router = useRouter()
+  const [profiles, setProfiles] = useState(initial)
   const [showAdd, setShowAdd] = useState(false)
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState('')
   const [togglingId, setTogglingId] = useState<string | null>(null)
+  const [editing, setEditing] = useState<Profile | null>(null)
   const [form, setForm] = useState({ full_name: '', email: '', password: '', role: 'staff' as Role })
 
   async function handleToggleOperational(profileId: string, current: boolean) {
@@ -35,6 +38,9 @@ export function RosterTab({ profiles, isAdmin, orgId }: Props) {
         .update({ is_operational_staff: !current })
         .eq('id', profileId)
       if (updateError) throw updateError
+      setProfiles((prev) =>
+        prev.map((p) => (p.id === profileId ? { ...p, is_operational_staff: !current } : p))
+      )
       router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update')
@@ -143,41 +149,80 @@ export function RosterTab({ profiles, isAdmin, orgId }: Props) {
       )}
 
       <div className="bg-gray-900 rounded-xl overflow-hidden divide-y divide-gray-800/50">
-        {profiles.map((p) => (
-          <div key={p.id} className="flex items-center gap-4 px-5 py-4">
-            <div className="w-9 h-9 rounded-full bg-gray-800 flex items-center justify-center text-sm font-bold text-gray-400">
-              {p.full_name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+        {profiles.map((p) => {
+          const placeholder = p.email.endsWith('@placeholder.thepbjar.club')
+          return (
+            <div key={p.id} className="flex items-center gap-3 px-5 py-4">
+              <div className="w-9 h-9 rounded-full bg-gray-800 flex items-center justify-center text-sm font-bold text-gray-400 shrink-0">
+                {p.full_name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm font-medium text-white truncate">{p.full_name}</p>
+                  {placeholder && (
+                    <span className="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-yellow-500/10 text-yellow-400">
+                      Placeholder
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500 truncate">{p.email}</p>
+                {(p.phone || p.target_weekly_hours != null || (p.capabilities && p.capabilities.length > 0)) && (
+                  <p className="text-[10px] text-gray-600 mt-0.5 flex items-center gap-2 flex-wrap">
+                    {p.phone && <span>{p.phone}</span>}
+                    {p.target_weekly_hours != null && <span>· target {p.target_weekly_hours}h/wk</span>}
+                    {p.capabilities && p.capabilities.length > 0 && (
+                      <span>· {p.capabilities.map((c) => SHIFT_ROLE_LABELS[c] ?? c).join(', ')}</span>
+                    )}
+                  </p>
+                )}
+              </div>
+              <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${roleBadge[p.role]}`}>
+                {p.role}
+              </span>
+              {isAdmin ? (
+                <button
+                  onClick={() => handleToggleOperational(p.id, p.is_operational_staff)}
+                  disabled={togglingId === p.id}
+                  className={`text-xs px-2 py-0.5 rounded-full transition-colors disabled:opacity-50 shrink-0 ${
+                    p.is_operational_staff
+                      ? 'bg-green-500/10 text-green-400 hover:bg-green-500/20'
+                      : 'bg-gray-800 text-gray-500 hover:bg-gray-700'
+                  }`}
+                  title={p.is_operational_staff ? 'Click to mark as non-operational (hidden from schedule)' : 'Click to mark as operational staff'}
+                >
+                  {p.is_operational_staff ? 'Operational' : 'Non-operational'}
+                </button>
+              ) : (
+                p.is_operational_staff && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/10 text-green-400 shrink-0">
+                    Operational
+                  </span>
+                )
+              )}
+              {isAdmin && (
+                <button
+                  onClick={() => setEditing(p)}
+                  className="text-xs text-gray-500 hover:text-orange-400 transition-colors shrink-0"
+                >
+                  Edit
+                </button>
+              )}
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-white">{p.full_name}</p>
-              <p className="text-xs text-gray-500">{p.email}</p>
-            </div>
-            <span className={`text-xs px-2 py-0.5 rounded-full ${roleBadge[p.role]}`}>
-              {p.role}
-            </span>
-            {isAdmin ? (
-              <button
-                onClick={() => handleToggleOperational(p.id, p.is_operational_staff)}
-                disabled={togglingId === p.id}
-                className={`text-xs px-2 py-0.5 rounded-full transition-colors disabled:opacity-50 ${
-                  p.is_operational_staff
-                    ? 'bg-green-500/10 text-green-400 hover:bg-green-500/20'
-                    : 'bg-gray-800 text-gray-500 hover:bg-gray-700'
-                }`}
-                title={p.is_operational_staff ? 'Click to mark as non-operational (hidden from schedule)' : 'Click to mark as operational staff'}
-              >
-                {p.is_operational_staff ? 'Operational' : 'Non-operational'}
-              </button>
-            ) : (
-              p.is_operational_staff && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/10 text-green-400">
-                  Operational
-                </span>
-              )
-            )}
-          </div>
-        ))}
+          )
+        })}
       </div>
+
+      {editing && (
+        <EditStaffModal
+          profile={editing}
+          canChangeRole={editing.role !== 'owner'}
+          onClose={() => setEditing(null)}
+          onSaved={(updated) => {
+            setProfiles((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
+            setEditing(null)
+          }}
+        />
+      )}
     </div>
   )
 }

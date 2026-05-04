@@ -11,18 +11,22 @@ import {
   startOfDay,
   visibleRange,
 } from '@/lib/calendar'
-import type {
-  Profile,
-  ShiftRole,
-  ScheduleShift,
-  AvailabilityEntry,
-  TimeOffRequest,
+import {
+  ALL_SHIFT_ROLES,
+  SHIFT_ROLE_LABELS,
+  type Profile,
+  type ShiftRole,
+  type ScheduleShift,
+  type AvailabilityEntry,
+  type TimeOffRequest,
 } from '@/types/database'
 import type { OrgHours } from '../staff-module'
 
 const roleColors: Record<ShiftRole, string> = {
   'front-desk': 'bg-blue-500/15 text-blue-300 border-blue-500/30',
   coaching: 'bg-green-500/15 text-green-300 border-green-500/30',
+  instructor: 'bg-purple-500/15 text-purple-300 border-purple-500/30',
+  'league-leader': 'bg-pink-500/15 text-pink-300 border-pink-500/30',
   management: 'bg-orange-500/15 text-orange-300 border-orange-500/30',
   other: 'bg-gray-500/15 text-gray-300 border-gray-500/30',
 }
@@ -505,10 +509,9 @@ function DayAssignPopover({
                 onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as ShiftRole }))}
                 className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm text-white focus:outline-none focus:ring-1 focus:ring-orange-500"
               >
-                <option value="front-desk">Front Desk</option>
-                <option value="coaching">Coaching</option>
-                <option value="management">Management</option>
-                <option value="other">Other</option>
+                {ALL_SHIFT_ROLES.map((r) => (
+                  <option key={r} value={r}>{SHIFT_ROLE_LABELS[r]}</option>
+                ))}
               </select>
             </div>
             <div>
