@@ -114,8 +114,13 @@ export function EditStaffModal({
       const result = data as { success?: boolean; error?: string; email_changed?: boolean }
       if (result?.error) throw new Error(result.error)
 
-      // Optionally trigger password reset on the new email so the staffer can set their own.
-      if (sendReset && (result?.email_changed || emailChanged)) {
+      // Optionally trigger password reset on save. Two cases:
+      //  - Email is changing → upgrades a placeholder account; reset is the
+      //    onboarding trigger.
+      //  - Email isn't changing → admin just wants to send the staffer a
+      //    fresh login link (e.g. re-onboarding, forgot pw on their behalf).
+      // The checkbox is now always available; previously it was email-change-only.
+      if (sendReset) {
         const { error: resetError } = await supabase.auth.resetPasswordForEmail(
           form.email.trim(),
           { redirectTo: `${window.location.origin}/reset-password` }
@@ -123,7 +128,7 @@ export function EditStaffModal({
         if (resetError) {
           toast(`Saved, but password reset email failed: ${resetError.message}`, 'error')
         } else {
-          toast('Saved + password reset email sent')
+          toast(`Saved + password reset email sent to ${form.email.trim()}`)
         }
       } else {
         toast('Staff profile saved')
@@ -315,24 +320,26 @@ export function EditStaffModal({
             </div>
           </label>
 
-          {emailChanged && (
-            <label className="flex items-start gap-2 cursor-pointer p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-              <input
-                type="checkbox"
-                checked={sendReset}
-                onChange={(e) => setSendReset(e.target.checked)}
-                className="mt-0.5 w-3.5 h-3.5 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
-              />
-              <div>
-                <p className="text-xs text-blue-300 font-medium">
-                  Email is changing — send password reset to {form.email.trim() || 'new address'}?
-                </p>
-                <p className="text-[10px] text-blue-300/70 mt-0.5">
-                  They&apos;ll get a link to set their own password. Use this for placeholder accounts being upgraded with the staffer&apos;s real email.
-                </p>
-              </div>
-            </label>
-          )}
+          <label className="flex items-start gap-2 cursor-pointer p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+            <input
+              type="checkbox"
+              checked={sendReset}
+              onChange={(e) => setSendReset(e.target.checked)}
+              className="mt-0.5 w-3.5 h-3.5 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
+            />
+            <div>
+              <p className="text-xs text-blue-300 font-medium">
+                {emailChanged
+                  ? `Email is changing — send password reset to ${form.email.trim() || 'new address'}?`
+                  : `Send password reset email to ${form.email.trim() || 'this address'}?`}
+              </p>
+              <p className="text-[10px] text-blue-300/70 mt-0.5">
+                {emailChanged
+                  ? "They'll get a link to set their own password. Use this for placeholder accounts being upgraded with the staffer's real email."
+                  : "They'll get a link to set or reset their password. Use this to onboard a staffer who hasn't logged in yet, or to send a fresh link on their behalf."}
+              </p>
+            </div>
+          </label>
 
           {canDelete && (
             <div className="pt-4 border-t border-gray-800">

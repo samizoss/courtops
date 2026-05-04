@@ -1,37 +1,130 @@
 # CourtOps — Current State
 
-> **Snapshot date:** 2026-05-04 (post-Geneva-queue cleanup)
-> **For a fresh Claude session:** read this first. It's the single source of truth for what's shipped, what's been tried-and-shelved, and what's next. When in doubt, trust `git log`, Supabase schema, and the Vercel production deployment over anything written anywhere else.
-
-## Other 2026-05-04 QA items parked for later
-
-- **Daily checklists historical view.** Geneva wants to look back at completed checklists by date or pull a month-range report. Today the daily view shows today only. Add a date picker (admin sees any past day, read-only) + a "Date range report" view that aggregates completion %/who-completed-what across N days. Possibly an export-to-CSV. Mid-effort.
-- **Membership types + Court Reserve scan.** Sami's instinct: scan what CR API exposes that's club-level config we could surface in CourtOps Settings. **What I found:** the existing `src/lib/courtreserve.ts` already has `getMembershipTypes()` — CR has the endpoint, we just don't store/display the result anywhere. To ship membership-type display in Settings, the lift is: (1) cache CR membership types in a `cr_membership_types` table on each sync, (2) Settings → Memberships sub-page reads from there. Worth investigating other CR endpoints for org-level info (location, hours, courts, programs) — that would inform whether address/hours fields in Settings should be auto-populated from CR vs manually entered. Current approach: address/website are manual, hours are manual via Settings → General.
-- **Checklists admin under Settings (IA question).** Sami mused that maybe Checklists Admin shouldn't be a top-level destination — could fit under Settings as a config page. Open question. No action; revisit when more module IA decisions come up.
+> **Snapshot date:** 2026-05-04 (post-Sami QA round 2)
+> **For a fresh Claude session:** read this top-to-bottom. Document is organized newest-first: today's session log (full conversation context + decisions) → active queue → historical session logs → infrastructure reference (DB, migrations, env, gotchas) → operational notes. When in doubt about live state, trust `git log`, Supabase schema, and the Vercel production deployment over anything written here.
 
 ---
 
-## Next-up redesign — split "operational" into "schedulable" vs "expected to submit availability"
+## 2026-05-04 — Full session log
 
-Sami flagged 2026-05-04 (during testing): the current `is_operational_staff` flag conflates two different concepts and the language doesn't match what either word actually means. We need three orthogonal axes on a profile:
+This day was three phases: (1) the morning 04-28 Geneva-walkthrough queue cleanup, (2) Sami's afterhours QA round 1 against the deploys, (3) QA round 2 on top of round 1. Captured in the order they happened so future sessions can follow the reasoning.
 
-1. **active** (`profiles.is_active`) — account login. **Stays as-is.**
-2. **schedulable** (currently `profiles.is_operational_staff`) — *can* be scheduled for shifts. Mike Thelen, Travis Thie, Kevin Plank, dev accounts → false. Real front-desk staff → true. **DB column stays named `is_operational_staff` for now to avoid a sweep; UI label is now "On schedule" / "Off schedule".** Rename later if it becomes confusing in code reviews.
-3. **expected to submit availability for a specific window** — NEW. Per-window assignee list, not a profile flag. Travis is schedulable (someday) but isn't expected to submit availability monthly; Mike isn't even schedulable; everyone else IS expected.
+### Phase 1 — Geneva walkthrough queue cleanup (PRs #13–#21)
 
-**Design (Sami's proposal, agreed):**
-- New table `availability_window_assignees(window_id, user_id, UNIQUE(window_id, user_id))`.
-- When admin opens a window: form pre-populates the assignee list from the *last* window's assignees (carry-forward — important for large clubs that don't want to re-pick every month). First-ever window defaults to all currently-schedulable staff.
-- Admin can add/remove individual assignees during open-window flow OR after the fact via a "Manage assignees" button on each open window.
-- "X/Y submitted" badge on the window pill becomes Y = assignee count, not org-wide schedulable count.
-- AvailabilityByDateTab: rows shown to admin = the window's assignees only. Staff still see only their own row (unchanged).
+The 2026-04-28 meeting with Geneva produced 13 explicit asks (see "Historical: Geneva walkthrough — 2026-04-28 outcomes" further down) plus 4 same-day extras Sami added. All shipped today across 9 PRs.
+
+**Headline:** the magic-schedule button (`✨ Magic schedule`) — Sami told Geneva "won't be perfect but should at least be ready" by the 2026-05-05 meeting. It is, and it isn't perfect. The greedy heuristic: per day in the visible range, find operational staff whose `availability_entries.is_available=true`, not on time off, no existing shift, target > 0; sort furthest-below-target first; parse stated hours into blocks (fallback 9–2 if unparseable); skip if assigning would push them over target; bulk INSERT as drafts (`published_at=null`). Admin reviews the dashed-border drafts and either edits or hits "Publish drafts".
+
+**Same-day extras worth noting:**
+- **Phone + multi-role capabilities** (PR #13) — added `profiles.phone` and `profiles.capabilities text[]`. The capabilities array tags what kinds of work a staffer can do (front-desk / coaching / instructor / league-leader / management / other). Magic-schedule uses this when picking the role for a draft shift.
+- **Extended viewer role** (PR #20) — see "Owner is platform-level" decision below. Triggered by Sami flagging that Travis + Kevin (co-owners at The Jar) need admin visibility but not edit ability.
+- **Month pills compact range** (PR #21) — Sami flagged mid-flight: "for Alesia's shift, this is great. I just want to say 7a-2:30p so you could easily see the start and end time." Switched from start-only to `fmtTimeRange12hCompact`.
+- **Admin role-change in ShiftDetailPopover** (PR #21) — Sami: "I love when we click on it that you can remove the shift, but I would love to be able to change the role of that shift as well." Added a role select inside the popover with inline Save.
+
+**Conversation highlight — restaurant-style timeline:** Sami flagged that month pills work but week + day were too cell-grid-y. "For the week, can it show the hourly breakdown, like almost like a schedule, like a restaurant scheduler or something like that? On the day view deal, just by you know two minutes or by hour or something like that." Built a new `<ScheduleTimeGrid>` (PR #17) — vertical time axis on the left, day columns horizontally, shifts as positioned blocks with greedy left-pack lane assignment so overlaps render as side-by-side blocks not merged. AM/PM throughout via new `src/lib/format.ts`.
+
+### Phase 2 — Design conversation: roles + ownership (mid-afternoon)
+
+Pivot point in the day. Sami pasted Geneva's roster spreadsheet (13 staff with first/last/email/cell/ideal hours/other roles/works front desk) and asked three things — captured here verbatim because the answers shape everything:
+
+**Q1: How does the spreadsheet translate into CourtOps without making it club-specific?**
+**A:** Maps cleanly to existing fields. Other-roles ("LTP Instructor", "League Manager", "Coach", "General Manager", "Co-Owner", "Social Media Coordinator") slot into the existing 6-value capabilities enum, with "Social Media Coordinator" landing in `'other'` because there's no clean fit.
+
+**Q2: Per-club configurable role types — should we build now?**
+**A:** Defer until pilot #2. The 6-value enum covers The Jar's full taxonomy. When club #2 onboards with different role names ("we don't have league leaders, we have program directors"), that's the trigger to ship `org_shift_roles` table + Settings UI + dynamic colors. Before then it's premature flexibility.
+
+**Q3: Travis + Kevin are co-owners but want visibility, not edit ability. Common pattern?**
+**A:** Yes — common in clubs with absentee or supervisory owners, investors, multi-location franchisees, etc. Sami's specific direction: **"owner should really just be developer/company owner.. it's not by org it's literally me and my developer who will have this access to every org."** This means:
+- `owner` role = CourtOps platform-level (Sami + future devs with cross-org access). Not for per-org club owners.
+- Per-org club owners → `admin` (need edit access).
+- Per-org co-owners / silent partners → `viewer` with admin-level *visibility* but no edit. Implemented in PR #20.
+
+### Phase 3 — Sami's QA round 1 (PR #22)
+
+Tested the merged work; found a bug pattern. **Logo doesn't save** in Settings → General even with the Save button. **Roster operational toggle doesn't save**.
+
+Diagnosis: same root cause for both. RLS was enabled on `orgs`, `org_settings`, and `profiles` with **only SELECT policies** — UPDATEs were silently filtered to 0 rows with no error. Client saw "success" but nothing persisted. EditStaffModal worked through this because it uses a SECURITY DEFINER RPC (`update_staff_profile`) that bypasses RLS.
+
+**Fixes (migrations 011, 012):**
+- Owner/admin UPDATE policies on `orgs`, `org_settings`, `profiles`.
+- Self-update policy on profiles (forward-looking).
+- Both client paths now `.select()` after update + throw on 0 rows so a future RLS regression fails loudly instead of silently.
+
+**Same PR also addressed:**
+- **Address + website_url** in Settings → General (Sami: "would like address, website url, etc"). Manual entry today; might auto-populate from CR API later if it exposes club-level details.
+- **Sticky save bar** in Settings — was easy to miss. Now bottom-pinned, dimmed when not dirty, orange "Save Changes" + "Unsaved changes" hint when dirty.
+- **`is_hidden` profile flag** (migration 013) — Sami: "developers shouldn't show on anyone's roster. that should be a hidden user thing." Backfills the 3 `sami+*` dev accounts to hidden. Page queries (Roster, Team Settings) filter `is_hidden=false`. EditStaffModal got a Hide toggle so future dev accounts can be flagged via UI.
+- **Roster toggle label clarification:** "Operational/Non-operational" → "On schedule / Off schedule" with helper text distinguishing it from active/inactive in Team Settings.
+- **Window Delete link** (admin only) on availability windows — Sami: "I can't see how I'm supposed to be able to delete a window."
+
+### Phase 4 — Big design conversation: untangling "operational" vs "active" (~6pm)
+
+Sami flagged a real conceptual problem mid-PR-22:
+
+> "I feel like we have 'operational' and 'active' doing the same thing, and neither are completely true to the definition of their word. Mike may be an ops staff but he is not a 'submit your availability staff'."
+
+> "Active/inactive should remain and should be their own property. We need a term for the staff that can be scheduled and an additional way to indicate we expect availability submissions from them. Example, Travis may work the front desk someday, but he doesn't have to submit availability each month. Maybe it's in the 'window' part where they can put optional or no for avail requests? I'd want it to remember the last window's settings so it's easy to do month over month for larger clubs?"
+
+**Agreed design (queued, not yet implemented):**
+
+Three orthogonal axes on a profile:
+1. **active** (`profiles.is_active`) — account login. Stays as-is.
+2. **schedulable** (currently mis-named `profiles.is_operational_staff`) — *can* be scheduled for shifts. Mike Thelen, Travis Thie, Kevin Plank, dev accounts → false. Real front-desk staff → true. **DB column stays as-is for now (rename is a sweep); UI label is now "On schedule" / "Off schedule".**
+3. **expected to submit availability for a specific window** — NEW concept, NOT a profile flag. Per-window assignee list.
+
+**Schema:** `availability_window_assignees(window_id, user_id, UNIQUE(window_id, user_id))`.
+
+**Admin UX (Sami's spec):**
+- When opening a window: form pre-populates assignee list from the *previous* window's assignees (carry-forward — important for large clubs that don't want to re-pick every month). First-ever window defaults to all currently-schedulable staff.
+- Admin can add/remove individual assignees during open-window flow OR after via a "Manage assignees" button on each open window.
+- "X/Y submitted" badge becomes Y = window's assignee count, not org-wide.
+- AvailabilityByDateTab admin view shows rows for assignees only. Staff see only their own row (unchanged).
 - Locking the window doesn't change assignee list.
 
-**Implementation effort:** medium. Migration for the new table, UI for the assignee picker (multi-select with checkboxes, defaults pre-checked), wiring through the existing window strip. ~half-day PR.
+**Implementation effort:** medium. Migration + multi-select UI + carry-forward logic. ~half-day PR. **This is the next major piece.**
+
+### Phase 5 — QA round 2 (PR #23, in flight)
+
+**Q: How do existing seeded staff log in?**
+The 11 imported placeholders (everyone except Geneva and Maddie who were already real) had `auth.users.email` updated to real addresses but their passwords are random unusable hashes. They literally cannot log in until they trigger a password reset. Two paths:
+- **Self-service:** staffer goes to `courtops.app/login` → "Forgot password" → enters their real email → gets reset link → sets password.
+- **Admin-initiated:** Sami opens the EditStaffModal for each staffer → ticks "Send password reset email" (PR #23 made this checkbox always available, not gated on email-change) → save → Supabase fires the reset email.
+
+**Geneva's bulk-onboarding flow:** Sami either (a) sends each staffer the URL `thepbjar.courtops.app/login` and tells them to use Forgot Password, OR (b) opens each Edit modal and ticks the reset checkbox to push the email himself. Once they reset, they're in. No `is_active` toggle needed — the staff are already active, just lack a usable password.
+
+PR #23 also addresses the documentation request — this CURRENT_STATE.md restructure (full session log, conversation context preserved).
+
+**Roster table redesign (queued, NOT in PR #23):**
+Sami: "On the roster views, can we make it a little easier to see and sort? I don't mind the UX, like the dark and all that stuff, but I would love for it to be more table-esque so you could filter and sort by role or sort by last name on schedule, off schedule, et cetera."
+
+Plan: convert the current card-list Roster to a table with sortable column headers (name, role, capabilities, target hrs, on/off-schedule). Add filter chips above the table for role + on-schedule status. Touches `src/app/(dashboard)/staff/tabs/roster-tab.tsx` only; ~2 hour PR.
 
 ---
 
-## 2026-05-04 — All 13 Geneva-walkthrough items shipped + design decisions captured
+## Active queue (post-2026-05-04)
+
+Roughly priority-ordered. The first two items are the most-anticipated by Sami.
+
+1. **Schedulable vs submits-availability redesign** (Phase 4 above) — `availability_window_assignees` table + carry-forward UI + assignee-aware submission counter.
+2. **Roster table redesign** (Phase 5 above) — sortable table + filter chips.
+3. **Daily checklists historical view** — Geneva wants to look back at past days. Add a date picker (admin sees any past day, read-only) + a date-range report aggregating completion %/who-completed-what across N days. Possibly CSV export. Mid-effort.
+4. **Membership types in Settings + CR API scan** — Sami: "I'm wondering if we shouldn't scan the court reserve API and see what just informational stuff we should be able to get from the court reserve sync." **Already discovered:** `src/lib/courtreserve.ts` has `getMembershipTypes()` — endpoint exists, we just don't store/display the result. Lift: cache CR membership types in `cr_membership_types` table on each sync, Settings → Memberships sub-page reads from there. Worth investigating other CR endpoints (location, hours, courts, programs) to inform whether address/hours fields should auto-populate from CR.
+5. **Per-club configurable role types** — defer until pilot #2 with different taxonomy.
+6. **RLS sweep for viewer writes** — most tables still allow any org member to write at the DB level. Viewer write-blocking is UI-only today. Acceptable for trusted pilot (Travis/Kevin); harden when a less-trusted viewer joins.
+7. **Checklists Admin IA question** — Sami mused that maybe Checklists Admin shouldn't be a top-level destination. Open question, no action.
+8. **Twilio provisioning** for window-open SMS notifications.
+9. **Pipeline auto-advance** + **CR sync cron**.
+10. **Shift-swap split** from Time Off.
+
+### Lower-priority (not committed for any near-term meeting)
+
+- **Preferences** ("I prefer to close on Sunday nights") — soft hint per staffer the magic-schedule could weight.
+- **Window-open SMS notifications** — waits for Twilio.
+- **Per-staffer preferred openers / closers** — Geneva mused about it but didn't ask for it explicitly.
+
+---
+
+## Historical: 2026-05-04 PR-by-PR ledger (all 17+ items shipped)
 
 Sami pushed through the entire 2026-04-28 Geneva walkthrough queue today, plus four extras that came up in the session. Live on `courtops.app`/`thepbjar.courtops.app` since the merges:
 
@@ -72,7 +165,7 @@ Sami pushed through the entire 2026-04-28 Geneva walkthrough queue today, plus f
 
 ---
 
-## Geneva walkthrough — 2026-04-28 outcomes
+## Historical: Geneva walkthrough — 2026-04-28 outcomes
 
 Sami walked Geneva through PR #12 live. She liked the direction; specific feedback (in roughly the order she raised it) becomes the new ordered queue. **Next meeting ~2026-05-05** — Sami committed to having all of this ready, with the "magic schedule" button as the headline stretch item.
 
@@ -478,36 +571,19 @@ Clean at the moment. Recent bug fixes (all shipped on 2026-04-21):
 
 ---
 
-## Next up (ordered)
+## Historical: Pre-Geneva-walkthrough next-up list (2026-04-21, mostly subsumed)
 
-Per Sami's 2026-04-21 direction, these come first before new features:
+This was the prioritization before Geneva's 2026-04-28 walkthrough generated a more concrete queue. Items not yet shipped roll forward into Active queue above; rest is here for context.
 
-1. **Work through the Staff module** — Geneva is the primary user; it's in Phase 1. Pay close attention to the April 14 Geneva requirements doc (`docs/2026-04-14-geneva-phase-1-2-requirements.md`). Items still open there:
-   - **Monthly availability submission** (currently weekly) — 1.1 in that doc. Highest priority.
-   - **Schedule builder: availability-aware click-to-assign** — partially done (1.2). Needs availability overlay, draft/publish flow, and print-friendly month view.
-   - **Hours summary: scheduled vs actual with variance flagging** (1.4) — currently only shows actual hours.
-   - **Clock notes visibility UI** (1.5) — the column exists on `org_settings` but there's no UI to toggle it yet.
-   - **Admin-view visual differentiation** — distinct tint/indicator so you know when you're in a privileged view.
-   - **Business hours setting** — open/close per day + buffer min; affects scheduling grid.
-2. **Troubleshooting** — whatever Geneva flags while using the Staff module live. No features until reported issues are resolved.
-3. **Update availability** — convert Sunday-Saturday weekly to the month-level submission flow (see 1.1 above). Includes: admin opens a window ("Submit May availability by ___"), triggers a staff notification, staff sees a month calendar with configurable slot increments, save-draft + final-submit, admin sees who's submitted vs pending.
-4. **Time Off → Shift Swap split** — currently the Time Off tab handles both. Per Geneva (1.3), split shift-swap into its own flow:
-   - Only available after the schedule is published
-   - Staff picks the shift they're swapping
-   - Direct it at a specific coworker OR post as open to anyone available
-   - Coworker accept/decline + admin approve/deny
-   - Approved swap updates the schedule automatically
-
-### After the staff module shakedown
-Roughly prioritized, revisit with the user before starting:
-- **Checklist reworks** — Phase 2 of Geneva's doc. Frequencies beyond opening/midday/closing (daily, weekly, monthly, etc.), items with optional SOP links, completion reporting.
-- **Shift swap notifications in-app** — wire the notification creation utility to fire on swap requests, approvals, and new leads (only widget currently fires).
-- **Court Reserve sync cron** — we run it manually via the "Sync Now" button. Needs a scheduled trigger (Vercel cron or a Supabase edge function + pg_cron).
-- **Twilio provisioning** — UI is built; requires A2P 10DLC registration (~$14, 1–2 weeks) and one sub-account per org. See CLAUDE.md Messaging section.
+- **Checklist reworks** — Phase 2. Frequencies beyond opening/midday/closing (daily, weekly, monthly), optional SOP links per item, completion reporting. (Roll-forward.)
+- **Shift swap notifications in-app** — wire notification creation utility to fire on swap requests, approvals, and new leads. (Currently only widget fires `new_lead`.)
+- **Court Reserve sync cron** — manual "Sync Now" button works; needs scheduled trigger. (In Active queue.)
+- **Twilio provisioning** — UI built; requires A2P 10DLC registration (~$14, 1–2 weeks) and one sub-account per org. (In Active queue.)
 - **Reporting module expansion** — Phase P1 per PRD. Staff performance, member tier trends, checklist completion rates.
-- **Pipeline auto-advance + cadence-driven task auto-creation** — cadence_rules table exists; no engine writes to tasks yet.
+- **Pipeline auto-advance + cadence-driven task auto-creation** — cadence_rules table exists; no engine writes to tasks yet. (In Active queue.)
 - **Landing page at root `courtops.app`** — currently redirects to login. P2.
-- **Ambassador / Instructor / League Leader roles** — mentioned by Geneva but deferred until there's a staffing scenario that needs it.
+- **Clock notes visibility UI** — column exists on `org_settings`, no UI to toggle yet.
+- **Admin-view visual differentiation** — distinct tint/indicator so admins know when they're in a privileged view.
 
 ---
 
