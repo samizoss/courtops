@@ -5,24 +5,35 @@ import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/toast'
 import { CalendarMonthGrid } from '@/components/calendar-month-grid'
 import {
+  ScheduleTimeGrid,
+  type ShiftWithProfile,
+  getRoleBadgeColor,
+  getRoleShortLabel,
+} from '@/components/schedule-time-grid'
+import {
   ViewMode,
   fmtDateKey,
+  fmtDateRangeLabel,
   fmtShortDate,
   startOfDay,
+  stepAnchor,
   visibleRange,
 } from '@/lib/calendar'
+import { fmtTime12h, fmtTimeRange12h, fmtTimeRange12hCompact } from '@/lib/format'
 import {
   ALL_SHIFT_ROLES,
   SHIFT_ROLE_LABELS,
   type Profile,
   type ShiftRole,
-  type ScheduleShift,
   type AvailabilityEntry,
   type TimeOffRequest,
 } from '@/types/database'
 import type { OrgHours } from '../staff-module'
 
-const roleColors: Record<ShiftRole, string> = {
+// Compact pill colors for the month-view cells. Distinct from the timeline
+// block colors so month cells don't visually shout — month is the
+// at-a-glance view, week/day are the detail views.
+const monthPillColors: Record<ShiftRole, string> = {
   'front-desk': 'bg-blue-500/15 text-blue-300 border-blue-500/30',
   coaching: 'bg-green-500/15 text-green-300 border-green-500/30',
   instructor: 'bg-purple-500/15 text-purple-300 border-purple-500/30',
@@ -31,9 +42,6 @@ const roleColors: Record<ShiftRole, string> = {
   other: 'bg-gray-500/15 text-gray-300 border-gray-500/30',
 }
 
-interface ShiftWithProfile extends ScheduleShift {
-  profile?: { full_name: string }
-}
 interface TimeOffWithProfile extends TimeOffRequest {
   profile?: { full_name: string }
 }
@@ -96,6 +104,48 @@ function parseLooseHHMM(raw: string): number | null {
   return h * 60 + m
 }
 
+/**
+ * Resolve the (open, close) hour pair to use for the timeline axis. Pull
+ * from org_settings.daily_hours / open_time / close_time when present, fall
+ * back to 5 AM – 11 PM (Sami's default — covers The Jar's typical 7 AM open
+ * to 10 PM close with buffer for the staff-arrive-before / depart-after
+ * settings).
+ */
+function getTimelineRange(orgHours?: OrgHours): { startHour: number; endHour: number } {
+  const fallback = { startHour: 5, endHour: 23 }
+  if (!orgHours) return fallback
+
+  const collectHours: number[] = []
+  if (orgHours.daily_hours) {
+    for (const v of Object.values(orgHours.daily_hours)) {
+      const o = parseTimeMinutes(v.open)
+      const c = parseTimeMinutes(v.close)
+      if (o != null) collectHours.push(o / 60)
+      if (c != null) collectHours.push(c / 60)
+    }
+  }
+  if (orgHours.open_time) {
+    const o = parseTimeMinutes(orgHours.open_time)
+    if (o != null) collectHours.push(o / 60)
+  }
+  if (orgHours.close_time) {
+    const c = parseTimeMinutes(orgHours.close_time)
+    if (c != null) collectHours.push(c / 60)
+  }
+  if (collectHours.length === 0) return fallback
+
+  const minH = Math.min(...collectHours)
+  const maxH = Math.max(...collectHours)
+  // Pad ±1 hour for staff-arrive-before / depart-after, then clamp to a
+  // full-hour grid.
+  const startHour = Math.max(0, Math.floor(minH - 1))
+  const endHour = Math.min(24, Math.ceil(maxH + 1))
+  // If the window is too tight (single point or otherwise unreliable),
+  // fall back to the default 18-hour day.
+  if (endHour - startHour < 6) return fallback
+  return { startHour, endHour }
+}
+
 export function ScheduleTab({
   shifts,
   profiles,
@@ -103,6 +153,7 @@ export function ScheduleTab({
   orgId,
   availabilityEntries,
   timeOffRequests,
+  orgHours,
   currentUser,
 }: Props) {
   const router = useRouter()
@@ -110,7 +161,16 @@ export function ScheduleTab({
   const [mode, setMode] = useState<ViewMode>('week')
   const [anchor, setAnchor] = useState<Date>(() => startOfDay(new Date()))
   const [filter, setFilter] = useState<FilterMode>(isAdmin ? 'all' : 'mine')
+
+  // Two distinct popovers:
+  //  - dayPopover: the Assign-modal for a date (admin only). Set when admin
+  //    clicks an empty area or "+ Assign".
+  //  - shiftDetail: the detail/edit popover for a specific existing shift.
+  //    Set when ANY user clicks a shift block/pill.
   const [dayPopover, setDayPopover] = useState<Date | null>(null)
+  const [shiftDetail, setShiftDetail] = useState<ShiftWithProfile | null>(null)
+
+  const { startHour, endHour } = useMemo(() => getTimelineRange(orgHours), [orgHours])
 
   const timeOffMap = useMemo(() => {
     const map: Record<string, Set<string>> = {}
@@ -144,11 +204,18 @@ export function ScheduleTab({
     return map
   }, [shifts])
 
-  const visibleShifts = (date: Date): ShiftWithProfile[] => {
+  const filteredShifts = useMemo<ShiftWithProfile[]>(() => {
+    if (filter === 'mine') return shifts.filter((s) => s.user_id === currentUser.userId)
+    return shifts
+  }, [shifts, filter, currentUser.userId])
+
+  const visibleShiftsForDate = (date: Date): ShiftWithProfile[] => {
     const all = shiftsByDate[fmtDateKey(date)] ?? []
     if (filter === 'mine') return all.filter((s) => s.user_id === currentUser.userId)
     return all
   }
+
+  const weekRangeStart = useMemo(() => visibleRange(anchor, 'week').start, [anchor])
 
   const hoursSummary = useMemo(() => {
     const range = visibleRange(anchor, mode === 'day' ? 'week' : mode)
@@ -184,59 +251,122 @@ export function ScheduleTab({
       .sort((a, b) => a.profile.full_name.localeCompare(b.profile.full_name))
   }, [profiles, shifts, availabilityEntries, anchor, mode])
 
+  const toolbarRight = (
+    <div className="flex items-center gap-1 ml-2">
+      {(['mine', 'all'] as FilterMode[]).map((f) => (
+        <button
+          key={f}
+          onClick={() => setFilter(f)}
+          className={`text-xs px-3 py-1.5 rounded transition-colors ${
+            filter === f
+              ? 'bg-gray-700 text-white'
+              : 'bg-gray-800 hover:bg-gray-700 text-gray-400'
+          }`}
+        >
+          {f === 'mine' ? 'My schedule' : 'Total schedule'}
+        </button>
+      ))}
+    </div>
+  )
+
+  const handleShiftClick = (s: ShiftWithProfile) => {
+    setShiftDetail(s)
+  }
+
+  const handleEmptyDayClick = (d: Date) => {
+    if (!isAdmin) return
+    setDayPopover(d)
+  }
+
+  const handleDeleteShift = async (id: string) => {
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      const { error } = await supabase.from('shifts').delete().eq('id', id)
+      if (error) throw error
+      toast('Shift removed')
+      setShiftDetail(null)
+      setDayPopover(null)
+      router.refresh()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed', 'error')
+    }
+  }
+
   return (
     <div className="space-y-4">
-      <CalendarMonthGrid
-        anchor={anchor}
-        mode={mode}
-        onAnchorChange={setAnchor}
-        onModeChange={setMode}
-        toolbarRight={
-          <div className="flex items-center gap-1 ml-2">
-            {(['mine', 'all'] as FilterMode[]).map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={`text-xs px-3 py-1.5 rounded transition-colors ${
-                  filter === f
-                    ? 'bg-gray-700 text-white'
-                    : 'bg-gray-800 hover:bg-gray-700 text-gray-400'
-                }`}
-              >
-                {f === 'mine' ? 'My schedule' : 'Total schedule'}
-              </button>
-            ))}
-          </div>
-        }
-        renderCell={({ date }) => {
-          const dayShifts = visibleShifts(date)
-          return (
-            <div className="space-y-0.5">
-              {dayShifts.length === 0 && mode !== 'day' && (
-                <div className="text-[9px] text-gray-700">—</div>
-              )}
-              {dayShifts.map((s) => (
-                <div
-                  key={s.id}
-                  className={`text-[10px] px-1 py-0.5 rounded border truncate ${roleColors[s.role]}`}
-                  title={`${s.profile?.full_name ?? ''} · ${s.start_time.slice(0, 5)}-${s.end_time.slice(0, 5)} · ${s.role}`}
-                >
-                  <span className="font-medium">{s.profile?.full_name?.split(' ')[0] ?? '?'}</span>
-                  <span className="opacity-70 ml-1">{s.start_time.slice(0, 5)}</span>
-                </div>
-              ))}
-              {isAdmin && (
-                <button
-                  onClick={() => setDayPopover(date)}
-                  className="text-[10px] w-full text-left text-gray-500 hover:text-orange-400 transition-colors mt-0.5"
-                >
-                  + Assign
-                </button>
-              )}
-            </div>
-          )
-        }}
-      />
+      {mode === 'month' ? (
+        <CalendarMonthGrid
+          anchor={anchor}
+          mode="month"
+          onAnchorChange={setAnchor}
+          onModeChange={setMode}
+          toolbarRight={toolbarRight}
+          renderCell={({ date }) => {
+            const dayShifts = visibleShiftsForDate(date)
+            return (
+              <div className="space-y-0.5">
+                {dayShifts.length === 0 && (
+                  <div className="text-[9px] text-gray-700">—</div>
+                )}
+                {dayShifts.map((s) => {
+                  const firstName = s.profile?.full_name?.split(' ')[0] ?? '?'
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => handleShiftClick(s)}
+                      className={`w-full text-[10px] px-1 py-0.5 rounded border truncate text-left flex items-center gap-1 hover:opacity-80 transition-opacity ${monthPillColors[s.role]}`}
+                      title={`${s.profile?.full_name ?? ''}\n${fmtTimeRange12h(s.start_time, s.end_time)}\n${SHIFT_ROLE_LABELS[s.role]}${s.notes ? `\n${s.notes}` : ''}`}
+                    >
+                      <span className="font-medium truncate">{firstName}</span>
+                      <span className="opacity-70 font-mono shrink-0">
+                        {fmtTime12h(s.start_time).replace(' AM', 'a').replace(' PM', 'p')}
+                      </span>
+                      <span
+                        className={`ml-auto text-[8px] uppercase tracking-wide px-1 rounded border ${getRoleBadgeColor(s.role)}`}
+                      >
+                        {getRoleShortLabel(s.role)}
+                      </span>
+                    </button>
+                  )
+                })}
+                {isAdmin && (
+                  <button
+                    onClick={() => setDayPopover(date)}
+                    className="text-[10px] w-full text-left text-gray-500 hover:text-orange-400 transition-colors mt-0.5"
+                  >
+                    + Assign
+                  </button>
+                )}
+              </div>
+            )
+          }}
+        />
+      ) : (
+        // Day or Week view: hand-built toolbar (CalendarMonthGrid couples
+        // toolbar+body, but we want the toolbar with our own time-grid body).
+        <div className="space-y-3">
+          <ScheduleToolbar
+            anchor={anchor}
+            mode={mode}
+            onAnchorChange={setAnchor}
+            onModeChange={setMode}
+            toolbarRight={toolbarRight}
+          />
+          <ScheduleTimeGrid
+            mode={mode}
+            anchor={anchor}
+            rangeStart={weekRangeStart}
+            shifts={filteredShifts}
+            startHour={startHour}
+            endHour={endHour}
+            onShiftClick={handleShiftClick}
+            onEmptyClick={handleEmptyDayClick}
+            isAdmin={isAdmin}
+          />
+        </div>
+      )}
 
       <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
         <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
@@ -288,20 +418,177 @@ export function ScheduleTab({
             setDayPopover(null)
             router.refresh()
           }}
-          onDeleteShift={async (id) => {
-            try {
-              const { createClient } = await import('@/lib/supabase/client')
-              const supabase = createClient()
-              const { error } = await supabase.from('shifts').delete().eq('id', id)
-              if (error) throw error
-              toast('Shift removed')
-              router.refresh()
-            } catch (err) {
-              toast(err instanceof Error ? err.message : 'Failed', 'error')
-            }
-          }}
+          onDeleteShift={handleDeleteShift}
         />
       )}
+
+      {shiftDetail && (
+        <ShiftDetailPopover
+          shift={shiftDetail}
+          isAdmin={isAdmin}
+          onClose={() => setShiftDetail(null)}
+          onDelete={handleDeleteShift}
+        />
+      )}
+    </div>
+  )
+}
+
+interface ScheduleToolbarProps {
+  anchor: Date
+  mode: ViewMode
+  onAnchorChange: (next: Date) => void
+  onModeChange: (next: ViewMode) => void
+  toolbarRight: React.ReactNode
+}
+
+/**
+ * Stand-in toolbar for day/week views. Mirrors the layout of
+ * CalendarMonthGrid's toolbar so the UI is consistent across all three
+ * view modes — back/Today/forward + visible-range label + day/week/month
+ * mode switch + filter buttons (slot via toolbarRight).
+ */
+function ScheduleToolbar({
+  anchor,
+  mode,
+  onAnchorChange,
+  onModeChange,
+  toolbarRight,
+}: ScheduleToolbarProps) {
+  const range = useMemo(() => visibleRange(anchor, mode), [anchor, mode])
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <button
+        onClick={() => onAnchorChange(stepAnchor(anchor, mode, -1))}
+        className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm rounded-lg transition-colors"
+        title={`Previous ${mode}`}
+        aria-label={`Previous ${mode}`}
+      >
+        ←
+      </button>
+      <button
+        onClick={() => onAnchorChange(new Date())}
+        className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm rounded-lg transition-colors"
+      >
+        Today
+      </button>
+      <button
+        onClick={() => onAnchorChange(stepAnchor(anchor, mode, 1))}
+        className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm rounded-lg transition-colors"
+        title={`Next ${mode}`}
+        aria-label={`Next ${mode}`}
+      >
+        →
+      </button>
+
+      <div className="text-sm text-gray-200 ml-2 font-medium">
+        {mode === 'week' ? fmtDateRangeLabel(range.start, range.end) : fmtShortDate(anchor)}
+      </div>
+
+      <div className="ml-auto flex items-center gap-1">
+        {(['day', 'week', 'month'] as ViewMode[]).map((m) => (
+          <button
+            key={m}
+            onClick={() => onModeChange(m)}
+            className={`text-xs px-3 py-1.5 rounded transition-colors capitalize ${
+              mode === m
+                ? 'bg-orange-600 text-white'
+                : 'bg-gray-800 hover:bg-gray-700 text-gray-300'
+            }`}
+          >
+            {m}
+          </button>
+        ))}
+        {toolbarRight}
+      </div>
+    </div>
+  )
+}
+
+interface ShiftDetailPopoverProps {
+  shift: ShiftWithProfile
+  isAdmin: boolean
+  onClose: () => void
+  onDelete: (id: string) => void
+}
+
+/** Click-to-detail popover for a single shift. Admin can delete; staff sees details. */
+function ShiftDetailPopover({ shift, isAdmin, onClose, onDelete }: ShiftDetailPopoverProps) {
+  const date = new Date(shift.shift_date + 'T12:00:00')
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-md"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold">{shift.profile?.full_name ?? 'Shift'}</h3>
+            <p className="text-xs text-gray-500">
+              {date.toLocaleDateString('en-US', {
+                weekday: 'long',
+                month: 'short',
+                day: 'numeric',
+              })}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-500 hover:text-white text-xl leading-none"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="px-5 py-4 space-y-3 text-sm">
+          <div className="flex items-center gap-2">
+            <span className="text-gray-500 text-xs uppercase tracking-wide w-16 shrink-0">
+              Time
+            </span>
+            <span className="text-white font-mono">
+              {fmtTimeRange12h(shift.start_time, shift.end_time)}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-gray-500 text-xs uppercase tracking-wide w-16 shrink-0">
+              Role
+            </span>
+            <span
+              className={`text-xs px-2 py-0.5 rounded border ${getRoleBadgeColor(shift.role)}`}
+            >
+              {SHIFT_ROLE_LABELS[shift.role]}
+            </span>
+          </div>
+          {shift.notes && (
+            <div className="flex items-start gap-2">
+              <span className="text-gray-500 text-xs uppercase tracking-wide w-16 shrink-0 pt-0.5">
+                Notes
+              </span>
+              <span className="text-gray-200">{shift.notes}</span>
+            </div>
+          )}
+        </div>
+
+        {isAdmin && (
+          <div className="px-5 py-3 border-t border-gray-800 flex justify-end gap-2">
+            <button
+              onClick={onClose}
+              className="px-3 py-1.5 text-sm text-gray-400 hover:text-white"
+            >
+              Close
+            </button>
+            <button
+              onClick={() => onDelete(shift.id)}
+              className="px-3 py-1.5 text-sm bg-red-600/20 hover:bg-red-600/30 text-red-300 rounded border border-red-500/30 transition-colors"
+            >
+              Remove shift
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -394,7 +681,10 @@ function DayAssignPopover({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+    >
       <div
         className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
@@ -419,10 +709,12 @@ function DayAssignPopover({
                 <div key={s.id} className="flex items-center gap-3 text-sm">
                   <span className="text-white">{s.profile?.full_name}</span>
                   <span className="text-gray-500 font-mono text-xs">
-                    {s.start_time.slice(0, 5)}–{s.end_time.slice(0, 5)}
+                    {fmtTimeRange12hCompact(s.start_time, s.end_time)}
                   </span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded border ${roleColors[s.role]}`}>
-                    {s.role}
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded border ${getRoleBadgeColor(s.role)}`}
+                  >
+                    {SHIFT_ROLE_LABELS[s.role]}
                   </span>
                   <button
                     onClick={() => onDeleteShift(s.id)}
@@ -437,7 +729,9 @@ function DayAssignPopover({
         )}
 
         <div className="px-5 py-3 border-b border-gray-800">
-          <h4 className="text-xs uppercase tracking-wide text-gray-500 mb-2">Who&apos;s available</h4>
+          <h4 className="text-xs uppercase tracking-wide text-gray-500 mb-2">
+            Who&apos;s available
+          </h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
             {rows.map((r) => {
               const disabled = r.status === 'time-off'
@@ -463,7 +757,9 @@ function DayAssignPopover({
                   />
                   <span className="text-white truncate">{r.profile.full_name}</span>
                   {r.shifts && (
-                    <span className="text-[10px] text-gray-500 font-mono ml-auto truncate">{r.shifts}</span>
+                    <span className="text-[10px] text-gray-500 font-mono ml-auto truncate">
+                      {r.shifts}
+                    </span>
                   )}
                 </button>
               )
@@ -483,7 +779,12 @@ function DayAssignPopover({
         <form onSubmit={submit} className="px-5 py-4 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[10px] uppercase tracking-wide text-gray-500 mb-1">Start</label>
+              <label className="block text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+                Start{' '}
+                <span className="text-gray-600 normal-case">
+                  ({fmtTime12h(form.start_time)})
+                </span>
+              </label>
               <input
                 type="time"
                 required
@@ -493,7 +794,12 @@ function DayAssignPopover({
               />
             </div>
             <div>
-              <label className="block text-[10px] uppercase tracking-wide text-gray-500 mb-1">End</label>
+              <label className="block text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+                End{' '}
+                <span className="text-gray-600 normal-case">
+                  ({fmtTime12h(form.end_time)})
+                </span>
+              </label>
               <input
                 type="time"
                 required
@@ -503,19 +809,25 @@ function DayAssignPopover({
               />
             </div>
             <div>
-              <label className="block text-[10px] uppercase tracking-wide text-gray-500 mb-1">Role</label>
+              <label className="block text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+                Role
+              </label>
               <select
                 value={form.role}
                 onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as ShiftRole }))}
                 className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm text-white focus:outline-none focus:ring-1 focus:ring-orange-500"
               >
                 {ALL_SHIFT_ROLES.map((r) => (
-                  <option key={r} value={r}>{SHIFT_ROLE_LABELS[r]}</option>
+                  <option key={r} value={r}>
+                    {SHIFT_ROLE_LABELS[r]}
+                  </option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="block text-[10px] uppercase tracking-wide text-gray-500 mb-1">Notes</label>
+              <label className="block text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+                Notes
+              </label>
               <input
                 type="text"
                 value={form.notes}
