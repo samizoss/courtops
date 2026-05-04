@@ -9,14 +9,28 @@ const nav = [
   { href: '/checklists', label: 'Checklists', icon: '☑', roles: ['owner', 'admin', 'staff', 'viewer'] },
   { href: '/staff', label: 'Staff', icon: '◇', roles: ['owner', 'admin', 'staff', 'viewer'] },
   { href: '/sops', label: 'SOPs', icon: '◉', roles: ['owner', 'admin', 'staff', 'viewer'] },
-  { href: '/pipeline', label: 'Pipeline', icon: '◎', roles: ['owner'] },
-  { href: '/tasks', label: 'Tasks', icon: '▤', roles: ['owner', 'admin'] },
-  { href: '/content', label: 'Content', icon: '📅', roles: ['owner'] },
-  { href: '/messaging', label: 'Messages', icon: '💬', roles: ['owner'] },
-  { href: '/reports', label: 'Reports', icon: '📊', roles: ['owner'] },
+  { href: '/pipeline', label: 'Pipeline', icon: '◎', roles: ['owner', 'admin'] },
+  { href: '/tasks', label: 'Tasks', icon: '▤', roles: ['owner', 'admin', 'staff', 'viewer'] },
+  { href: '/content', label: 'Content', icon: '📅', roles: ['owner', 'admin'] },
+  { href: '/messaging', label: 'Messages', icon: '💬', roles: ['owner', 'admin'] },
+  { href: '/reports', label: 'Reports', icon: '📊', roles: ['owner', 'admin'] },
   { href: '/settings', label: 'Settings', icon: '⚙', roles: ['owner', 'admin'] },
   { href: '/getting-started', label: 'Guide', icon: '?', roles: ['owner', 'admin', 'staff', 'viewer'] },
 ]
+
+const ROLE_COLORS: Record<string, string> = {
+  owner: 'bg-orange-600/20 text-orange-400',
+  admin: 'bg-blue-600/20 text-blue-400',
+  staff: 'bg-green-600/20 text-green-400',
+  viewer: 'bg-gray-600/20 text-gray-400',
+}
+
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '?'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
 
 export function Sidebar() {
   const pathname = usePathname()
@@ -24,6 +38,7 @@ export function Sidebar() {
   const [open, setOpen] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
   const [userRole, setUserRole] = useState<string>('viewer')
+  const [userFullName, setUserFullName] = useState<string>('')
 
   useEffect(() => {
     async function init() {
@@ -31,15 +46,16 @@ export function Sidebar() {
         const { createClient } = await import('@/lib/supabase/client')
         const supabase = createClient()
 
-        // Fetch role
+        // Fetch role + full name
         const { data: { user } } = await supabase.auth.getUser()
         if (user) {
           const { data: profile } = await supabase
             .from('profiles')
-            .select('role')
+            .select('role, full_name')
             .eq('id', user.id)
             .single()
           if (profile?.role) setUserRole(profile.role)
+          if (profile?.full_name) setUserFullName(profile.full_name)
         }
 
         // Fetch unread notifications
@@ -178,7 +194,24 @@ export function Sidebar() {
           </Link>
         </nav>
 
-        <div className="p-3 border-t border-gray-800">
+        <div className="p-3 border-t border-gray-800 space-y-2">
+          {userFullName && (
+            <div className="flex items-center gap-2 px-2 py-1">
+              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-800 text-gray-300 text-xs font-semibold flex items-center justify-center">
+                {getInitials(userFullName)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm text-gray-200 truncate" title={userFullName}>
+                  {userFullName}
+                </div>
+                <span
+                  className={`inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${ROLE_COLORS[userRole] || ROLE_COLORS.viewer}`}
+                >
+                  {userRole}
+                </span>
+              </div>
+            </div>
+          )}
           <button
             onClick={handleSignOut}
             className="w-full text-left px-3 py-2 text-sm text-gray-500 hover:text-gray-300 transition-colors rounded-lg hover:bg-gray-800"
