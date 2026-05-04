@@ -66,6 +66,8 @@ export function GeneralSettings({ org, orgSettings }: { org: Org; orgSettings: O
   const [name, setName] = useState(org.name)
   const [timezone, setTimezone] = useState(org.timezone || 'America/Chicago')
   const [logoUrl, setLogoUrl] = useState(org.logo_url || '')
+  const [address, setAddress] = useState(org.address || '')
+  const [websiteUrl, setWebsiteUrl] = useState(org.website_url || '')
   const [dailyHours, setDailyHours] = useState<Record<number, DayHours>>(() => buildDailyHours(orgSettings))
   const [arriveBefore, setArriveBefore] = useState(orgSettings?.staff_arrive_before_min ?? 0)
   const [departAfter, setDepartAfter] = useState(orgSettings?.staff_depart_after_min ?? 0)
@@ -99,13 +101,25 @@ export function GeneralSettings({ org, orgSettings }: { org: Org; orgSettings: O
       const { createClient } = await import('@/lib/supabase/client')
       const supabase = createClient()
 
-      // Save org basics
-      const { error: orgErr } = await supabase
+      // Save org basics. RLS now allows owner/admin UPDATE (migration 011).
+      // .select() so we can confirm a row was actually modified — silent
+      // RLS filters used to look like 'success'.
+      const { data: updatedRows, error: orgErr } = await supabase
         .from('orgs')
-        .update({ name, timezone, logo_url: logoUrl || null })
+        .update({
+          name,
+          timezone,
+          logo_url: logoUrl || null,
+          address: address.trim() || null,
+          website_url: websiteUrl.trim() || null,
+        })
         .eq('id', org.id)
+        .select()
 
       if (orgErr) throw orgErr
+      if (!updatedRows || updatedRows.length === 0) {
+        throw new Error('No rows updated — your role may not have permission to edit org settings.')
+      }
 
       // Build daily_hours JSON and legacy fields
       const dailyJson: Record<string, { open: string; close: string }> = {}
@@ -228,6 +242,35 @@ export function GeneralSettings({ org, orgSettings }: { org: Org; orgSettings: O
           />
         </div>
 
+        <div>
+          <label htmlFor="address" className="block text-sm font-medium text-gray-300 mb-1">
+            Address
+          </label>
+          <input
+            id="address"
+            type="text"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            placeholder="123 Main St, Sioux Falls, SD 57104"
+            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+          />
+        </div>
+
+        <div>
+          <label htmlFor="website_url" className="block text-sm font-medium text-gray-300 mb-1">
+            Website URL
+          </label>
+          <input
+            id="website_url"
+            type="url"
+            value={websiteUrl}
+            onChange={(e) => setWebsiteUrl(e.target.value)}
+            placeholder="https://thepbjar.com"
+            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+          />
+          <p className="text-xs text-gray-500 mt-1">Where the contact widget snippet will live.</p>
+        </div>
+
         {/* Business Hours */}
         <div className="border-t border-gray-800 pt-5 mt-5">
           <h3 className="text-lg font-semibold mb-1">Business Hours</h3>
@@ -322,13 +365,25 @@ export function GeneralSettings({ org, orgSettings }: { org: Org; orgSettings: O
           </p>
         )}
 
-        <button
-          type="submit"
-          disabled={saving}
-          className="px-5 py-2.5 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-medium rounded-lg transition-colors"
+        {/* Sticky save bar — visible regardless of scroll position. */}
+        <div
+          className={`sticky bottom-0 -mx-4 sm:-mx-0 px-4 sm:px-0 py-3 bg-gray-950/90 backdrop-blur border-t ${
+            dirty ? 'border-orange-500/50' : 'border-gray-800'
+          } flex items-center gap-3`}
         >
-          {saving ? 'Saving...' : 'Save Changes'}
-        </button>
+          <button
+            type="submit"
+            disabled={saving || !dirty}
+            className={`px-5 py-2.5 disabled:opacity-50 text-white font-medium rounded-lg transition-colors ${
+              dirty ? 'bg-orange-600 hover:bg-orange-500' : 'bg-gray-700'
+            }`}
+          >
+            {saving ? 'Saving...' : dirty ? 'Save Changes' : 'No changes'}
+          </button>
+          {dirty && (
+            <span className="text-xs text-orange-300/80">Unsaved changes</span>
+          )}
+        </div>
       </form>
     </div>
   )

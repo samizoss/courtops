@@ -35,6 +35,8 @@ export interface Org {
   name: string
   slug: string
   logo_url: string | null
+  address: string | null
+  website_url: string | null
   timezone: string
   courtreserve_org_id: string | null
   plan: string
@@ -55,6 +57,7 @@ export interface Profile {
   avatar_url: string | null
   is_active: boolean
   is_operational_staff: boolean
+  is_hidden: boolean
   target_weekly_hours: number | null
   capabilities: ShiftRole[]
   created_at: string

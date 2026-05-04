@@ -33,11 +33,17 @@ export function RosterTab({ profiles: initial, isAdmin, orgId }: Props) {
     try {
       const { createClient } = await import('@/lib/supabase/client')
       const supabase = createClient()
-      const { error: updateError } = await supabase
+      // .select() so we can confirm the row was actually modified — RLS used
+      // to silently filter UPDATEs to 0 rows and the toggle flickered back.
+      const { data: rows, error: updateError } = await supabase
         .from('profiles')
         .update({ is_operational_staff: !current })
         .eq('id', profileId)
+        .select()
       if (updateError) throw updateError
+      if (!rows || rows.length === 0) {
+        throw new Error('Update was blocked — your role may not have permission to edit profiles.')
+      }
       setProfiles((prev) =>
         prev.map((p) => (p.id === profileId ? { ...p, is_operational_staff: !current } : p))
       )
@@ -144,7 +150,12 @@ export function RosterTab({ profiles: initial, isAdmin, orgId }: Props) {
 
       {isAdmin && (
         <p className="text-xs text-gray-500 px-1">
-          Toggle <span className="text-green-400">Operational</span> off for accounts that shouldn&apos;t appear on the schedule, availability grid, or hours reports (e.g. dev/test accounts).
+          Click <span className="text-green-400">On schedule</span> to toggle whether someone appears
+          on the schedule, availability grid, and hours reports. Use{' '}
+          <span className="text-orange-400">Off schedule</span> for staff who shouldn&apos;t be on
+          rotation (e.g. instructors who don&apos;t cover front desk, owners with operational visibility only).
+          Different from active/inactive in <span className="font-medium">Settings → Team</span>,
+          which controls login.
         </p>
       )}
 
@@ -188,14 +199,18 @@ export function RosterTab({ profiles: initial, isAdmin, orgId }: Props) {
                       ? 'bg-green-500/10 text-green-400 hover:bg-green-500/20'
                       : 'bg-gray-800 text-gray-500 hover:bg-gray-700'
                   }`}
-                  title={p.is_operational_staff ? 'Click to mark as non-operational (hidden from schedule)' : 'Click to mark as operational staff'}
+                  title={
+                    p.is_operational_staff
+                      ? 'Click to take off the schedule (hidden from schedule, availability, hours)'
+                      : 'Click to put on the schedule'
+                  }
                 >
-                  {p.is_operational_staff ? 'Operational' : 'Non-operational'}
+                  {p.is_operational_staff ? 'On schedule' : 'Off schedule'}
                 </button>
               ) : (
                 p.is_operational_staff && (
                   <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/10 text-green-400 shrink-0">
-                    Operational
+                    On schedule
                   </span>
                 )
               )}
