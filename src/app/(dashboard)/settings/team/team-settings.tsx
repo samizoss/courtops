@@ -366,6 +366,15 @@ export function TeamSettings({ profiles, invites: initialInvites, currentUser }:
             setMembers((prev) => prev.map((m) => (m.id === updated.id ? updated : m)))
             setEditing(null)
           }}
+          onDeleted={(profileId) => {
+            // Soft-delete (is_active=false). On the Team page we keep the row visible but
+            // dimmed via the existing is_active styling, so just flip the flag locally
+            // rather than removing it — admin can re-activate from this same view.
+            setMembers((prev) =>
+              prev.map((m) => (m.id === profileId ? { ...m, is_active: false } : m))
+            )
+            setEditing(null)
+          }}
         />
       )}
     </div>

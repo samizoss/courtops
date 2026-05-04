@@ -221,6 +221,11 @@ export function RosterTab({ profiles: initial, isAdmin, orgId }: Props) {
             setProfiles((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
             setEditing(null)
           }}
+          onDeleted={(profileId) => {
+            setProfiles((prev) => prev.filter((p) => p.id !== profileId))
+            setEditing(null)
+            router.refresh()
+          }}
         />
       )}
     </div>
