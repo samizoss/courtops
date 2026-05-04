@@ -10,7 +10,7 @@ export default async function IntegrationsSettingsPage() {
   const userOrg = await getUserOrg()
   if (!userOrg) return null
 
-  if (userOrg.role !== 'owner' && userOrg.role !== 'admin') {
+  if (userOrg.role === 'staff') {
     redirect('/')
   }
 
