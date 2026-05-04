@@ -65,10 +65,19 @@ export function ClockTab({ activeClocks, recentClocks, currentUser, profiles, is
       const supabase = createClient()
 
       if (isClockedIn) {
-        const { error } = await supabase.from('time_clock').update({
+        // Preserve any existing notes (e.g. from a missed-entry log) on clock out.
+        // - If the user typed nothing in the textbox: don't touch the notes field.
+        // - If they typed something: append it to existing notes with a [clock-out] tag
+        //   so the original context (e.g. "forgot at start") survives.
+        const typed = notes.trim()
+        const existing = (myClock.notes ?? '').trim()
+        const update: { clock_out: string; notes?: string } = {
           clock_out: new Date().toISOString(),
-          notes: notes || null,
-        }).eq('id', myClock.id)
+        }
+        if (typed) {
+          update.notes = existing ? `${existing}\n[clock-out] ${typed}` : typed
+        }
+        const { error } = await supabase.from('time_clock').update(update).eq('id', myClock.id)
         if (error) throw error
         toast('Clocked out')
       } else {
