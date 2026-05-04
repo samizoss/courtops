@@ -33,7 +33,14 @@ Sami walked Geneva through PR #12 live. She liked the direction; specific feedba
 
 ### Schedule polish (PR #12 follow-ups)
 
-6. **Day view shows start time only — needs start AND end.** The shift pill currently renders `Sami 8:00`; should render `Sami 8:00–14:00` (or similar). Day view in general is "wonky" per Sami; spend extra time tightening that mode's layout.
+6. **Schedule view rebuild — restaurant-scheduler style for week + day, AM/PM throughout, role context on pills.** The current cell-per-day calendar grid works for month view but loses information for week and day. Expanded scope from Sami 2026-04-28:
+   - **AM/PM everywhere.** No more "14:30" — use `fmtTime12h` / `fmtTimeRange12h` from `src/lib/format.ts`. Apply to schedule pills, hours summary, anywhere times appear in the staff module.
+   - **Pill content:** show name + start–end + role badge. The role badge matters because Geneva sometimes covers front-desk and sometimes works as management — you can't tell which without it.
+   - **Overlap visibility:** when two shifts overlap (e.g. Geneva 9–2:30 + Cody 1–5 cover 1–2:30), they need to render as distinct stacked blocks, not look like one shift.
+   - **Month view:** pills stay compact but show more on hover — name, time range, role, notes. Click pill → opens a small detail popover (or the existing assign modal in edit mode).
+   - **Week view:** rebuild as a restaurant-style schedule. 7 columns (Sun–Sat), vertical time axis on the left (e.g. 5 AM at top to 11 PM at bottom, hour or 30-min ticks). Each shift is a positioned block in its day-column with vertical extent matching its duration. Like Google Calendar week view but staff-focused. Color-code by role.
+   - **Day view:** single tall column with the same time axis. Shifts as horizontal bars; overlapping shifts render side-by-side or stacked. Granularity 30-min default.
+   - **Hours summary:** keep it but use AM/PM in any time displays.
 7. **Schedule status state machine.** Today windows have status (open/locked) but the schedule itself doesn't. Add: schedule for a date range is `draft` (admin building it) → `published` (staff sees it). Only published shifts show in staff's "My schedule." Until then, staff sees "Schedule not published yet for this period." A `shift_publications` table or `shifts.published_at` column. Geneva mentioned this is the gate for shift-swap to be available — published is what staff can swap.
 
 ### Roster edit modal
