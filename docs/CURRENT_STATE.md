@@ -49,6 +49,7 @@ Sami walked Geneva through PR #12 live. She liked the direction; specific feedba
 
 11. **Role-filtered sidebar.** Staff users see only: Staff, SOPs, Checklists, Tasks, Notifications. Admin/owner sees everything. Today the sidebar is one-size-fits-all. Edit `src/components/sidebar.tsx` to filter by `userOrg.role`.
 12. **Guide page should adapt to viewer role.** When a staff user is on `/guide`, hide the admin sections (Pipeline, Reports, Integrations, etc.). Either two markdown files or runtime filtering of the existing `docs/getting-started.md`.
+13. **Show who's logged in next to Sign Out.** Today the sidebar footer is just a "Sign out" button with no identity. Add the user's full name (and maybe email or role badge) directly above or beside the Sign Out button. **Why it matters (Sami's reasoning):** at a shared front-desk terminal, multiple staff might use the same browser to clock in/out — without their name visible, it's easy to clock in as the previous person who didn't sign out. Quick fix in `src/components/sidebar.tsx` — the role is already fetched via `getUser` in `useEffect`, just also fetch `full_name` and render it in the footer block above the Sign out button.
 
 ### Lower-priority asks (not committed for next week)
 
