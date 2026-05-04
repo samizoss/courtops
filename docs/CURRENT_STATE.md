@@ -20,7 +20,14 @@ Sami walked Geneva through PR #12 live. She liked the direction; specific feedba
 
 3. **Quick "Available all day" / "Unavailable all day" checkboxes per cell.** Geneva's reasoning: most days a staffer is just available the whole day and doesn't want to type "7 - close." Sami's design: green checkbox = available all day, red checkbox = unavailable all day, free-text shifts field still available for partial-day constraints. Replace the current single "Available" checkbox + free text with: two visible state toggles (green ✓ / red ✗) + an "or specify hours" text input that only appears when neither toggle is set OR when "Available" is checked.
 4. **Add `due_date` to `availability_windows`.** Geneva: "I am hounding people for their availability — give me a deadline I can put on the window." Migration 007 adds `due_date DATE` to the table; UI shows it on the pill ("Due May 15"); when admin opens a window the form gets a 3rd date field.
-5. **Add a "Submit" button on availability.** Today it autosaves silently. Geneva wants a clear "I'm done" action. Approach: keep autosave as draft persistence; add a "Submit availability" button that flips a per-user-per-window `submitted_at` timestamp. New table `availability_submissions(window_id, user_id, submitted_at)` or just a column on `availability_entries` aggregated. Decide during implementation; lean toward the table since it's per-window not per-entry.
+5. **Submit + Edit button on availability.** Today it autosaves silently. Geneva wants a clear "I'm done" action plus a way to reopen if she/the staffer changes their mind — but only while the admin's window is still open. Behavior:
+   - Autosave during draft (unchanged from PR #12).
+   - "Submit availability" button → flips a per-user-per-window `submitted_at` timestamp; cells become read-only for that staffer; UI shows "Submitted ✓" badge with the timestamp.
+   - Once submitted, an "Edit submission" button appears (replacing Submit).
+     - If `availability_windows.status === 'open'` → click clears `submitted_at` and re-enables edits. Staffer must Submit again.
+     - If `availability_windows.status === 'locked'` → button is disabled with a tooltip/alert: *"Submissions are locked. To change a shift you've been assigned, request a shift swap from the Schedule tab."*
+   - Schema: new table `availability_submissions(id, org_id, window_id, user_id, submitted_at, created_at)` with unique `(window_id, user_id)`. Soft-delete by setting `submitted_at = null` on Edit-reopen rather than deleting the row, so we keep history.
+   - Admin view (later, not blocking): a roster strip on the window pill showing "5/8 submitted" so Geneva can see who's outstanding.
 
 ### Schedule polish (PR #12 follow-ups)
 
