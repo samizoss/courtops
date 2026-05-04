@@ -16,6 +16,18 @@ export default async function StaffPage() {
   const availabilityRangeStart = new Date(now.getTime() - 7 * 86400000).toISOString().split('T')[0]
   const availabilityRangeEnd = new Date(now.getTime() + 42 * 86400000).toISOString().split('T')[0]
 
+  const isAdmin = userOrg.role === 'owner' || userOrg.role === 'admin'
+
+  // Build the shifts query — admins see drafts AND published; non-admins only see published.
+  const shiftsQuery = supabase
+    .from('shifts')
+    .select('*, profile:profiles!shifts_user_id_fkey(full_name)')
+    .gte('shift_date', availabilityRangeStart)
+    .lte('shift_date', availabilityRangeEnd)
+    .order('shift_date')
+    .order('start_time')
+  const shiftsScopedQuery = isAdmin ? shiftsQuery : shiftsQuery.not('published_at', 'is', null)
+
   const [
     { data: profiles },
     { data: activeClocks },
@@ -31,7 +43,7 @@ export default async function StaffPage() {
     supabase.from('profiles').select('*').eq('org_id', userOrg.orgId).eq('is_active', true).order('full_name'),
     supabase.from('time_clock').select('*, profile:profiles!time_clock_user_id_fkey(full_name)').is('clock_out', null),
     supabase.from('time_off_requests').select('*, profile:profiles!time_off_requests_user_id_fkey(full_name), reviewer:profiles!time_off_requests_reviewed_by_fkey(full_name)').order('created_at', { ascending: false }).limit(20),
-    supabase.from('shifts').select('*, profile:profiles!shifts_user_id_fkey(full_name)').gte('shift_date', availabilityRangeStart).lte('shift_date', availabilityRangeEnd).order('shift_date').order('start_time'),
+    shiftsScopedQuery,
     supabase.from('availability').select('*, profile:profiles!availability_user_id_fkey(full_name)').order('day_of_week'),
     supabase.from('availability_entries').select('*').gte('entry_date', availabilityRangeStart).lte('entry_date', availabilityRangeEnd),
     supabase.from('availability_windows').select('*').eq('org_id', userOrg.orgId).gte('end_date', availabilityRangeStart).lte('start_date', availabilityRangeEnd).order('start_date', { ascending: false }),
