@@ -8,9 +8,11 @@ export default async function SettingsPage() {
   const userOrg = await getUserOrg()
   if (!userOrg) return null
 
-  if (userOrg.role !== 'owner' && userOrg.role !== 'admin') {
+  // Staff can't see Settings; viewer (read-only co-owner) and admin/owner can.
+  if (userOrg.role === 'staff') {
     redirect('/')
   }
+  const canEdit = userOrg.role === 'owner' || userOrg.role === 'admin'
 
   const cards = [
     {
@@ -50,7 +52,9 @@ export default async function SettingsPage() {
     <div>
       <div className="mb-8">
         <h2 className="text-2xl font-bold">Settings</h2>
-        <p className="text-gray-400 text-sm mt-1">Manage your organization</p>
+        <p className="text-gray-400 text-sm mt-1">
+          {canEdit ? 'Manage your organization' : 'View your organization (read-only)'}
+        </p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

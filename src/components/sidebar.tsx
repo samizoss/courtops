@@ -4,17 +4,24 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 
+// Visibility per role.
+//   owner  = CourtOps platform (Sami + future devs) — sees everything across orgs.
+//   admin  = club admins (e.g. Geneva @ The Jar) — full edit access in their org.
+//   viewer = read-only "co-owner" / observer (e.g. Travis + Kevin @ The Jar) —
+//            sees what an admin sees but can't edit. Sidebar mirrors admin nav;
+//            edit affordances on each page hide for viewer specifically.
+//   staff  = day-to-day staff — clock, checklists, SOPs, own tasks, schedule.
 const nav = [
   { href: '/', label: 'Dashboard', icon: '⊞', roles: ['owner', 'admin', 'staff', 'viewer'] },
   { href: '/checklists', label: 'Checklists', icon: '☑', roles: ['owner', 'admin', 'staff', 'viewer'] },
   { href: '/staff', label: 'Staff', icon: '◇', roles: ['owner', 'admin', 'staff', 'viewer'] },
   { href: '/sops', label: 'SOPs', icon: '◉', roles: ['owner', 'admin', 'staff', 'viewer'] },
-  { href: '/pipeline', label: 'Pipeline', icon: '◎', roles: ['owner', 'admin'] },
+  { href: '/pipeline', label: 'Pipeline', icon: '◎', roles: ['owner', 'admin', 'viewer'] },
   { href: '/tasks', label: 'Tasks', icon: '▤', roles: ['owner', 'admin', 'staff', 'viewer'] },
-  { href: '/content', label: 'Content', icon: '📅', roles: ['owner', 'admin'] },
-  { href: '/messaging', label: 'Messages', icon: '💬', roles: ['owner', 'admin'] },
-  { href: '/reports', label: 'Reports', icon: '📊', roles: ['owner', 'admin'] },
-  { href: '/settings', label: 'Settings', icon: '⚙', roles: ['owner', 'admin'] },
+  { href: '/content', label: 'Content', icon: '📅', roles: ['owner', 'admin', 'viewer'] },
+  { href: '/messaging', label: 'Messages', icon: '💬', roles: ['owner', 'admin', 'viewer'] },
+  { href: '/reports', label: 'Reports', icon: '📊', roles: ['owner', 'admin', 'viewer'] },
+  { href: '/settings', label: 'Settings', icon: '⚙', roles: ['owner', 'admin', 'viewer'] },
   { href: '/getting-started', label: 'Guide', icon: '?', roles: ['owner', 'admin', 'staff', 'viewer'] },
 ]
 
@@ -207,7 +214,7 @@ export function Sidebar() {
                 <span
                   className={`inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${ROLE_COLORS[userRole] || ROLE_COLORS.viewer}`}
                 >
-                  {userRole}
+                  {userRole === 'viewer' ? 'viewer · read-only' : userRole}
                 </span>
               </div>
             </div>
