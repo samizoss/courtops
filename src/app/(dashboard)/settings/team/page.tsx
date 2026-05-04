@@ -19,6 +19,7 @@ export default async function TeamSettingsPage() {
       .from('profiles')
       .select('*')
       .eq('org_id', userOrg.orgId)
+      .eq('is_hidden', false)
       .order('full_name'),
     supabase
       .from('org_invites')

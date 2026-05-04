@@ -3,6 +3,26 @@
 > **Snapshot date:** 2026-05-04 (post-Geneva-queue cleanup)
 > **For a fresh Claude session:** read this first. It's the single source of truth for what's shipped, what's been tried-and-shelved, and what's next. When in doubt, trust `git log`, Supabase schema, and the Vercel production deployment over anything written anywhere else.
 
+## Next-up redesign — split "operational" into "schedulable" vs "expected to submit availability"
+
+Sami flagged 2026-05-04 (during testing): the current `is_operational_staff` flag conflates two different concepts and the language doesn't match what either word actually means. We need three orthogonal axes on a profile:
+
+1. **active** (`profiles.is_active`) — account login. **Stays as-is.**
+2. **schedulable** (currently `profiles.is_operational_staff`) — *can* be scheduled for shifts. Mike Thelen, Travis Thie, Kevin Plank, dev accounts → false. Real front-desk staff → true. **DB column stays named `is_operational_staff` for now to avoid a sweep; UI label is now "On schedule" / "Off schedule".** Rename later if it becomes confusing in code reviews.
+3. **expected to submit availability for a specific window** — NEW. Per-window assignee list, not a profile flag. Travis is schedulable (someday) but isn't expected to submit availability monthly; Mike isn't even schedulable; everyone else IS expected.
+
+**Design (Sami's proposal, agreed):**
+- New table `availability_window_assignees(window_id, user_id, UNIQUE(window_id, user_id))`.
+- When admin opens a window: form pre-populates the assignee list from the *last* window's assignees (carry-forward — important for large clubs that don't want to re-pick every month). First-ever window defaults to all currently-schedulable staff.
+- Admin can add/remove individual assignees during open-window flow OR after the fact via a "Manage assignees" button on each open window.
+- "X/Y submitted" badge on the window pill becomes Y = assignee count, not org-wide schedulable count.
+- AvailabilityByDateTab: rows shown to admin = the window's assignees only. Staff still see only their own row (unchanged).
+- Locking the window doesn't change assignee list.
+
+**Implementation effort:** medium. Migration for the new table, UI for the assignee picker (multi-select with checkboxes, defaults pre-checked), wiring through the existing window strip. ~half-day PR.
+
+---
+
 ## 2026-05-04 — All 13 Geneva-walkthrough items shipped + design decisions captured
 
 Sami pushed through the entire 2026-04-28 Geneva walkthrough queue today, plus four extras that came up in the session. Live on `courtops.app`/`thepbjar.courtops.app` since the merges:

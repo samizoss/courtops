@@ -112,6 +112,24 @@ export function AvailabilityWindowsStrip({
     }
   }
 
+  async function deleteWindow(id: string, label: string, submittedCount: number) {
+    const submittedWarning = submittedCount > 0
+      ? `\n\n${submittedCount} staff have already submitted availability for this window. Their submission records will be deleted (entries themselves stay).`
+      : ''
+    if (!confirm(`Delete window "${label}"?${submittedWarning}\n\nAvailability entries inside the date range stay — only the window itself goes away. This can't be undone.`)) return
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      const { error } = await supabase.from('availability_windows').delete().eq('id', id)
+      if (error) throw error
+      toast('Window deleted')
+      router.refresh()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed to delete window', 'error')
+      console.error(err)
+    }
+  }
+
   if (open.length === 0 && recentlyLocked.length === 0 && !isAdmin) {
     return (
       <div className="bg-gray-900 border border-gray-800 rounded-lg p-3 text-xs text-gray-500">
@@ -134,12 +152,20 @@ export function AvailabilityWindowsStrip({
               totalCount={operationalCount}
             >
               {isAdmin && (
-                <button
-                  onClick={() => lockWindow(w.id, w.label)}
-                  className="ml-1.5 text-[10px] text-gray-400 hover:text-orange-400 underline"
-                >
-                  Lock
-                </button>
+                <>
+                  <button
+                    onClick={() => lockWindow(w.id, w.label)}
+                    className="ml-1.5 text-[10px] text-gray-400 hover:text-orange-400 underline"
+                  >
+                    Lock
+                  </button>
+                  <button
+                    onClick={() => deleteWindow(w.id, w.label, submittedCount(w.id))}
+                    className="ml-1.5 text-[10px] text-gray-500 hover:text-red-400 underline"
+                  >
+                    Delete
+                  </button>
+                </>
               )}
             </WindowPill>
           ))}
@@ -152,12 +178,20 @@ export function AvailabilityWindowsStrip({
               totalCount={operationalCount}
             >
               {isAdmin && (
-                <button
-                  onClick={() => unlockWindow(w.id)}
-                  className="ml-1.5 text-[10px] text-gray-400 hover:text-orange-400 underline"
-                >
-                  Unlock
-                </button>
+                <>
+                  <button
+                    onClick={() => unlockWindow(w.id)}
+                    className="ml-1.5 text-[10px] text-gray-400 hover:text-orange-400 underline"
+                  >
+                    Unlock
+                  </button>
+                  <button
+                    onClick={() => deleteWindow(w.id, w.label, submittedCount(w.id))}
+                    className="ml-1.5 text-[10px] text-gray-500 hover:text-red-400 underline"
+                  >
+                    Delete
+                  </button>
+                </>
               )}
             </WindowPill>
           ))}

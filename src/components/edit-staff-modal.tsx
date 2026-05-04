@@ -54,6 +54,7 @@ export function EditStaffModal({
     role: profile.role,
     target_weekly_hours: profile.target_weekly_hours?.toString() ?? '',
     capabilities: new Set<ShiftRole>(profile.capabilities ?? ['front-desk']),
+    is_hidden: profile.is_hidden ?? false,
   })
   const [sendReset, setSendReset] = useState(false)
 
@@ -107,6 +108,7 @@ export function EditStaffModal({
         p_role: canChangeRole ? form.role : profile.role,
         p_target_weekly_hours: targetHours,
         p_capabilities: Array.from(form.capabilities),
+        p_is_hidden: form.is_hidden,
       })
       if (error) throw error
       const result = data as { success?: boolean; error?: string; email_changed?: boolean }
@@ -137,6 +139,7 @@ export function EditStaffModal({
         role: canChangeRole ? form.role : profile.role,
         target_weekly_hours: targetHours,
         capabilities: Array.from(form.capabilities),
+        is_hidden: form.is_hidden,
       })
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Failed to save', 'error')
@@ -294,6 +297,23 @@ export function EditStaffModal({
               Magic-schedule (coming soon) only assigns shifts to staff whose capabilities include the shift role.
             </p>
           </div>
+
+          <label className="flex items-start gap-2 cursor-pointer p-3 bg-gray-800/40 border border-gray-700 rounded-lg">
+            <input
+              type="checkbox"
+              checked={form.is_hidden}
+              onChange={(e) => setForm((f) => ({ ...f, is_hidden: e.target.checked }))}
+              className="mt-0.5 w-3.5 h-3.5 rounded border-gray-600 bg-gray-800 text-gray-300 focus:ring-gray-500"
+            />
+            <div>
+              <p className="text-xs text-gray-300 font-medium">
+                Hide from staff lists{form.is_hidden ? ' (currently hidden)' : ''}
+              </p>
+              <p className="text-[10px] text-gray-500 mt-0.5">
+                Use for developer/test accounts. They can still log in, but won&apos;t appear in Roster, Settings → Team, or any operational view.
+              </p>
+            </div>
+          </label>
 
           {emailChanged && (
             <label className="flex items-start gap-2 cursor-pointer p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">

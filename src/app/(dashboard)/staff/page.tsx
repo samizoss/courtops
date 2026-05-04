@@ -40,7 +40,7 @@ export default async function StaffPage() {
     { data: recentClocks },
     { data: orgSettings },
   ] = await Promise.all([
-    supabase.from('profiles').select('*').eq('org_id', userOrg.orgId).eq('is_active', true).order('full_name'),
+    supabase.from('profiles').select('*').eq('org_id', userOrg.orgId).eq('is_active', true).eq('is_hidden', false).order('full_name'),
     supabase.from('time_clock').select('*, profile:profiles!time_clock_user_id_fkey(full_name)').is('clock_out', null),
     supabase.from('time_off_requests').select('*, profile:profiles!time_off_requests_user_id_fkey(full_name), reviewer:profiles!time_off_requests_reviewed_by_fkey(full_name)').order('created_at', { ascending: false }).limit(20),
     shiftsScopedQuery,
