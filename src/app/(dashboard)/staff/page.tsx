@@ -24,6 +24,7 @@ export default async function StaffPage() {
     { data: availability },
     { data: availabilityEntries },
     { data: availabilityWindows },
+    { data: availabilitySubmissions },
     { data: recentClocks },
     { data: orgSettings },
   ] = await Promise.all([
@@ -34,6 +35,7 @@ export default async function StaffPage() {
     supabase.from('availability').select('*, profile:profiles!availability_user_id_fkey(full_name)').order('day_of_week'),
     supabase.from('availability_entries').select('*').gte('entry_date', availabilityRangeStart).lte('entry_date', availabilityRangeEnd),
     supabase.from('availability_windows').select('*').eq('org_id', userOrg.orgId).gte('end_date', availabilityRangeStart).lte('start_date', availabilityRangeEnd).order('start_date', { ascending: false }),
+    supabase.from('availability_submissions').select('*').eq('org_id', userOrg.orgId),
     supabase.from('time_clock').select('*, profile:profiles!time_clock_user_id_fkey(full_name)').gte('clock_in', weekAgo).order('clock_in', { ascending: false }).limit(50),
     supabase.from('org_settings').select('open_time, close_time, open_days, staff_arrive_before_min, staff_depart_after_min, daily_hours, clock_notes_visibility').eq('org_id', userOrg.orgId).single(),
   ])
@@ -59,6 +61,7 @@ export default async function StaffPage() {
       availability={availability ?? []}
       availabilityEntries={availabilityEntries ?? []}
       availabilityWindows={availabilityWindows ?? []}
+      availabilitySubmissions={availabilitySubmissions ?? []}
       recentClocks={recentClocks ?? []}
       currentUser={userOrg}
       orgHours={orgHours}
