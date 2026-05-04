@@ -1,7 +1,42 @@
 # CourtOps — Current State
 
-> **Snapshot date:** 2026-04-28 (post-Geneva walkthrough)
-> **For a fresh Claude session:** read this first. It's the single source of truth for what's shipped, what's in progress, what's been tried-and-shelved, and what's next. When in doubt, trust `git log`, Supabase schema, and the Vercel production deployment over anything written anywhere else.
+> **Snapshot date:** 2026-05-04 (post-Geneva-queue cleanup)
+> **For a fresh Claude session:** read this first. It's the single source of truth for what's shipped, what's been tried-and-shelved, and what's next. When in doubt, trust `git log`, Supabase schema, and the Vercel production deployment over anything written anywhere else.
+
+## 2026-05-04 — All 13 Geneva-walkthrough items shipped + design decisions captured
+
+Sami pushed through the entire 2026-04-28 Geneva walkthrough queue today, plus four extras that came up in the session. Live on `courtops.app`/`thepbjar.courtops.app` since the merges:
+
+- ✅ #1 clock-out notes preserved (PR #14)
+- ✅ #2 operational toggle UI refresh (PR #13)
+- ✅ #3 Available/Unavailable per-cell toggles (PR #18) — re-added `availability_entries.is_unavailable` for explicit-no semantics
+- ✅ #4 `availability_windows.due_date` + UI (PR #18)
+- ✅ #5 Per-staffer Submit/Edit on availability + window-gated reopen (PR #18) — new `availability_submissions` table
+- ✅ #6 AM/PM throughout + restaurant-style week/day timelines + role-context pills (PR #17)
+- ✅ #7 `shifts.published_at` draft → published state machine (PR #21) — migration 010
+- ✅ #8 Roster edit modal (PR #13) + first/last name split + Remove staff (PR #15) — migration 008
+- ✅ #9 ✨ Magic schedule auto-propose draft shifts (PR #21) — the headline ask
+- ✅ #10 Overscheduling flag (PR #21) — red ⚠ in hours summary + DayAssignPopover inline status
+- ✅ #11 Role-filtered sidebar (PR #16)
+- ✅ #12 Guide adapts to viewer role (PR #19)
+- ✅ #13 Logged-in user identity above Sign Out (PR #16)
+
+**Plus four same-day asks:**
+- ✅ Phone + multi-role capabilities (PR #13) — migration 007
+- ✅ Extended viewer role for read-only co-owners (PR #20) — Travis/Kevin pattern
+- ✅ Month pills show compact range `7a-2:30p` instead of just start time (PR #21)
+- ✅ Admin role-change in ShiftDetailPopover (PR #21)
+
+### Design decisions worth remembering
+
+- **`owner` role is platform-level, not per-org.** Sami + future CourtOps developers only. Per-org "co-owners" (e.g. Travis Thie + Kevin Plank at The Jar) go on the `viewer` role, which now has admin-level visibility (sidebar shows Pipeline / Content / Messages / Reports / Settings) but no edit capability (inline edit affordances key on `role IN ('owner', 'admin')`).
+- **RLS not yet tightened for viewers.** Most tables still allow any org member to write at the DB level. Viewer write-blocking is UI-only today. Acceptable for trusted pilot users (Travis/Kevin); proper RLS sweep deferred until we onboard a tenant where the co-owner is less trusted.
+- **Per-club configurable shift roles deferred.** The 6-value enum (`'front-desk' | 'coaching' | 'instructor' | 'league-leader' | 'management' | 'other'`) covers The Jar's full taxonomy. When club #2 onboards with different role names, that's the trigger to ship a per-org `org_shift_roles` table + Settings UI + dynamic colors. Not earlier.
+- **Magic schedule heuristic.** Greedy: per day, find operational staff who submitted `is_available=true`, not on time off, no existing shift, target > 0. Sort furthest-below-target first. Parse stated hours; fallback 9–2 if unparseable. Skip if assigning pushes them over target. Role = first non-management capability. Bulk INSERT as `published_at=null` drafts. Sami told Geneva "won't be perfect" — it isn't, and that's fine. Admin reviews dashed-border drafts and either edits or hits "Publish drafts".
+- **Manual shift inserts publish immediately.** Only magic-schedule outputs are drafts. This preserves the existing one-off-assign UX (Geneva clicking "+ Assign" expects the shift to go live).
+- **The Jar profile import (2026-05-04).** All 13 staff now have real names/emails/phones/target hours/capabilities. Travis + Kevin are `viewer` (extended-read-only). Mike Thelen + Travis + Kevin are `is_operational_staff = false` (don't appear in schedule rotation). Eli is `target_weekly_hours = 0` (available but don't auto-schedule). Dev accounts (`sami+adminview`, `sami+staffview`, `Admin@samizoss.com`) flipped to `is_operational_staff = false`. Their auth.users.email is set to the real email but no password reset has been triggered — admin opens the Edit modal per-staffer + checks "Send password reset" when ready to onboard each person.
+
+---
 
 > **PR #12 (2026-04-28) shipped:** Migration 006 (`availability_windows`, `is_unavailable` → `is_available`, `profiles.target_weekly_hours`), shared `<CalendarMonthGrid>` component, Availability tab rebuilt as month calendar with opt-in semantics + window release/lock workflow, Schedule tab rebuilt as calendar with click-to-assign popover + hours summary. The "NEXT-SESSION BIG BUNDLE" section below is now historic context — see new "Geneva walkthrough 2026-04-28" section for the actual current queue.
 
