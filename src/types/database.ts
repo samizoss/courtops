@@ -47,6 +47,8 @@ export interface Profile {
   id: string
   org_id: string
   full_name: string
+  first_name: string | null
+  last_name: string | null
   email: string
   phone: string | null
   role: Role

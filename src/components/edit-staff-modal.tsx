@@ -19,9 +19,20 @@ interface Props {
   onClose: () => void
   /** Called after successful save with the updated profile. */
   onSaved: (updated: Profile) => void
+  /** Called after successful soft-delete (is_active=false). Parent should drop the row from local state. */
+  onDeleted?: (profileId: string) => void
 }
 
 const DEFAULT_ASSIGNABLE: Role[] = ['admin', 'staff', 'viewer']
+
+/** Best-effort split of a legacy combined full_name into first + remainder. */
+function splitName(full: string): { first: string; last: string } {
+  const trimmed = (full ?? '').trim()
+  if (!trimmed) return { first: '', last: '' }
+  const idx = trimmed.indexOf(' ')
+  if (idx === -1) return { first: trimmed, last: '' }
+  return { first: trimmed.slice(0, idx), last: trimmed.slice(idx + 1).trim() }
+}
 
 export function EditStaffModal({
   profile,
@@ -29,11 +40,15 @@ export function EditStaffModal({
   canChangeRole = true,
   onClose,
   onSaved,
+  onDeleted,
 }: Props) {
   const { toast } = useToast()
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const fallback = splitName(profile.full_name)
   const [form, setForm] = useState({
-    full_name: profile.full_name,
+    first_name: profile.first_name ?? fallback.first,
+    last_name: profile.last_name ?? fallback.last,
     email: profile.email,
     phone: profile.phone ?? '',
     role: profile.role,
@@ -43,6 +58,7 @@ export function EditStaffModal({
   const [sendReset, setSendReset] = useState(false)
 
   const emailChanged = form.email.trim().toLowerCase() !== profile.email.trim().toLowerCase()
+  const canDelete = profile.role !== 'owner' && typeof onDeleted === 'function'
 
   function toggleCap(cap: ShiftRole) {
     setForm((f) => {
@@ -55,8 +71,8 @@ export function EditStaffModal({
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.full_name.trim() || !form.email.trim()) {
-      toast('Name and email are required', 'error')
+    if (!form.first_name.trim() || !form.email.trim()) {
+      toast('First name and email are required', 'error')
       return
     }
     if (form.capabilities.size === 0) {
@@ -78,9 +94,14 @@ export function EditStaffModal({
         return
       }
 
+      const firstName = form.first_name.trim()
+      const lastName = form.last_name.trim()
+      const derivedFullName = `${firstName} ${lastName}`.trim()
+
       const { data, error } = await supabase.rpc('update_staff_profile', {
         p_profile_id: profile.id,
-        p_full_name: form.full_name.trim(),
+        p_first_name: firstName,
+        p_last_name: lastName,
         p_email: form.email.trim(),
         p_phone: form.phone.trim() || null,
         p_role: canChangeRole ? form.role : profile.role,
@@ -108,7 +129,9 @@ export function EditStaffModal({
 
       onSaved({
         ...profile,
-        full_name: form.full_name.trim(),
+        full_name: derivedFullName,
+        first_name: firstName,
+        last_name: lastName,
         email: form.email.trim(),
         phone: form.phone.trim() || null,
         role: canChangeRole ? form.role : profile.role,
@@ -120,6 +143,33 @@ export function EditStaffModal({
       console.error('Save staff failed:', err)
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleDelete() {
+    if (!canDelete) return
+    const displayName = `${form.first_name.trim()} ${form.last_name.trim()}`.trim() || profile.full_name || 'this person'
+    const ok = confirm(
+      `Remove ${displayName}? They'll be hidden from staff views, scheduling, and login. Their historical clock entries and shifts will be preserved. You can re-activate them from Settings → Team if needed.`
+    )
+    if (!ok) return
+
+    setDeleting(true)
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      const { error } = await supabase
+        .from('profiles')
+        .update({ is_active: false })
+        .eq('id', profile.id)
+      if (error) throw error
+      toast(`${displayName} removed`)
+      onDeleted?.(profile.id)
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed to remove staff', 'error')
+      console.error('Remove staff failed:', err)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -147,12 +197,21 @@ export function EditStaffModal({
         <div className="px-5 py-4 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-[10px] uppercase tracking-wide text-gray-500 mb-1">Full name</label>
+              <label className="block text-[10px] uppercase tracking-wide text-gray-500 mb-1">First name</label>
               <input
                 required
                 type="text"
-                value={form.full_name}
-                onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
+                value={form.first_name}
+                onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))}
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-orange-500"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase tracking-wide text-gray-500 mb-1">Last name</label>
+              <input
+                type="text"
+                value={form.last_name}
+                onChange={(e) => setForm((f) => ({ ...f, last_name: e.target.value }))}
                 className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-orange-500"
               />
             </div>
@@ -254,6 +313,23 @@ export function EditStaffModal({
               </div>
             </label>
           )}
+
+          {canDelete && (
+            <div className="pt-4 border-t border-gray-800">
+              <p className="text-[10px] uppercase tracking-wide text-red-400/70 mb-2">Danger zone</p>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting || saving}
+                className="w-full px-4 py-2 bg-red-900/30 hover:bg-red-900/50 border border-red-800/50 text-red-300 text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+              >
+                {deleting ? 'Removing...' : 'Remove staff'}
+              </button>
+              <p className="text-[10px] text-gray-600 mt-1.5">
+                Hides them from staff views, scheduling, and login. Historical clock entries and shifts are preserved. Re-activate from Settings → Team.
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="px-5 py-3 border-t border-gray-800 flex justify-end gap-2">
@@ -266,7 +342,7 @@ export function EditStaffModal({
           </button>
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || deleting}
             className="px-4 py-2 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
           >
             {saving ? 'Saving...' : 'Save changes'}
