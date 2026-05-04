@@ -3,17 +3,26 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/toast'
-import type { AvailabilityWindow } from '@/types/database'
+import type { AvailabilityWindow, AvailabilitySubmission } from '@/types/database'
 import { fmtShortDate } from '@/lib/calendar'
 
 interface Props {
   windows: AvailabilityWindow[]
+  submissions: AvailabilitySubmission[]
+  operationalCount: number
   isAdmin: boolean
   orgId: string
   userId: string
 }
 
-export function AvailabilityWindowsStrip({ windows, isAdmin, orgId, userId }: Props) {
+export function AvailabilityWindowsStrip({
+  windows,
+  submissions,
+  operationalCount,
+  isAdmin,
+  orgId,
+  userId,
+}: Props) {
   const router = useRouter()
   const { toast } = useToast()
   const [showOpen, setShowOpen] = useState(false)
@@ -28,11 +37,17 @@ export function AvailabilityWindowsStrip({ windows, isAdmin, orgId, userId }: Pr
       label: firstOfNext.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
       start_date: fmt(firstOfNext),
       end_date: fmt(lastOfNext),
+      due_date: '',
     }
   })
 
   const open = windows.filter((w) => w.status === 'open')
   const recentlyLocked = windows.filter((w) => w.status === 'locked').slice(0, 2)
+
+  // Per-window submitted user count (used for the X/Y badge admins see).
+  function submittedCount(windowId: string): number {
+    return submissions.filter((s) => s.window_id === windowId).length
+  }
 
   async function openWindow(e: React.FormEvent) {
     e.preventDefault()
@@ -45,6 +60,7 @@ export function AvailabilityWindowsStrip({ windows, isAdmin, orgId, userId }: Pr
         label: form.label.trim(),
         start_date: form.start_date,
         end_date: form.end_date,
+        due_date: form.due_date || null,
         status: 'open',
         opened_by: userId,
       })
@@ -110,7 +126,13 @@ export function AvailabilityWindowsStrip({ windows, isAdmin, orgId, userId }: Pr
         <div className="flex flex-wrap gap-2 items-center">
           <span className="text-xs text-gray-500 uppercase tracking-wide">Windows</span>
           {open.map((w) => (
-            <WindowPill key={w.id} w={w}>
+            <WindowPill
+              key={w.id}
+              w={w}
+              showSubmitted={isAdmin}
+              submittedCount={submittedCount(w.id)}
+              totalCount={operationalCount}
+            >
               {isAdmin && (
                 <button
                   onClick={() => lockWindow(w.id, w.label)}
@@ -122,7 +144,13 @@ export function AvailabilityWindowsStrip({ windows, isAdmin, orgId, userId }: Pr
             </WindowPill>
           ))}
           {recentlyLocked.map((w) => (
-            <WindowPill key={w.id} w={w}>
+            <WindowPill
+              key={w.id}
+              w={w}
+              showSubmitted={isAdmin}
+              submittedCount={submittedCount(w.id)}
+              totalCount={operationalCount}
+            >
               {isAdmin && (
                 <button
                   onClick={() => unlockWindow(w.id)}
@@ -148,7 +176,7 @@ export function AvailabilityWindowsStrip({ windows, isAdmin, orgId, userId }: Pr
       </div>
 
       {showOpen && (
-        <form onSubmit={openWindow} className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <form onSubmit={openWindow} className="mt-3 grid grid-cols-1 sm:grid-cols-4 gap-2">
           <div>
             <label className="block text-[10px] text-gray-500 mb-1 uppercase tracking-wide">Label</label>
             <input
@@ -180,7 +208,16 @@ export function AvailabilityWindowsStrip({ windows, isAdmin, orgId, userId }: Pr
               className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-orange-500"
             />
           </div>
-          <div className="sm:col-span-3 flex justify-end">
+          <div>
+            <label className="block text-[10px] text-gray-500 mb-1 uppercase tracking-wide">Due date (optional)</label>
+            <input
+              type="date"
+              value={form.due_date}
+              onChange={(e) => setForm((f) => ({ ...f, due_date: e.target.value }))}
+              className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-orange-500"
+            />
+          </div>
+          <div className="sm:col-span-4 flex justify-end">
             <button
               type="submit"
               disabled={saving}
@@ -198,12 +235,19 @@ export function AvailabilityWindowsStrip({ windows, isAdmin, orgId, userId }: Pr
 function WindowPill({
   w,
   children,
+  showSubmitted,
+  submittedCount,
+  totalCount,
 }: {
   w: AvailabilityWindow
   children?: React.ReactNode
+  showSubmitted: boolean
+  submittedCount: number
+  totalCount: number
 }) {
   const start = new Date(w.start_date + 'T12:00:00')
   const end = new Date(w.end_date + 'T12:00:00')
+  const due = w.due_date ? new Date(w.due_date + 'T12:00:00') : null
   return (
     <span
       className={`inline-flex items-center text-[11px] px-2 py-1 rounded font-medium ${
@@ -216,6 +260,26 @@ function WindowPill({
       <span className="ml-1.5 text-[10px] opacity-70">
         {fmtShortDate(start)}–{fmtShortDate(end)}
       </span>
+      {due && (
+        <span
+          className={`ml-1.5 text-[10px] ${
+            w.status === 'open' ? 'text-amber-300' : 'text-gray-500'
+          }`}
+          title="Submission deadline"
+        >
+          Due {fmtShortDate(due)}
+        </span>
+      )}
+      {showSubmitted && totalCount > 0 && (
+        <span
+          className={`ml-1.5 text-[10px] ${
+            w.status === 'open' ? 'text-blue-300' : 'text-gray-500'
+          }`}
+          title="Staffers who have submitted availability for this window"
+        >
+          {submittedCount}/{totalCount} submitted
+        </span>
+      )}
       <span
         className={`ml-1.5 text-[9px] uppercase tracking-wide ${
           w.status === 'open' ? 'text-green-400' : 'text-gray-500'

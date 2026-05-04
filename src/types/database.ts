@@ -242,9 +242,12 @@ export interface Availability {
  * opens an availability window. Free-text `shifts` matches Geneva's existing
  * scheduling format ("7 - 230", "open - 9", "5 - 7, 10 - 230, 5-630").
  *
- * Opt-in semantics: is_available defaults to false (no submission). Setting it
- * to true is an explicit "yes I can work this day"; pair with non-null `shifts`
- * to constrain the hours. Empty rows are deleted to keep the table clean.
+ * Three-state semantics:
+ *  - is_available=true   → "yes I can work this day" (optional `shifts` constrains hours)
+ *  - is_unavailable=true → explicit "I cannot work this day" (no shifts shown)
+ *  - both false          → no submission yet (UI shows neither toggle pressed)
+ * UI enforces mutual exclusion (clicking one clears the other). Empty rows
+ * (both false + no shifts) are deleted to keep the table clean.
  */
 export interface AvailabilityEntry {
   id: string
@@ -253,6 +256,7 @@ export interface AvailabilityEntry {
   entry_date: string             // 'YYYY-MM-DD'
   shifts: string | null          // free text — what hours they can work
   is_available: boolean          // explicit "yes I can work this day"
+  is_unavailable: boolean        // explicit "I cannot work this day"
   notes: string | null
   created_at: string
   updated_at: string
@@ -263,6 +267,9 @@ export interface AvailabilityEntry {
  * the window; admin locks before building the schedule. Locked windows make
  * availability_entries inside the range read-only for staff (admins can still
  * override).
+ *
+ * `due_date` is the optional deadline shown to staff so they know when the
+ * admin needs their availability submitted by.
  */
 export interface AvailabilityWindow {
   id: string
@@ -270,11 +277,29 @@ export interface AvailabilityWindow {
   label: string
   start_date: string
   end_date: string
+  due_date: string | null
   status: 'open' | 'locked'
   opened_by: string | null
   opened_at: string
   locked_by: string | null
   locked_at: string | null
+  created_at: string
+}
+
+/**
+ * Per-staffer-per-window submission marker. Inserted when a staffer clicks
+ * "Submit availability"; deleted when they reopen the submission for edits
+ * (only allowed while the window is still open).
+ *
+ * UNIQUE (window_id, user_id) prevents duplicates. We delete on reopen rather
+ * than soft-delete to keep the model simple — history isn't required yet.
+ */
+export interface AvailabilitySubmission {
+  id: string
+  org_id: string
+  window_id: string
+  user_id: string
+  submitted_at: string
   created_at: string
 }
 
