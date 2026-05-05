@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import type { Profile, TimeClock, TimeOffRequest, ScheduleShift, Availability, AvailabilityEntry, AvailabilityWindow, AvailabilitySubmission } from '@/types/database'
+import type { Profile, TimeClock, TimeOffRequest, ScheduleShift, Availability, AvailabilityEntry, AvailabilityWindow, AvailabilitySubmission, AvailabilityWindowAssignee } from '@/types/database'
 import { ClockTab } from './tabs/clock-tab'
 import { RosterTab } from './tabs/roster-tab'
 import { ScheduleTab } from './tabs/schedule-tab'
@@ -36,13 +36,14 @@ interface Props {
   availabilityEntries: AvailabilityEntry[]
   availabilityWindows: AvailabilityWindow[]
   availabilitySubmissions: AvailabilitySubmission[]
+  availabilityWindowAssignees: AvailabilityWindowAssignee[]
   recentClocks: TimeClock[]
   currentUser: { userId: string; orgId: string; role: string; fullName: string }
   orgHours?: OrgHours
   clockNotesVisibility?: 'all_staff' | 'admin_only'
 }
 
-export function StaffModule({ profiles, activeClocks, timeOffRequests, shifts, availability, availabilityEntries, availabilityWindows, availabilitySubmissions, recentClocks, currentUser, orgHours, clockNotesVisibility }: Props) {
+export function StaffModule({ profiles, activeClocks, timeOffRequests, shifts, availability, availabilityEntries, availabilityWindows, availabilitySubmissions, availabilityWindowAssignees, recentClocks, currentUser, orgHours, clockNotesVisibility }: Props) {
   const [tab, setTab] = useState<TabId>('clock')
   const isAdmin = currentUser.role === 'owner' || currentUser.role === 'admin'
 
@@ -114,7 +115,9 @@ export function StaffModule({ profiles, activeClocks, timeOffRequests, shifts, a
           availabilityEntries={operationalAvailabilityEntries}
           availabilityWindows={availabilityWindows}
           availabilitySubmissions={availabilitySubmissions}
-          profiles={operationalProfiles}
+          availabilityWindowAssignees={availabilityWindowAssignees}
+          profiles={profiles}
+          operationalProfiles={operationalProfiles}
           currentUser={currentUser}
           isAdmin={isAdmin}
         />
