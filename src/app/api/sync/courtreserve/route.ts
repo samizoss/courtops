@@ -61,11 +61,29 @@ export async function POST() {
   try {
     const cr = new CourtReserveAPI(settings.cr_api_user, settings.cr_api_pass, org.courtreserve_org_id)
 
-    // 1. Fetch membership types
+    // 1. Fetch membership types + cache them in cr_membership_types so the
+    //    Settings → Memberships page (admin) can display them without a
+    //    fresh API call. Was previously thrown away after building typeMap.
     const membershipTypes = await cr.getMembershipTypes()
     const typeMap: Record<number, string> = {}
     for (const mt of membershipTypes) {
       typeMap[mt.Id] = mt.Name
+    }
+
+    if (membershipTypes.length > 0) {
+      const typeRows = membershipTypes.map((mt) => ({
+        org_id: orgId,
+        cr_id: mt.Id,
+        name: mt.Name,
+        is_active: mt.IsActive,
+        monthly_price: mt.MonthlyMembershipPrice ?? null,
+        annual_price: mt.AnnualMembershipPrice ?? null,
+        last_synced_at: new Date().toISOString(),
+      }))
+      const { error: typeErr } = await supabase
+        .from('cr_membership_types')
+        .upsert(typeRows, { onConflict: 'org_id,cr_id' })
+      if (typeErr) console.error('Membership types upsert failed (continuing):', typeErr.message)
     }
 
     // 2. Fetch all members
