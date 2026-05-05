@@ -83,7 +83,23 @@ Three orthogonal axes on a profile:
 
 **Implementation effort:** medium. Migration + multi-select UI + carry-forward logic. ~half-day PR. **This is the next major piece.**
 
-### Phase 5 — QA round 2 (PR #23, in flight)
+### Phase 6 — Active queue cleanup (PRs #24, #25)
+
+After PR #23 docs/login fix landed, Sami said "keep going with Active Queue. Both look like things we can get done." Knocked out the top two:
+
+- **PR #24 — Per-window assignees** (the schedulable-vs-availability redesign).
+  - Migration 015: `availability_window_assignees` table with RLS. Backfilled existing windows with all currently-schedulable+visible staff.
+  - Open-window form: multi-select picker pre-defaulted from the previous window's assignees (carry-forward). Counter "X of Y selected", quick "All on-schedule / Clear" buttons.
+  - Manage Assignees modal on existing open windows for post-open adjustments.
+  - "X/Y submitted" badge now reads Y from the window's assignee count, not org-wide schedulable count.
+  - Admin's calendar rows = union of assignees across visible windows (falls back to operationalProfiles if none configured).
+- **PR #25 — Roster table redesign.**
+  - Real `<table>` with sortable headers (Name by last/first, Role, Schedule, Target hrs).
+  - Search on name/email/phone.
+  - Filter chips: Role (all/owner/admin/staff/viewer + counts) and Schedule (all/on/off + counts).
+  - Responsive: email collapses below name on mobile; phone, capabilities, target hours hide below md/lg breakpoints.
+
+### Phase 5 — QA round 2 (PR #23)
 
 **Q: How do existing seeded staff log in?**
 The 11 imported placeholders (everyone except Geneva and Maddie who were already real) had `auth.users.email` updated to real addresses but their passwords are random unusable hashes. They literally cannot log in until they trigger a password reset. Two paths:
@@ -101,20 +117,18 @@ Plan: convert the current card-list Roster to a table with sortable column heade
 
 ---
 
-## Active queue (post-2026-05-04)
+## Active queue (post-2026-05-04 evening)
 
-Roughly priority-ordered. The first two items are the most-anticipated by Sami.
+Roughly priority-ordered. **Top two items now shipped (PR #24, #25).** Remaining:
 
-1. **Schedulable vs submits-availability redesign** (Phase 4 above) — `availability_window_assignees` table + carry-forward UI + assignee-aware submission counter.
-2. **Roster table redesign** (Phase 5 above) — sortable table + filter chips.
-3. **Daily checklists historical view** — Geneva wants to look back at past days. Add a date picker (admin sees any past day, read-only) + a date-range report aggregating completion %/who-completed-what across N days. Possibly CSV export. Mid-effort.
-4. **Membership types in Settings + CR API scan** — Sami: "I'm wondering if we shouldn't scan the court reserve API and see what just informational stuff we should be able to get from the court reserve sync." **Already discovered:** `src/lib/courtreserve.ts` has `getMembershipTypes()` — endpoint exists, we just don't store/display the result. Lift: cache CR membership types in `cr_membership_types` table on each sync, Settings → Memberships sub-page reads from there. Worth investigating other CR endpoints (location, hours, courts, programs) to inform whether address/hours fields should auto-populate from CR.
-5. **Per-club configurable role types** — defer until pilot #2 with different taxonomy.
-6. **RLS sweep for viewer writes** — most tables still allow any org member to write at the DB level. Viewer write-blocking is UI-only today. Acceptable for trusted pilot (Travis/Kevin); harden when a less-trusted viewer joins.
-7. **Checklists Admin IA question** — Sami mused that maybe Checklists Admin shouldn't be a top-level destination. Open question, no action.
-8. **Twilio provisioning** for window-open SMS notifications.
-9. **Pipeline auto-advance** + **CR sync cron**.
-10. **Shift-swap split** from Time Off.
+1. **Daily checklists historical view** — Geneva wants to look back at past days. Add a date picker (admin sees any past day, read-only) + a date-range report aggregating completion %/who-completed-what across N days. Possibly CSV export. Mid-effort.
+2. **Membership types in Settings + CR API scan** — Sami: "I'm wondering if we shouldn't scan the court reserve API and see what just informational stuff we should be able to get from the court reserve sync." **Already discovered:** `src/lib/courtreserve.ts` has `getMembershipTypes()` — endpoint exists, we just don't store/display the result. Lift: cache CR membership types in `cr_membership_types` table on each sync, Settings → Memberships sub-page reads from there. Worth investigating other CR endpoints (location, hours, courts, programs) to inform whether address/hours fields should auto-populate from CR.
+3. **Per-club configurable role types** — defer until pilot #2 with different taxonomy.
+4. **RLS sweep for viewer writes** — most tables still allow any org member to write at the DB level. Viewer write-blocking is UI-only today. Acceptable for trusted pilot (Travis/Kevin); harden when a less-trusted viewer joins.
+5. **Checklists Admin IA question** — Sami mused that maybe Checklists Admin shouldn't be a top-level destination. Open question, no action.
+6. **Twilio provisioning** for window-open SMS notifications.
+7. **Pipeline auto-advance** + **CR sync cron**.
+8. **Shift-swap split** from Time Off.
 
 ### Lower-priority (not committed for any near-term meeting)
 
