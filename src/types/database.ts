@@ -306,6 +306,20 @@ export interface AvailabilitySubmission {
   created_at: string
 }
 
+/**
+ * Per-window assignment of which staffers are expected to submit availability
+ * for a specific window. Decoupled from is_operational_staff so admin can
+ * adjust per-window (e.g. exclude a co-owner who's schedulable but doesn't
+ * submit monthly). Defaults on window creation = previous window's assignees.
+ */
+export interface AvailabilityWindowAssignee {
+  id: string
+  org_id: string
+  window_id: string
+  user_id: string
+  created_at: string
+}
+
 export interface ScheduleShift {
   id: string
   org_id: string

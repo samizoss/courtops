@@ -10,6 +10,7 @@ import type {
   AvailabilityEntry,
   AvailabilityWindow,
   AvailabilitySubmission,
+  AvailabilityWindowAssignee,
 } from '@/types/database'
 import { AvailabilityWindowsStrip } from './availability-windows-strip'
 
@@ -19,7 +20,11 @@ interface Props {
   initialEntries: AvailabilityEntry[]
   windows: AvailabilityWindow[]
   submissions: AvailabilitySubmission[]
+  assignees: AvailabilityWindowAssignee[]
+  /** Full active+visible profile list — used by the assignee picker (can include non-schedulable). */
   profiles: Profile[]
+  /** Operational subset (is_operational_staff=true OR self) — fallback for admin's calendar view when no windows are visible. */
+  operationalProfiles: Profile[]
   currentUser: { userId: string; orgId: string; role: string; fullName: string }
   isAdmin: boolean
 }
@@ -54,7 +59,9 @@ export function AvailabilityByDateTab({
   initialEntries,
   windows,
   submissions: initialSubmissions,
+  assignees,
   profiles,
+  operationalProfiles,
   currentUser,
   isAdmin,
 }: Props) {
@@ -79,14 +86,24 @@ export function AvailabilityByDateTab({
     return map
   })
 
+  // Admin calendar rows: union of assignees across ALL windows in scope.
+  // If no windows have any assignees yet, fall back to operationalProfiles
+  // so the calendar isn't empty before any windows are configured.
+  // Staff users still see only their own row.
   const visibleProfiles = useMemo(() => {
     if (!isAdmin) return profiles.filter((p) => p.id === currentUser.userId)
-    const me = profiles.find((p) => p.id === currentUser.userId)
-    const others = profiles
+
+    const assigneeIds = new Set(assignees.map((a) => a.user_id))
+    const filteredFromAssignees = profiles.filter((p) => assigneeIds.has(p.id))
+    const baseList =
+      filteredFromAssignees.length > 0 ? filteredFromAssignees : operationalProfiles
+
+    const me = baseList.find((p) => p.id === currentUser.userId)
+    const others = baseList
       .filter((p) => p.id !== currentUser.userId)
       .sort((a, b) => a.full_name.localeCompare(b.full_name))
     return me ? [me, ...others] : others
-  }, [profiles, currentUser.userId, isAdmin])
+  }, [assignees, profiles, operationalProfiles, currentUser.userId, isAdmin])
 
   const openWindows = useMemo(() => windows.filter((w) => w.status === 'open'), [windows])
 
@@ -268,7 +285,9 @@ export function AvailabilityByDateTab({
       <AvailabilityWindowsStrip
         windows={windows}
         submissions={submissions}
-        operationalCount={profiles.length}
+        assignees={assignees}
+        profiles={profiles}
+        operationalProfiles={operationalProfiles}
         isAdmin={isAdmin}
         orgId={currentUser.orgId}
         userId={currentUser.userId}
