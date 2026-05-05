@@ -306,6 +306,23 @@ export function ScheduleTab({
   const [anchor, setAnchor] = useState<Date>(() => startOfDay(new Date()))
   const [filter, setFilter] = useState<FilterMode>(isAdmin ? 'all' : 'mine')
 
+  // Role + draft visibility toggles. Sami's coverage-gap use case 2026-05-05:
+  // toggle off Management to see the front-desk gap on a given day; toggle
+  // Drafts off to see only the published schedule, on to see proposals
+  // alongside. Default: all roles visible, drafts visible (so admin sees
+  // their proposals immediately after running magic-schedule).
+  const [hiddenRoles, setHiddenRoles] = useState<Set<ShiftRole>>(new Set())
+  const [showDrafts, setShowDrafts] = useState(true)
+
+  function toggleRole(r: ShiftRole) {
+    setHiddenRoles((prev) => {
+      const next = new Set(prev)
+      if (next.has(r)) next.delete(r)
+      else next.add(r)
+      return next
+    })
+  }
+
   // Two distinct popovers:
   //  - dayPopover: the Assign-modal for a date (admin only). Set when admin
   //    clicks an empty area or "+ Assign".
@@ -348,16 +365,23 @@ export function ScheduleTab({
     return map
   }, [shifts])
 
-  const filteredShifts = useMemo<ShiftWithProfile[]>(() => {
-    if (filter === 'mine') return shifts.filter((s) => s.user_id === currentUser.userId)
-    return shifts
-  }, [shifts, filter, currentUser.userId])
-
-  const visibleShiftsForDate = (date: Date): ShiftWithProfile[] => {
-    const all = shiftsByDate[fmtDateKey(date)] ?? []
-    if (filter === 'mine') return all.filter((s) => s.user_id === currentUser.userId)
-    return all
+  // Apply ALL view filters: My/Total + role visibility + draft visibility.
+  function applyViewFilters(input: ShiftWithProfile[]): ShiftWithProfile[] {
+    let out = input
+    if (filter === 'mine') out = out.filter((s) => s.user_id === currentUser.userId)
+    if (hiddenRoles.size > 0) out = out.filter((s) => !hiddenRoles.has(s.role))
+    if (!showDrafts) out = out.filter((s) => s.published_at != null)
+    return out
   }
+
+  const filteredShifts = useMemo<ShiftWithProfile[]>(
+    () => applyViewFilters(shifts),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [shifts, filter, hiddenRoles, showDrafts, currentUser.userId]
+  )
+
+  const visibleShiftsForDate = (date: Date): ShiftWithProfile[] =>
+    applyViewFilters(shiftsByDate[fmtDateKey(date)] ?? [])
 
   const weekRangeStart = useMemo(() => visibleRange(anchor, 'week').start, [anchor])
 
@@ -441,7 +465,7 @@ export function ScheduleTab({
     }
   }
 
-  async function handleMagicSchedule(publishImmediately: boolean) {
+  async function handleMagicSchedule() {
     if (magicRunning) return
     if (mode === 'day') {
       toast('Switch to week or month to use magic schedule', 'error')
@@ -459,16 +483,14 @@ export function ScheduleTab({
       toast('No magic proposals — no submitted availability in this range', 'error')
       return
     }
-    const confirmMsg = publishImmediately
-      ? `Create + PUBLISH ${proposals.length} shift${proposals.length === 1 ? '' : 's'} immediately? Staff will see them right away. Based on submitted availability + capabilities + target hours.`
-      : `Propose ${proposals.length} draft shift${proposals.length === 1 ? '' : 's'} based on submitted availability + capabilities + target hours? Drafts only — review before publishing.`
-    if (!confirm(confirmMsg)) return
+    if (!confirm(
+      `Propose ${proposals.length} draft shift${proposals.length === 1 ? '' : 's'} based on submitted availability + capabilities + target hours? Drafts only — toggle 'Drafts' off in the view to compare against the published schedule, then publish individually or bulk when ready.`
+    )) return
 
     setMagicRunning(true)
     try {
       const { createClient } = await import('@/lib/supabase/client')
       const supabase = createClient()
-      const nowIso = new Date().toISOString()
       const rows = proposals.map((p) => ({
         org_id: orgId,
         user_id: p.user_id,
@@ -476,16 +498,12 @@ export function ScheduleTab({
         start_time: p.start_time,
         end_time: p.end_time,
         role: p.role,
-        notes: publishImmediately ? 'Magic-scheduled' : 'Magic-scheduled draft',
-        published_at: publishImmediately ? nowIso : null,
+        notes: 'Magic-scheduled draft',
+        published_at: null,
       }))
       const { error } = await supabase.from('shifts').insert(rows)
       if (error) throw error
-      toast(
-        publishImmediately
-          ? `Created + published ${proposals.length} shift${proposals.length === 1 ? '' : 's'}`
-          : `Proposed ${proposals.length} draft${proposals.length === 1 ? '' : 's'} — review and publish when ready`
-      )
+      toast(`Proposed ${proposals.length} draft${proposals.length === 1 ? '' : 's'} — toggle 'Drafts' to compare`)
       router.refresh()
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Magic schedule failed', 'error')
@@ -511,25 +529,14 @@ export function ScheduleTab({
         </button>
       ))}
       {isAdmin && mode !== 'day' && (
-        <div className="inline-flex items-stretch text-xs rounded border border-purple-500/40 bg-purple-600/30 hover:bg-purple-600/50 transition-colors disabled:opacity-50 overflow-hidden">
-          <button
-            onClick={() => handleMagicSchedule(false)}
-            disabled={magicRunning}
-            className="px-3 py-1.5 text-purple-200 hover:bg-purple-600/30 disabled:opacity-50"
-            title="Propose magic-scheduled shifts as drafts — review before publishing"
-          >
-            {magicRunning ? 'Running…' : '✨ Magic → drafts'}
-          </button>
-          <span className="border-l border-purple-500/40" aria-hidden />
-          <button
-            onClick={() => handleMagicSchedule(true)}
-            disabled={magicRunning}
-            className="px-3 py-1.5 text-purple-200 hover:bg-purple-600/30 disabled:opacity-50"
-            title="Magic-schedule + publish immediately (staff sees them right away)"
-          >
-            ⚡ + publish
-          </button>
-        </div>
+        <button
+          onClick={handleMagicSchedule}
+          disabled={magicRunning}
+          className="text-xs px-3 py-1.5 rounded bg-purple-600/30 hover:bg-purple-600/50 disabled:opacity-50 text-purple-200 border border-purple-500/40 transition-colors"
+          title="Propose magic-scheduled shifts as drafts — review before publishing"
+        >
+          {magicRunning ? 'Running…' : '✨ Magic schedule'}
+        </button>
       )}
       {isAdmin && draftCountInRange > 0 && (
         <button
@@ -585,8 +592,83 @@ export function ScheduleTab({
     }
   }
 
+  // Aggregate counts by role for the visibility chips, after My/Total + draft
+  // filter — but BEFORE role hide so the chip count reflects what would show
+  // if the chip were on. Helps Geneva find "0 front-desk" days at a glance.
+  const roleCounts = useMemo<Record<ShiftRole, number>>(() => {
+    const out: Record<ShiftRole, number> = {
+      'front-desk': 0, coaching: 0, instructor: 0, 'league-leader': 0, management: 0, other: 0,
+    }
+    for (const s of shifts) {
+      if (filter === 'mine' && s.user_id !== currentUser.userId) continue
+      if (!showDrafts && s.published_at == null) continue
+      out[s.role] = (out[s.role] ?? 0) + 1
+    }
+    return out
+  }, [shifts, filter, showDrafts, currentUser.userId])
+
+  const draftCountVisible = useMemo(
+    () => shifts.filter((s) => s.published_at == null && (filter === 'all' || s.user_id === currentUser.userId)).length,
+    [shifts, filter, currentUser.userId]
+  )
+
   return (
     <div className="space-y-4">
+      {/* Visibility chip row — admin coverage tool. Not shown for staff (My/Total
+          is enough). Chips toggle role visibility individually + drafts on/off. */}
+      {isAdmin && (
+        <div className="flex flex-wrap items-center gap-2 bg-gray-900/40 border border-gray-800 rounded-lg px-3 py-2">
+          <span className="text-[10px] text-gray-500 uppercase tracking-wide">Show</span>
+          {ALL_SHIFT_ROLES.map((r) => {
+            const hidden = hiddenRoles.has(r)
+            const count = roleCounts[r] ?? 0
+            return (
+              <button
+                key={r}
+                type="button"
+                onClick={() => toggleRole(r)}
+                className={`text-xs px-2.5 py-1 rounded border transition-colors flex items-center gap-1 ${
+                  hidden
+                    ? 'bg-gray-800 border-gray-700 text-gray-500 hover:bg-gray-700'
+                    : `border-${'orange'}-500/40 ${getRoleBadgeColor(r)}`
+                }`}
+                title={hidden ? `Show ${SHIFT_ROLE_LABELS[r]}` : `Hide ${SHIFT_ROLE_LABELS[r]}`}
+              >
+                <span>{hidden ? '○' : '●'}</span>
+                <span>{SHIFT_ROLE_LABELS[r]}</span>
+                <span className="opacity-70">({count})</span>
+              </button>
+            )
+          })}
+          <span className="border-l border-gray-700 h-5 mx-1" aria-hidden />
+          <button
+            type="button"
+            onClick={() => setShowDrafts((v) => !v)}
+            className={`text-xs px-2.5 py-1 rounded border transition-colors flex items-center gap-1 ${
+              showDrafts
+                ? 'bg-yellow-500/15 text-yellow-300 border-yellow-500/40'
+                : 'bg-gray-800 border-gray-700 text-gray-500 hover:bg-gray-700'
+            }`}
+            title={showDrafts ? 'Hide draft shifts (compare to published only)' : 'Show draft shifts alongside published'}
+          >
+            <span>{showDrafts ? '●' : '○'}</span>
+            <span>Drafts ({draftCountVisible})</span>
+          </button>
+          {(hiddenRoles.size > 0 || !showDrafts) && (
+            <button
+              type="button"
+              onClick={() => {
+                setHiddenRoles(new Set())
+                setShowDrafts(true)
+              }}
+              className="text-[10px] text-gray-400 hover:text-orange-400 underline ml-auto"
+            >
+              Reset
+            </button>
+          )}
+        </div>
+      )}
+
       {mode === 'month' ? (
         <CalendarMonthGrid
           anchor={anchor}

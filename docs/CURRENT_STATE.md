@@ -163,6 +163,8 @@ Roughly priority-ordered. **Several items now shipped — see "Recently shipped"
 - ✅ PR #25 — Roster sortable + filterable table
 - ✅ PR #26 — Sidebar trim (Tasks/Pipeline/Content/Messages/Guide/Notifications now owner-only)
 - ✅ PR #27 — Settings → Memberships (CR types cached + displayed)
+- ✅ PR #29 — Magic-schedule confirmed-as-drafts-only (publish-immediately variant removed); Geneva-meeting answers captured.
+- ✅ PR #30 (this) — Schedule view role + drafts visibility toggles; Roster archived view + Reactivate.
 
 ### Other backlog
 2. **Membership types in Settings + CR API scan** — Sami: "I'm wondering if we shouldn't scan the court reserve API and see what just informational stuff we should be able to get from the court reserve sync." **Already discovered:** `src/lib/courtreserve.ts` has `getMembershipTypes()` — endpoint exists, we just don't store/display the result. Lift: cache CR membership types in `cr_membership_types` table on each sync, Settings → Memberships sub-page reads from there. Worth investigating other CR endpoints (location, hours, courts, programs) to inform whether address/hours fields should auto-populate from CR.

@@ -49,6 +49,68 @@ export function RosterTab({ profiles: initial, isAdmin, orgId }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>('name')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
 
+  // Archived staff: lazy-loaded on first toggle. Page query filters
+  // is_active=true, so archived rows don't come down by default. RosterTab
+  // fetches them on demand to keep the cold-load light.
+  const [showArchived, setShowArchived] = useState(false)
+  const [archived, setArchived] = useState<Profile[] | null>(null)
+  const [loadingArchived, setLoadingArchived] = useState(false)
+  const [reactivatingId, setReactivatingId] = useState<string | null>(null)
+
+  async function loadArchived() {
+    if (archived !== null || loadingArchived) return
+    setLoadingArchived(true)
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      const { data, error: fetchErr } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('org_id', orgId)
+        .eq('is_active', false)
+        .eq('is_hidden', false)
+        .order('full_name')
+      if (fetchErr) throw fetchErr
+      setArchived((data as Profile[]) ?? [])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load archived staff')
+    } finally {
+      setLoadingArchived(false)
+    }
+  }
+
+  async function toggleArchivedView() {
+    if (!showArchived && archived === null) await loadArchived()
+    setShowArchived((v) => !v)
+  }
+
+  async function reactivateProfile(profileId: string) {
+    if (!confirm('Reactivate this staff member? They will reappear in Roster, Schedule, and other staff views.')) return
+    setReactivatingId(profileId)
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      const { data: rows, error: updateErr } = await supabase
+        .from('profiles')
+        .update({ is_active: true })
+        .eq('id', profileId)
+        .select()
+      if (updateErr) throw updateErr
+      if (!rows || rows.length === 0) {
+        throw new Error('Update was blocked — your role may not have permission to edit profiles.')
+      }
+      // Move from archived to active list
+      const reactivated = (rows[0] as Profile)
+      setArchived((prev) => (prev ?? []).filter((p) => p.id !== profileId))
+      setProfiles((prev) => [...prev, reactivated].sort((a, b) => a.full_name.localeCompare(b.full_name)))
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reactivate')
+    } finally {
+      setReactivatingId(null)
+    }
+  }
+
   function clickSort(key: SortKey) {
     if (sortKey === key) {
       setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
@@ -60,7 +122,8 @@ export function RosterTab({ profiles: initial, isAdmin, orgId }: Props) {
 
   const visibleProfiles = useMemo(() => {
     const q = search.trim().toLowerCase()
-    let filtered = profiles
+    const merged = showArchived && archived ? [...profiles, ...archived] : profiles
+    let filtered = merged
     if (q) {
       filtered = filtered.filter(
         (p) =>
@@ -98,7 +161,7 @@ export function RosterTab({ profiles: initial, isAdmin, orgId }: Props) {
       return sortDir === 'asc' ? cmp : -cmp
     })
     return sorted
-  }, [profiles, search, roleFilter, scheduleFilter, sortKey, sortDir])
+  }, [profiles, archived, showArchived, search, roleFilter, scheduleFilter, sortKey, sortDir])
 
   // Aggregate counts for chip badges
   const counts = useMemo(() => {
@@ -206,12 +269,31 @@ export function RosterTab({ profiles: initial, isAdmin, orgId }: Props) {
         </div>
 
         {isAdmin && (
-          <button
-            onClick={() => setShowAdd(!showAdd)}
-            className="ml-auto px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white text-sm font-medium rounded-lg transition-colors"
-          >
-            {showAdd ? 'Cancel' : '+ Add Staff'}
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleArchivedView}
+              disabled={loadingArchived}
+              className={`text-xs px-2.5 py-1.5 rounded transition-colors ${
+                showArchived
+                  ? 'bg-gray-700 text-white'
+                  : 'bg-gray-800 hover:bg-gray-700 text-gray-300'
+              }`}
+              title="Toggle archived (deactivated) staff"
+            >
+              {loadingArchived
+                ? 'Loading…'
+                : showArchived
+                  ? `Hide archived${archived ? ` (${archived.length})` : ''}`
+                  : `Show archived${archived ? ` (${archived.length})` : ''}`}
+            </button>
+            <button
+              onClick={() => setShowAdd(!showAdd)}
+              className="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              {showAdd ? 'Cancel' : '+ Add Staff'}
+            </button>
+          </div>
         )}
       </div>
 
@@ -337,8 +419,9 @@ export function RosterTab({ profiles: initial, isAdmin, orgId }: Props) {
             {visibleProfiles.map((p) => {
               const placeholder = p.email.endsWith('@placeholder.thepbjar.club')
               const initials = p.full_name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
+              const isArchived = !p.is_active
               return (
-                <tr key={p.id} className="hover:bg-gray-800/30 transition-colors">
+                <tr key={p.id} className={`hover:bg-gray-800/30 transition-colors ${isArchived ? 'opacity-60' : ''}`}>
                   <td className="px-4 py-2.5">
                     <div className="flex items-center gap-2.5 min-w-0">
                       <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center text-[11px] font-bold text-gray-400 shrink-0">
@@ -347,6 +430,11 @@ export function RosterTab({ profiles: initial, isAdmin, orgId }: Props) {
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="text-sm text-white truncate">{p.full_name}</span>
+                          {isArchived && (
+                            <span className="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-red-500/15 text-red-300 shrink-0">
+                              Archived
+                            </span>
+                          )}
                           {placeholder && (
                             <span className="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-yellow-500/10 text-yellow-400 shrink-0">
                               Placeholder
@@ -408,12 +496,22 @@ export function RosterTab({ profiles: initial, isAdmin, orgId }: Props) {
                   </td>
                   {isAdmin && (
                     <td className="px-3 py-2.5 text-right">
-                      <button
-                        onClick={() => setEditing(p)}
-                        className="text-xs text-gray-500 hover:text-orange-400 transition-colors"
-                      >
-                        Edit
-                      </button>
+                      {isArchived ? (
+                        <button
+                          onClick={() => reactivateProfile(p.id)}
+                          disabled={reactivatingId === p.id}
+                          className="text-xs text-green-400 hover:text-green-300 transition-colors disabled:opacity-50"
+                        >
+                          {reactivatingId === p.id ? 'Reactivating…' : 'Reactivate'}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => setEditing(p)}
+                          className="text-xs text-gray-500 hover:text-orange-400 transition-colors"
+                        >
+                          Edit
+                        </button>
+                      )}
                     </td>
                   )}
                 </tr>
