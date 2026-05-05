@@ -117,11 +117,43 @@ Plan: convert the current card-list Roster to a table with sortable column heade
 
 ---
 
+## Open questions for the next Geneva meeting (block scheduling V1.0 ticketing)
+
+These come from the new `docs/scheduling-design-v1.md` north-star doc. Sami captured them 2026-05-05 from Gemini research; they affect V1.0 scope so we shouldn't ticket V1.0 work until Geneva answers:
+
+1. **Terminology:** "Set Availability" (what the team says today) vs "Block Time Off" (new mental model that matches Outlook/Google calendar metaphor). Affects all V1.0 staff-facing copy.
+2. **Email-only notifications adequate for V1.0**, or does Geneva expect SMS from day one (cost implication — A2P 10DLC + Twilio sub-account).
+3. **Time-off vs unavailability — same flow or separate?** Today they're conflated in the Time Off tab. Design doc treats unavailability as the primary blocker. Need Geneva to confirm consolidation is OK.
+
+See `docs/scheduling-design-v1.md` for full reasoning + V1.0/V1.1/V2.0 roadmap + state-by-state compliance lookup (citations need re-verification before V2.0 encoding).
+
+---
+
 ## Active queue (post-2026-05-04 evening)
 
-Roughly priority-ordered. **Top two items now shipped (PR #24, #25).** Remaining:
+Roughly priority-ordered. **Several items now shipped — see "Recently shipped" below.** Remaining:
 
-1. **Daily checklists historical view** — Geneva wants to look back at past days. Add a date picker (admin sees any past day, read-only) + a date-range report aggregating completion %/who-completed-what across N days. Possibly CSV export. Mid-effort.
+### Pre-Geneva-meeting safe to ship (no design questions)
+
+These don't depend on the 3 open questions above. Implementing now is safe:
+
+- **Daily checklists historical view** — Geneva wants to look back at past days. Date picker (admin sees any past day, read-only) + date-range report aggregating completion % / who-completed-what. Possibly CSV export. Mid-effort.
+- **DOB + school-day calendar data model** (foundational from `scheduling-design-v1.md` § 3). Add `profiles.date_of_birth`, `club_school_calendar(org_id, date, is_school_day)`, `profile_school_day_overrides`. Just the schema — no UI, no enforcement engine. Unblocks V2.0 compliance work without committing to specific rule semantics.
+- **Audit trail fields on a future shift-swap table** (`scheduling-design-v1.md` § 6 spec). When shift-swap eventually ships, the swap table needs `original_assignee`, `accepted_by`, `approved_by`, `timestamp_requested`, `timestamp_finalized`, `reason_text` baked in from day one. Don't ship the swap feature without these.
+
+### Blocked on Geneva input
+
+- **Shift-swap split** from Time Off — was Active queue #3, now blocked on open question #3 (time-off vs unavailability consolidation). Per the design doc, swap is V1.1, not V1.0; don't ticket until Geneva confirms direction.
+- **Unavailability granularity refactor** — current monthly grid → 30-min tap-to-toggle (per `scheduling-design-v1.md` § 2). Blocked on open question #1 (terminology) since it affects copy + IA.
+
+### Recently shipped (2026-05-04 → 2026-05-05)
+
+- ✅ PR #24 — Per-window assignees redesign
+- ✅ PR #25 — Roster sortable + filterable table
+- ✅ PR #26 — Sidebar trim (Tasks/Pipeline/Content/Messages/Guide/Notifications now owner-only)
+- ✅ PR #27 — Settings → Memberships (CR types cached + displayed)
+
+### Other backlog
 2. **Membership types in Settings + CR API scan** — Sami: "I'm wondering if we shouldn't scan the court reserve API and see what just informational stuff we should be able to get from the court reserve sync." **Already discovered:** `src/lib/courtreserve.ts` has `getMembershipTypes()` — endpoint exists, we just don't store/display the result. Lift: cache CR membership types in `cr_membership_types` table on each sync, Settings → Memberships sub-page reads from there. Worth investigating other CR endpoints (location, hours, courts, programs) to inform whether address/hours fields should auto-populate from CR.
 3. **Per-club configurable role types** — defer until pilot #2 with different taxonomy.
 4. **RLS sweep for viewer writes** — most tables still allow any org member to write at the DB level. Viewer write-blocking is UI-only today. Acceptable for trusted pilot (Travis/Kevin); harden when a less-trusted viewer joins.
