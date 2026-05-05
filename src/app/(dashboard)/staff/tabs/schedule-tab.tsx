@@ -441,7 +441,7 @@ export function ScheduleTab({
     }
   }
 
-  async function handleMagicSchedule() {
+  async function handleMagicSchedule(publishImmediately: boolean) {
     if (magicRunning) return
     if (mode === 'day') {
       toast('Switch to week or month to use magic schedule', 'error')
@@ -459,14 +459,16 @@ export function ScheduleTab({
       toast('No magic proposals — no submitted availability in this range', 'error')
       return
     }
-    if (!confirm(
-      `Propose ${proposals.length} draft shift${proposals.length === 1 ? '' : 's'} based on submitted availability + capabilities + target hours? Drafts only — review before publishing.`
-    )) return
+    const confirmMsg = publishImmediately
+      ? `Create + PUBLISH ${proposals.length} shift${proposals.length === 1 ? '' : 's'} immediately? Staff will see them right away. Based on submitted availability + capabilities + target hours.`
+      : `Propose ${proposals.length} draft shift${proposals.length === 1 ? '' : 's'} based on submitted availability + capabilities + target hours? Drafts only — review before publishing.`
+    if (!confirm(confirmMsg)) return
 
     setMagicRunning(true)
     try {
       const { createClient } = await import('@/lib/supabase/client')
       const supabase = createClient()
+      const nowIso = new Date().toISOString()
       const rows = proposals.map((p) => ({
         org_id: orgId,
         user_id: p.user_id,
@@ -474,12 +476,16 @@ export function ScheduleTab({
         start_time: p.start_time,
         end_time: p.end_time,
         role: p.role,
-        notes: 'Magic-scheduled draft',
-        published_at: null,
+        notes: publishImmediately ? 'Magic-scheduled' : 'Magic-scheduled draft',
+        published_at: publishImmediately ? nowIso : null,
       }))
       const { error } = await supabase.from('shifts').insert(rows)
       if (error) throw error
-      toast(`Proposed ${proposals.length} draft${proposals.length === 1 ? '' : 's'} — review and publish when ready`)
+      toast(
+        publishImmediately
+          ? `Created + published ${proposals.length} shift${proposals.length === 1 ? '' : 's'}`
+          : `Proposed ${proposals.length} draft${proposals.length === 1 ? '' : 's'} — review and publish when ready`
+      )
       router.refresh()
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Magic schedule failed', 'error')
@@ -505,14 +511,25 @@ export function ScheduleTab({
         </button>
       ))}
       {isAdmin && mode !== 'day' && (
-        <button
-          onClick={handleMagicSchedule}
-          disabled={magicRunning}
-          className="text-xs px-3 py-1.5 rounded bg-purple-600/30 hover:bg-purple-600/50 disabled:opacity-50 text-purple-200 border border-purple-500/40 transition-colors"
-          title="Auto-propose draft shifts from submitted availability + capabilities + target hours"
-        >
-          {magicRunning ? 'Running…' : '✨ Magic schedule'}
-        </button>
+        <div className="inline-flex items-stretch text-xs rounded border border-purple-500/40 bg-purple-600/30 hover:bg-purple-600/50 transition-colors disabled:opacity-50 overflow-hidden">
+          <button
+            onClick={() => handleMagicSchedule(false)}
+            disabled={magicRunning}
+            className="px-3 py-1.5 text-purple-200 hover:bg-purple-600/30 disabled:opacity-50"
+            title="Propose magic-scheduled shifts as drafts — review before publishing"
+          >
+            {magicRunning ? 'Running…' : '✨ Magic → drafts'}
+          </button>
+          <span className="border-l border-purple-500/40" aria-hidden />
+          <button
+            onClick={() => handleMagicSchedule(true)}
+            disabled={magicRunning}
+            className="px-3 py-1.5 text-purple-200 hover:bg-purple-600/30 disabled:opacity-50"
+            title="Magic-schedule + publish immediately (staff sees them right away)"
+          >
+            ⚡ + publish
+          </button>
+        </div>
       )}
       {isAdmin && draftCountInRange > 0 && (
         <button

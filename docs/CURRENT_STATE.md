@@ -117,15 +117,29 @@ Plan: convert the current card-list Roster to a table with sortable column heade
 
 ---
 
-## Open questions for the next Geneva meeting (block scheduling V1.0 ticketing)
+## Geneva-meeting open questions — Sami's 2026-05-05 answers
 
-These come from the new `docs/scheduling-design-v1.md` north-star doc. Sami captured them 2026-05-05 from Gemini research; they affect V1.0 scope so we shouldn't ticket V1.0 work until Geneva answers:
+Originally surfaced as 3 V1.0-scope-affecting questions in `docs/scheduling-design-v1.md`. Sami answered all three on 2026-05-05; treat the answers below as decided unless Geneva pushes back at her next meeting.
 
-1. **Terminology:** "Set Availability" (what the team says today) vs "Block Time Off" (new mental model that matches Outlook/Google calendar metaphor). Affects all V1.0 staff-facing copy.
-2. **Email-only notifications adequate for V1.0**, or does Geneva expect SMS from day one (cost implication — A2P 10DLC + Twilio sub-account).
-3. **Time-off vs unavailability — same flow or separate?** Today they're conflated in the Time Off tab. Design doc treats unavailability as the primary blocker. Need Geneva to confirm consolidation is OK.
+1. **Terminology:** **PUNT TO INDUSTRY STANDARD = "Set Availability."** Every major scheduler (7shifts, Homebase, When I Work, Calendly etc.) uses "Set Availability" with sub-toggles for available/unavailable. Sling's "Mark Time Off" is the outlier. Keep current terminology; don't retrain Geneva on a new word.
+2. **Email-only sufficient for V1.0** — yes, BUT email should include a **share-link** Geneva can manually copy into a text/group-chat. Same auth-less link the staffer would receive in their email; clicking it lands them at `/login` with the email pre-filled or at the `/forgot-password` flow. **New feature to add to queue: window-open notification email + share-link generator on the window pill.**
+3. **Time-off vs unavailability — separate flows.** **Confirmed current design:**
+   - Availability submitted within an open window. Locked windows = read-only.
+   - **After the schedule is released, shift swap only** — no more availability edits, no more "I need that day off" requests against published shifts. Like a restaurant.
+   - Shift-swap remains V1.1 but the design is locked: it's the *post-publish* path for "I can't work that shift after all."
 
 See `docs/scheduling-design-v1.md` for full reasoning + V1.0/V1.1/V2.0 roadmap + state-by-state compliance lookup (citations need re-verification before V2.0 encoding).
+
+### "How do we know what the shifts are in an org?" (Sami's 2026-05-05 question)
+
+**Today's answer:** **free-form.** No shift-template concept. Geneva creates each shift ad-hoc with arbitrary start/end times, picking the staffer + role per shift. Magic-schedule proposals are derived from staff availability submissions, not from a club-defined demand model.
+
+**Industry models:**
+- **Free-form** (current CourtOps) — most flexible, most manager work. Matches what Geneva does today in her PDF spreadsheet ("9-2:30, 6-8" etc.).
+- **Shift templates** — club defines "Opening Front Desk: 7am-2pm" / "Closing Front Desk: 2pm-10pm" templates; manager picks from a dropdown. Faster repeat scheduling.
+- **Coverage targets** — club sets "M-F we need at least 2 front-desk staff between 4-9pm." Auto-scheduler tries to meet coverage. (V2.0+ AI Heatmap territory per scheduling-design-v1.md § 5.)
+
+**Recommendation:** stay free-form for V1.0. Add shift templates as a Phase 2 nice-to-have once Geneva is reusing the same shapes month over month and feels the friction. Coverage targets wait for V2.0.
 
 ---
 
@@ -133,18 +147,15 @@ See `docs/scheduling-design-v1.md` for full reasoning + V1.0/V1.1/V2.0 roadmap +
 
 Roughly priority-ordered. **Several items now shipped — see "Recently shipped" below.** Remaining:
 
-### Pre-Geneva-meeting safe to ship (no design questions)
+### Cleared to ship (Sami's 2026-05-05 direction)
 
-These don't depend on the 3 open questions above. Implementing now is safe:
-
-- **Daily checklists historical view** — Geneva wants to look back at past days. Date picker (admin sees any past day, read-only) + date-range report aggregating completion % / who-completed-what. Possibly CSV export. Mid-effort.
-- **DOB + school-day calendar data model** (foundational from `scheduling-design-v1.md` § 3). Add `profiles.date_of_birth`, `club_school_calendar(org_id, date, is_school_day)`, `profile_school_day_overrides`. Just the schema — no UI, no enforcement engine. Unblocks V2.0 compliance work without committing to specific rule semantics.
-- **Audit trail fields on a future shift-swap table** (`scheduling-design-v1.md` § 6 spec). When shift-swap eventually ships, the swap table needs `original_assignee`, `accepted_by`, `approved_by`, `timestamp_requested`, `timestamp_finalized`, `reason_text` baked in from day one. Don't ship the swap feature without these.
-
-### Blocked on Geneva input
-
-- **Shift-swap split** from Time Off — was Active queue #3, now blocked on open question #3 (time-off vs unavailability consolidation). Per the design doc, swap is V1.1, not V1.0; don't ticket until Geneva confirms direction.
-- **Unavailability granularity refactor** — current monthly grid → 30-min tap-to-toggle (per `scheduling-design-v1.md` § 2). Blocked on open question #1 (terminology) since it affects copy + IA.
+- **Daily checklists historical view** — Geneva wants to look back at past days. Date picker (admin sees any past day, read-only) + date-range report. Possibly CSV export. Mid-effort.
+- **DOB + school-day calendar data model** (foundational from `scheduling-design-v1.md` § 3). Add `profiles.date_of_birth`, `club_school_calendar(org_id, date, is_school_day)`, `profile_school_day_overrides`. Just schema — no UI, no enforcement engine. Unblocks V2.0 compliance work without committing to rule semantics.
+- **Audit trail fields on a future shift-swap table** (`scheduling-design-v1.md` § 6). When shift-swap eventually ships, the swap table needs `original_assignee`, `accepted_by`, `approved_by`, `timestamp_requested`, `timestamp_finalized`, `reason_text` baked in from day one.
+- **Shift-swap split (post-publish only flow)** — Sami answer to Q3: availability flows ONLY through windows; once schedule is published, shift swap is the only path to change a staffer's commitment. Restaurant model. Build with the audit-trail fields above. Still V1.1 in the design doc.
+- **Unavailability granularity refactor** — Q1 answer is "Set Availability" stays (industry standard). The 30-min tap-to-toggle redesign from `scheduling-design-v1.md` § 2 can proceed without terminology debate. Treat as a polish iteration on the existing month grid; consider whether 30-min is necessary for V1.0 (current free-text gives more flexibility, 30-min loses granularity for "open-2:30" style entries Geneva uses).
+- **CR sync expansion screen** (Sami's 2026-05-05 ask). Unified Settings → Court Reserve view showing membership costs (have it), CR calendar/events (need the API endpoints), reservations, courts, programs. Click any record → deep-link to the record in CR (e.g. `https://app.courtreserve.com/Online/MembersDirectory/EditMember/{orgId}?memberId={memberId}`). Need an investigation pass on what CR API actually exposes. Sami also flagged "league sync" as something he's uncertain about — confirm CR has a league/program endpoint before building.
+- **Window-open notification email + share-link** (Sami's Q2 answer). When admin opens a window, Resend sends each assignee an email with the link to submit. Window pill also shows a "Copy share link" button so Geneva can paste into a text/group chat. Token-based URL that lands them at `/login` (or directly into the availability tab if logged in).
 
 ### Recently shipped (2026-05-04 → 2026-05-05)
 
