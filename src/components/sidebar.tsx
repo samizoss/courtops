@@ -10,19 +10,26 @@ import { useState, useEffect } from 'react'
 //   viewer = read-only "co-owner" / observer (e.g. Travis + Kevin @ The Jar) —
 //            sees what an admin sees but can't edit. Sidebar mirrors admin nav;
 //            edit affordances on each page hide for viewer specifically.
-//   staff  = day-to-day staff — clock, checklists, SOPs, own tasks, schedule.
+//   staff  = day-to-day staff — clock, checklists, SOPs, schedule.
+//
+// 2026-05-05 — Sami trimmed admin/viewer/staff visibility for Tasks, Pipeline,
+// Content, Messages, Guide, Notifications. These remain only on owner (Sami's
+// dev view) until each module is production-ready. URLs still resolve if typed
+// directly; only the sidebar entry is gated. Restore by adding 'admin' (and
+// 'viewer'/'staff' as appropriate) back to the roles array when the module
+// reopens to clubs.
 const nav = [
   { href: '/', label: 'Dashboard', icon: '⊞', roles: ['owner', 'admin', 'staff', 'viewer'] },
   { href: '/checklists', label: 'Checklists', icon: '☑', roles: ['owner', 'admin', 'staff', 'viewer'] },
   { href: '/staff', label: 'Staff', icon: '◇', roles: ['owner', 'admin', 'staff', 'viewer'] },
   { href: '/sops', label: 'SOPs', icon: '◉', roles: ['owner', 'admin', 'staff', 'viewer'] },
-  { href: '/pipeline', label: 'Pipeline', icon: '◎', roles: ['owner', 'admin', 'viewer'] },
-  { href: '/tasks', label: 'Tasks', icon: '▤', roles: ['owner', 'admin', 'staff', 'viewer'] },
-  { href: '/content', label: 'Content', icon: '📅', roles: ['owner', 'admin', 'viewer'] },
-  { href: '/messaging', label: 'Messages', icon: '💬', roles: ['owner', 'admin', 'viewer'] },
+  { href: '/pipeline', label: 'Pipeline', icon: '◎', roles: ['owner'] },
+  { href: '/tasks', label: 'Tasks', icon: '▤', roles: ['owner'] },
+  { href: '/content', label: 'Content', icon: '📅', roles: ['owner'] },
+  { href: '/messaging', label: 'Messages', icon: '💬', roles: ['owner'] },
   { href: '/reports', label: 'Reports', icon: '📊', roles: ['owner', 'admin', 'viewer'] },
   { href: '/settings', label: 'Settings', icon: '⚙', roles: ['owner', 'admin', 'viewer'] },
-  { href: '/getting-started', label: 'Guide', icon: '?', roles: ['owner', 'admin', 'staff', 'viewer'] },
+  { href: '/getting-started', label: 'Guide', icon: '?', roles: ['owner'] },
 ]
 
 const ROLE_COLORS: Record<string, string> = {
@@ -108,19 +115,21 @@ export function Sidebar() {
           Court<span className="text-orange-500">Ops</span>
         </h1>
         <div className="flex items-center gap-2">
-          <Link
-            href="/notifications"
-            className="relative text-gray-400 hover:text-white p-1"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-            </svg>
-            {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                {unreadCount > 9 ? '9+' : unreadCount}
-              </span>
-            )}
-          </Link>
+          {userRole === 'owner' && (
+            <Link
+              href="/notifications"
+              className="relative text-gray-400 hover:text-white p-1"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+              </svg>
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </Link>
+          )}
           <button
             onClick={() => setOpen(!open)}
             className="text-gray-400 hover:text-white p-1"
@@ -181,24 +190,26 @@ export function Sidebar() {
             )
           })}
 
-          {/* Notifications link */}
-          <Link
-            href="/notifications"
-            onClick={() => setOpen(false)}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-              pathname.startsWith('/notifications')
-                ? 'bg-orange-600/15 text-orange-400'
-                : 'text-gray-400 hover:text-white hover:bg-gray-800'
-            }`}
-          >
-            <span className="text-base">🔔</span>
-            Notifications
-            {unreadCount > 0 && (
-              <span className="ml-auto bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                {unreadCount}
-              </span>
-            )}
-          </Link>
+          {/* Notifications link — owner-only (2026-05-05 trim, see nav comment above). */}
+          {userRole === 'owner' && (
+            <Link
+              href="/notifications"
+              onClick={() => setOpen(false)}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                pathname.startsWith('/notifications')
+                  ? 'bg-orange-600/15 text-orange-400'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-800'
+              }`}
+            >
+              <span className="text-base">🔔</span>
+              Notifications
+              {unreadCount > 0 && (
+                <span className="ml-auto bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                  {unreadCount}
+                </span>
+              )}
+            </Link>
+          )}
         </nav>
 
         <div className="p-3 border-t border-gray-800 space-y-2">
