@@ -143,7 +143,41 @@ See `docs/scheduling-design-v1.md` for full reasoning + V1.0/V1.1/V2.0 roadmap +
 
 ---
 
-## Active queue (post-2026-05-04 evening)
+## 2026-05-05 Geneva walkthrough — commitments still owed
+
+Sami ran the weekly with Travis + Geneva + Bilhah + Kevin. Full notes at `docs/meetings/2026-05-05-courtops-weekly.md`. Same-day commitments that haven't shipped yet, in roughly Sami's stated priority order:
+
+### Same-day "by end of day" (highest priority — Sami's words on the call)
+
+1. **Shift Swap V1** — From schedule view: click shift → "Open for swap" / "Open for take" → shift lands in a new Shift Swap tab (replaces Time Off tab name). Staff sees open-shift list + a copy-link Geneva can text. Show "previously-available" staff with caveat. Restaurant industry model. Audit-trail fields baked in per `docs/scheduling-design-v1.md` § 6. **Sami told Travis this was active-build during the meeting.**
+
+### Specific UX commitments from the live demo
+
+2. **Edit draft shift time + notes in ShiftDetailPopover.** Today only role is editable on a draft; Sami needs start/end + notes too. Use case: "Ella's available 9-5, I really only need 9-noon — let me trim without re-creating." Small.
+3. **Build-mode toggle on Schedule tab** — separate "View published" from "Build draft" UI. Magic schedule + Save Draft move into Build mode. Structural refactor.
+4. **Drag-on-time-grid availability UI** — replace the current cell-per-day form with a calendar-like grid where staff paints unavailable/available blocks by tap-dragging. Mobile-friendly. Travis confirmed direction.
+5. **Window-open share-link** Geneva can paste into a text/group chat. Spec from Q2 already in CURRENT_STATE; now build it.
+6. **Availability validation rules** on Submit. Server-side parse: "can a robot reasonably understand this submission?" Reject if not.
+7. **Fix `approximateHours` parsing** of Alicia's-style NA + blank entries. Today the hours summary shows wrong totals for staff who use ambiguous free-text.
+
+### Lower priority (popped on the call as nice-to-haves)
+
+8. **Operational hours background shading** on schedule (Tue 5–9pm has a different tint, immediately).
+9. **Print / export month view** so Geneva can hang the schedule behind the desk.
+10. **Gap analysis flag** for days with zero front-desk coverage.
+11. **Inform magic-schedule with coverage minimums** ("at least 1 front desk during open hours") — turns magic-schedule from "fill availability" into "fill coverage needs."
+12. **Magic-schedule reads CR utilization** for high-traffic times → coverage targets. Future state.
+13. **Ambassador role** (limited-view tier for volunteer / league leaders). Test with Mike as the prototype. Probably V2.
+14. **Ambassador / league leader CR-event-attendance auto-clock-in.** If marked attending in CR, auto-mark in CourtOps.
+15. **Pull business hours from CR** — auto-populate Settings → General hours from CR rather than manual entry.
+
+### Pending Travis (waiting on external action)
+
+- Travis tests the password-reset email Sami sent him; forwards the received email back to Sami to confirm the flow works.
+
+---
+
+## Active queue (post-2026-05-04 evening — superseded by meeting commitments above)
 
 Roughly priority-ordered. **Several items now shipped — see "Recently shipped" below.** Remaining:
 
