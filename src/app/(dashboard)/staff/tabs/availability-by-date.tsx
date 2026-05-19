@@ -38,7 +38,10 @@ function validateShiftsText(text: string): string | null {
     if (halves.length === 2 && halves[0] && halves[1]) {
       const a = parseLooseTime(halves[0])
       const b = parseLooseTime(halves[1])
-      if (a != null && b != null) { parsedAny = true; continue }
+      if (a != null && b != null) {
+        if (a >= b) return `"${t}" — start time must be before end time`
+        parsedAny = true; continue
+      }
     }
     if (/^\d{1,2}(:\d{2})?\s*(am?|pm?)?$/i.test(t)) { parsedAny = true; continue }
     return `Can't understand "${t}" — try a format like "7 - 230" or "9a - 5p"`
@@ -52,7 +55,7 @@ function validateShiftsText(text: string): string | null {
 function parseLooseTime(raw: string): number | null {
   const lower = raw.toLowerCase().trim()
   if (!lower) return null
-  if (/^(open|close|all|any)$/i.test(lower)) return 0
+  if (/^(open|close|all|any)$/i.test(lower)) return null
   const digits = lower.replace(/[^\d]/g, '')
   if (!digits) return null
   let h = 0
@@ -235,17 +238,25 @@ export function AvailabilityByDateTab({
 
   async function saveCell(userId: string, date: Date) {
     const k = cellKey(userId, fmtDateKey(date))
-    const cell = cells[k]
-    if (!cell || !cell.dirty) return
+    // Read latest state atomically via functional updater to avoid stale closures
+    // (e.g. when called via setTimeout after a toggle update)
+    let cellSnapshot: CellState | null = null
+    setCells((prev) => {
+      const c = prev[k]
+      if (!c || !c.dirty) return prev
+      cellSnapshot = c
+      return { ...prev, [k]: { ...c, saving: true } }
+    })
+    if (!cellSnapshot) return
+    const snap = cellSnapshot as CellState
 
-    setCells((prev) => ({ ...prev, [k]: { ...prev[k], saving: true } }))
     try {
       const { createClient } = await import('@/lib/supabase/client')
       const supabase = createClient()
-      const trimmed = cell.shifts.trim().slice(0, SHIFTS_MAX_LEN)
+      const trimmed = snap.shifts.trim().slice(0, SHIFTS_MAX_LEN)
 
       // Empty + neither toggle = delete row.
-      if (!trimmed && !cell.is_available && !cell.is_unavailable) {
+      if (!trimmed && !snap.is_available && !snap.is_unavailable) {
         await supabase
           .from('availability_entries')
           .delete()
@@ -261,9 +272,9 @@ export function AvailabilityByDateTab({
               user_id: userId,
               entry_date: fmtDateKey(date),
               // Unavailable wipes any typed shifts so the row can't lie.
-              shifts: cell.is_unavailable ? null : trimmed || null,
-              is_available: cell.is_available,
-              is_unavailable: cell.is_unavailable,
+              shifts: snap.is_unavailable ? null : trimmed || null,
+              is_available: snap.is_available,
+              is_unavailable: snap.is_unavailable,
               updated_at: new Date().toISOString(),
             },
             { onConflict: 'org_id,user_id,entry_date' }

@@ -145,6 +145,7 @@ export function ShiftSwapTab({
           updated_at: new Date().toISOString(),
         })
         .eq('id', swapId)
+        .eq('status', 'claimed')
       if (error) throw error
       toast('Swap denied')
       window.location.reload()
@@ -168,6 +169,7 @@ export function ShiftSwapTab({
           updated_at: new Date().toISOString(),
         })
         .eq('id', swapId)
+        .in('status', ['open', 'claimed'])
       if (error) throw error
       toast('Swap cancelled')
       window.location.reload()

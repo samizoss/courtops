@@ -255,6 +255,8 @@ function parseLooseHHMM(raw: string): number | null {
     m = parseInt(digits.slice(2, 4), 10)
   }
   if (h < 0 || h > 23 || m < 0 || m > 59) return null
+  if (lower.includes('p') && h < 12) h += 12
+  if (lower.includes('a') && h === 12) h = 0
   if (!lower.includes('a') && !lower.includes('p') && h >= 1 && h <= 6) h += 12
   return h * 60 + m
 }
@@ -1018,8 +1020,13 @@ function ShiftDetailPopover({ shift, isAdmin, orgId, currentUserId, onClose, onD
     try {
       const { createClient } = await import('@/lib/supabase/client')
       const supabase = createClient()
+      if (!startTime || !endTime) {
+        toast('Start and end times are required', 'error')
+        setSaving(false)
+        return
+      }
       const fmtTime = (t: string) => (t.length === 5 ? t + ':00' : t)
-      if (startTime && endTime && startTime >= endTime) {
+      if (startTime >= endTime) {
         toast('Start time must be before end time', 'error')
         setSaving(false)
         return
@@ -1299,6 +1306,10 @@ function DayAssignPopover({
     e.preventDefault()
     if (!form.user_id) {
       toast('Pick a staff member first', 'error')
+      return
+    }
+    if (form.start_time >= form.end_time) {
+      toast('Start time must be before end time', 'error')
       return
     }
     setSaving(true)
