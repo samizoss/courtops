@@ -53,7 +53,7 @@ function parseLooseTime(raw: string): number | null {
   const lower = raw.toLowerCase().trim()
   if (!lower) return null
   if (/^(open|close|all|any)$/i.test(lower)) return 0
-  const digits = raw.replace(/[^\d]/g, '')
+  const digits = lower.replace(/[^\d]/g, '')
   if (!digits) return null
   let h = 0
   let m = 0
@@ -66,6 +66,9 @@ function parseLooseTime(raw: string): number | null {
     m = parseInt(digits.slice(2, 4), 10)
   }
   if (h < 0 || h > 23 || m < 0 || m > 59) return null
+  if (lower.includes('p') && h < 12) h += 12
+  if (lower.includes('a') && h === 12) h = 0
+  if (!lower.includes('a') && !lower.includes('p') && h >= 1 && h <= 6) h += 12
   return h * 60 + m
 }
 
@@ -543,7 +546,7 @@ function DayAvailabilityModal({
               onClick={() => {
                 if (!editable) return
                 onUpdate({ is_available: true, is_unavailable: false })
-                onSave()
+                setTimeout(onSave, 0)
               }}
               disabled={!editable}
               className={`flex-1 py-2 rounded text-xs font-medium border transition-colors ${
@@ -559,7 +562,7 @@ function DayAvailabilityModal({
               onClick={() => {
                 if (!editable) return
                 onUpdate({ is_unavailable: true, is_available: false, shifts: '' })
-                onSave()
+                setTimeout(onSave, 0)
               }}
               disabled={!editable}
               className={`flex-1 py-2 rounded text-xs font-medium border transition-colors ${

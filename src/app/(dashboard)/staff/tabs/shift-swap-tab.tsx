@@ -70,7 +70,7 @@ export function ShiftSwapTab({
     try {
       const { createClient } = await import('@/lib/supabase/client')
       const supabase = createClient()
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('shift_swaps')
         .update({
           status: 'claimed',
@@ -80,7 +80,13 @@ export function ShiftSwapTab({
         })
         .eq('id', swapId)
         .eq('status', 'open')
+        .select()
       if (error) throw error
+      if (!data || data.length === 0) {
+        toast('Someone else already claimed this shift — refresh to see the latest', 'error')
+        window.location.reload()
+        return
+      }
       toast('Shift claimed — waiting for admin approval')
       window.location.reload()
     } catch (err) {
@@ -94,6 +100,15 @@ export function ShiftSwapTab({
     try {
       const { createClient } = await import('@/lib/supabase/client')
       const supabase = createClient()
+
+      if (swap.claimed_by) {
+        const { error: shiftErr } = await supabase
+          .from('shifts')
+          .update({ user_id: swap.claimed_by })
+          .eq('id', swap.shift_id)
+        if (shiftErr) throw shiftErr
+      }
+
       const { error: swapErr } = await supabase
         .from('shift_swaps')
         .update({
@@ -103,15 +118,8 @@ export function ShiftSwapTab({
           updated_at: new Date().toISOString(),
         })
         .eq('id', swap.id)
+        .eq('status', 'claimed')
       if (swapErr) throw swapErr
-
-      if (swap.claimed_by) {
-        const { error: shiftErr } = await supabase
-          .from('shifts')
-          .update({ user_id: swap.claimed_by })
-          .eq('id', swap.shift_id)
-        if (shiftErr) throw shiftErr
-      }
 
       toast('Swap approved — shift reassigned')
       window.location.reload()
@@ -123,6 +131,7 @@ export function ShiftSwapTab({
 
   async function denySwap(swapId: string) {
     const reason = prompt('Reason for denying (optional):')
+    if (reason === null) return
     try {
       const { createClient } = await import('@/lib/supabase/client')
       const supabase = createClient()
@@ -154,6 +163,8 @@ export function ShiftSwapTab({
         .from('shift_swaps')
         .update({
           status: 'cancelled',
+          claimed_by: null,
+          claimed_at: null,
           updated_at: new Date().toISOString(),
         })
         .eq('id', swapId)
@@ -166,8 +177,8 @@ export function ShiftSwapTab({
     }
   }
 
-  function copySwapLink() {
-    const url = `${window.location.origin}/staff?tab=swaps`
+  function copySwapLink(swapId: string) {
+    const url = `${window.location.origin}/staff?tab=swaps&swap=${swapId}`
     navigator.clipboard.writeText(url).then(
       () => toast('Link copied — paste into your group chat'),
       () => toast('Failed to copy link', 'error')
@@ -204,7 +215,7 @@ export function ShiftSwapTab({
                 isAdmin={isAdmin}
                 onClaim={() => claimSwap(swap.id)}
                 onCancel={() => cancelSwap(swap.id)}
-                onCopyLink={() => copySwapLink()}
+                onCopyLink={() => copySwapLink(swap.id)}
               />
             ))}
           </div>
@@ -229,7 +240,7 @@ export function ShiftSwapTab({
                 onApprove={() => approveSwap(swap)}
                 onDeny={() => denySwap(swap.id)}
                 onCancel={() => cancelSwap(swap.id)}
-                onCopyLink={() => copySwapLink()}
+                onCopyLink={() => copySwapLink(swap.id)}
               />
             ))}
           </div>

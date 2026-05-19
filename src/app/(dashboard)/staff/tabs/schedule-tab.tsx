@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/toast'
 import { CalendarMonthGrid } from '@/components/calendar-month-grid'
@@ -343,6 +343,13 @@ export function ScheduleTab({
   const [dayPopover, setDayPopover] = useState<Date | null>(null)
   const [shiftDetail, setShiftDetail] = useState<ShiftWithProfile | null>(null)
 
+  useEffect(() => {
+    if (!buildMode) {
+      if (shiftDetail?.published_at == null && shiftDetail != null) setShiftDetail(null)
+      if (dayPopover) setDayPopover(null)
+    }
+  }, [buildMode]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const { startHour, endHour } = useMemo(() => getTimelineRange(orgHours), [orgHours])
 
   const timeOffMap = useMemo(() => {
@@ -414,6 +421,7 @@ export function ScheduleTab({
     }
     for (const s of shifts) {
       if (s.shift_date < startKey || s.shift_date > endKey) continue
+      if (!buildMode && s.published_at == null) continue
       const a = parseTimeMinutes(s.start_time)
       const b = parseTimeMinutes(s.end_time)
       if (a == null || b == null) continue
@@ -430,7 +438,7 @@ export function ScheduleTab({
     return Object.values(rows)
       .filter((r) => r.assignedHours > 0 || r.availableHours > 0)
       .sort((a, b) => a.profile.full_name.localeCompare(b.profile.full_name))
-  }, [profiles, shifts, availabilityEntries, anchor, mode])
+  }, [profiles, shifts, availabilityEntries, anchor, mode, buildMode])
 
   const draftCountInRange = useMemo(() => {
     const range = visibleRange(anchor, mode)
@@ -961,10 +969,23 @@ function ShiftDetailPopover({ shift, isAdmin, orgId, currentUserId, onClose, onD
   async function handleOpenForSwap(swapType: 'swap' | 'take') {
     const label = swapType === 'take' ? 'open for anyone to take' : 'open for swap'
     const reason = prompt(`Why are you opening this shift? (optional)`)
+    if (reason === null) return
     setOpeningSwap(true)
     try {
       const { createClient } = await import('@/lib/supabase/client')
       const supabase = createClient()
+
+      const { data: existing } = await supabase
+        .from('shift_swaps')
+        .select('id')
+        .eq('shift_id', shift.id)
+        .in('status', ['open', 'claimed'])
+        .limit(1)
+      if (existing && existing.length > 0) {
+        toast('This shift already has an open swap request', 'error')
+        return
+      }
+
       const { error } = await supabase.from('shift_swaps').insert({
         org_id: orgId,
         shift_id: shift.id,
@@ -997,12 +1018,18 @@ function ShiftDetailPopover({ shift, isAdmin, orgId, currentUserId, onClose, onD
     try {
       const { createClient } = await import('@/lib/supabase/client')
       const supabase = createClient()
+      const fmtTime = (t: string) => (t.length === 5 ? t + ':00' : t)
+      if (startTime && endTime && startTime >= endTime) {
+        toast('Start time must be before end time', 'error')
+        setSaving(false)
+        return
+      }
       const { error } = await supabase
         .from('shifts')
         .update({
           role,
-          start_time: startTime,
-          end_time: endTime,
+          start_time: fmtTime(startTime),
+          end_time: fmtTime(endTime),
           notes: notes.trim() || null,
         })
         .eq('id', shift.id)

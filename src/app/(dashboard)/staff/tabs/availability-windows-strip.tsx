@@ -227,7 +227,7 @@ export function AvailabilityWindowsStrip({
                 <>
                   <button
                     onClick={() => {
-                      const url = `${window.location.origin}/staff?tab=availability`
+                      const url = `${window.location.origin}/staff?tab=availability&window=${w.id}`
                       navigator.clipboard.writeText(url).then(
                         () => toast('Link copied — paste into your group chat'),
                         () => toast('Failed to copy link', 'error')

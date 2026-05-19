@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 
 const START_HOUR = 6
 const END_HOUR = 22
@@ -83,9 +83,12 @@ interface Props {
 }
 
 export function TimeBlockPicker({ value, onChange }: Props) {
-  const [selected, setSelected] = useState<Set<number>>(() => textToSlots(value))
+  const fromProp = useMemo(() => textToSlots(value), [value])
+  const [dragSlots, setDragSlots] = useState<Set<number> | null>(null)
   const [dragging, setDragging] = useState(false)
   const [dragValue, setDragValue] = useState(true)
+
+  const selected = dragSlots ?? fromProp
 
   const commitSlots = useCallback(
     (slots: Set<number>) => {
@@ -95,21 +98,21 @@ export function TimeBlockPicker({ value, onChange }: Props) {
   )
 
   function handlePointerDown(index: number) {
-    const newValue = !selected.has(index)
+    const base = dragSlots ?? fromProp
+    const newValue = !base.has(index)
     setDragging(true)
     setDragValue(newValue)
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (newValue) next.add(index)
-      else next.delete(index)
-      return next
-    })
+    const next = new Set(base)
+    if (newValue) next.add(index)
+    else next.delete(index)
+    setDragSlots(next)
   }
 
   function handlePointerEnter(index: number) {
     if (!dragging) return
-    setSelected((prev) => {
-      const next = new Set(prev)
+    setDragSlots((prev) => {
+      const base = prev ?? fromProp
+      const next = new Set(base)
       if (dragValue) next.add(index)
       else next.delete(index)
       return next
@@ -119,19 +122,22 @@ export function TimeBlockPicker({ value, onChange }: Props) {
   function handlePointerUp() {
     if (dragging) {
       setDragging(false)
-      commitSlots(selected)
+      if (dragSlots) {
+        commitSlots(dragSlots)
+        setDragSlots(null)
+      }
     }
   }
 
   function selectAll() {
     const all = new Set<number>()
     for (let i = 0; i < TOTAL_SLOTS; i++) all.add(i)
-    setSelected(all)
+    setDragSlots(null)
     commitSlots(all)
   }
 
   function clearAll() {
-    setSelected(new Set())
+    setDragSlots(null)
     commitSlots(new Set())
   }
 
