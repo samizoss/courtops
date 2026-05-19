@@ -427,6 +427,7 @@ export interface OrgSettings {
   cr_sync_enabled: boolean
   cr_last_synced_at: string | null
   clock_notes_visibility: 'all_staff' | 'admin_only'
+  week_start_day: number
   created_at: string
   updated_at: string
 }
