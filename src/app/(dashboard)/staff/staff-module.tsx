@@ -1,17 +1,20 @@
 'use client'
 
-import { useState } from 'react'
-import type { Profile, TimeClock, TimeOffRequest, ScheduleShift, Availability, AvailabilityEntry, AvailabilityWindow, AvailabilitySubmission, AvailabilityWindowAssignee } from '@/types/database'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
+import type { Profile, TimeClock, TimeOffRequest, ScheduleShift, Availability, AvailabilityEntry, AvailabilityWindow, AvailabilitySubmission, AvailabilityWindowAssignee, ShiftSwap } from '@/types/database'
 import { ClockTab } from './tabs/clock-tab'
 import { RosterTab } from './tabs/roster-tab'
 import { ScheduleTab } from './tabs/schedule-tab'
 import { TimeOffTab } from './tabs/time-off-tab'
 import { AvailabilityTab } from './tabs/availability-tab'
+import { ShiftSwapTab } from './tabs/shift-swap-tab'
 
 const tabs = [
   { id: 'clock', label: 'Clock In/Out' },
   { id: 'roster', label: 'Roster' },
   { id: 'schedule', label: 'Schedule' },
+  { id: 'swaps', label: 'Shift Swap' },
   { id: 'timeoff', label: 'Time Off' },
   { id: 'availability', label: 'Availability' },
 ] as const
@@ -32,6 +35,7 @@ interface Props {
   activeClocks: TimeClock[]
   timeOffRequests: TimeOffRequest[]
   shifts: ScheduleShift[]
+  shiftSwaps: ShiftSwap[]
   availability: Availability[]
   availabilityEntries: AvailabilityEntry[]
   availabilityWindows: AvailabilityWindow[]
@@ -43,8 +47,20 @@ interface Props {
   clockNotesVisibility?: 'all_staff' | 'admin_only'
 }
 
-export function StaffModule({ profiles, activeClocks, timeOffRequests, shifts, availability, availabilityEntries, availabilityWindows, availabilitySubmissions, availabilityWindowAssignees, recentClocks, currentUser, orgHours, clockNotesVisibility }: Props) {
-  const [tab, setTab] = useState<TabId>('clock')
+export function StaffModule({ profiles, activeClocks, timeOffRequests, shifts, shiftSwaps, availability, availabilityEntries, availabilityWindows, availabilitySubmissions, availabilityWindowAssignees, recentClocks, currentUser, orgHours, clockNotesVisibility }: Props) {
+  const searchParams = useSearchParams()
+  const [tab, setTab] = useState<TabId>(() => {
+    const fromUrl = searchParams.get('tab')
+    if (fromUrl && tabs.some((t) => t.id === fromUrl)) return fromUrl as TabId
+    return 'clock'
+  })
+
+  useEffect(() => {
+    const fromUrl = searchParams.get('tab')
+    if (fromUrl && tabs.some((t) => t.id === fromUrl) && fromUrl !== tab) {
+      setTab(fromUrl as TabId)
+    }
+  }, [searchParams, tab])
   const isAdmin = currentUser.role === 'owner' || currentUser.role === 'admin'
 
   // Operational staff are those who should appear on schedule/availability/hours reports.
@@ -105,6 +121,17 @@ export function StaffModule({ profiles, activeClocks, timeOffRequests, shifts, a
           timeOffRequests={operationalTimeOff}
           orgHours={orgHours}
           currentUser={currentUser}
+        />
+      )}
+      {tab === 'swaps' && (
+        <ShiftSwapTab
+          swaps={shiftSwaps}
+          shifts={operationalShifts}
+          profiles={operationalProfiles}
+          availabilityEntries={operationalAvailabilityEntries}
+          currentUser={currentUser}
+          isAdmin={isAdmin}
+          orgId={currentUser.orgId}
         />
       )}
       {tab === 'timeoff' && (

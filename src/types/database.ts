@@ -334,6 +334,26 @@ export interface ScheduleShift {
   created_at: string
 }
 
+export type ShiftSwapType = 'swap' | 'take'
+export type ShiftSwapStatus = 'open' | 'claimed' | 'approved' | 'denied' | 'cancelled'
+
+export interface ShiftSwap {
+  id: string
+  org_id: string
+  shift_id: string
+  original_user_id: string
+  swap_type: ShiftSwapType
+  status: ShiftSwapStatus
+  claimed_by: string | null
+  claimed_at: string | null
+  approved_by: string | null
+  approved_at: string | null
+  deny_reason: string | null
+  reason: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface Task {
   id: string
   org_id: string
