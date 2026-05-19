@@ -1,10 +1,8 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useMemo } from 'react'
 import { useToast } from '@/components/toast'
 import { fmtTimeRange12h } from '@/lib/format'
-import { fmtShortDate } from '@/lib/calendar'
 import type {
   ShiftSwap,
   ScheduleShift,
@@ -25,7 +23,6 @@ interface Props {
   availabilityEntries: AvailabilityEntry[]
   currentUser: { userId: string; orgId: string; role: string; fullName: string }
   isAdmin: boolean
-  orgId: string
 }
 
 export function ShiftSwapTab({
@@ -35,9 +32,7 @@ export function ShiftSwapTab({
   availabilityEntries,
   currentUser,
   isAdmin,
-  orgId,
 }: Props) {
-  const router = useRouter()
   const { toast } = useToast()
 
   const profileMap = useMemo(() => {
@@ -171,7 +166,7 @@ export function ShiftSwapTab({
     }
   }
 
-  function copySwapLink(swapId: string) {
+  function copySwapLink() {
     const url = `${window.location.origin}/staff?tab=swaps`
     navigator.clipboard.writeText(url).then(
       () => toast('Link copied — paste into your group chat'),
@@ -209,7 +204,7 @@ export function ShiftSwapTab({
                 isAdmin={isAdmin}
                 onClaim={() => claimSwap(swap.id)}
                 onCancel={() => cancelSwap(swap.id)}
-                onCopyLink={() => copySwapLink(swap.id)}
+                onCopyLink={() => copySwapLink()}
               />
             ))}
           </div>
@@ -234,7 +229,7 @@ export function ShiftSwapTab({
                 onApprove={() => approveSwap(swap)}
                 onDeny={() => denySwap(swap.id)}
                 onCancel={() => cancelSwap(swap.id)}
-                onCopyLink={() => copySwapLink(swap.id)}
+                onCopyLink={() => copySwapLink()}
               />
             ))}
           </div>

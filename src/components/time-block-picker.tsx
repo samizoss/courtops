@@ -94,16 +94,6 @@ export function TimeBlockPicker({ value, onChange }: Props) {
     [onChange]
   )
 
-  function toggleSlot(index: number) {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(index)) next.delete(index)
-      else next.add(index)
-      commitSlots(next)
-      return next
-    })
-  }
-
   function handlePointerDown(index: number) {
     const newValue = !selected.has(index)
     setDragging(true)

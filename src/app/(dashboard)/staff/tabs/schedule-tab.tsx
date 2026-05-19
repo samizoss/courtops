@@ -432,7 +432,6 @@ export function ScheduleTab({
       .sort((a, b) => a.profile.full_name.localeCompare(b.profile.full_name))
   }, [profiles, shifts, availabilityEntries, anchor, mode])
 
-  const draftCount = useMemo(() => shifts.filter((s) => s.published_at == null).length, [shifts])
   const draftCountInRange = useMemo(() => {
     const range = visibleRange(anchor, mode)
     const startKey = fmtDateKey(range.start)

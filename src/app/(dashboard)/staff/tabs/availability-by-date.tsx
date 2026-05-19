@@ -468,7 +468,6 @@ export function AvailabilityByDateTab({
       {selectedDay && (
         <DayAvailabilityModal
           date={selectedDay.date}
-          userId={selectedDay.userId}
           profileName={
             visibleProfiles.find((p) => p.id === selectedDay.userId)?.full_name ?? ''
           }
@@ -490,7 +489,6 @@ export function AvailabilityByDateTab({
 
 function DayAvailabilityModal({
   date,
-  userId,
   profileName,
   cell,
   editable,
@@ -499,7 +497,6 @@ function DayAvailabilityModal({
   onClose,
 }: {
   date: Date
-  userId: string
   profileName: string
   cell: CellState
   editable: boolean

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import type { Profile, TimeClock, TimeOffRequest, ScheduleShift, Availability, AvailabilityEntry, AvailabilityWindow, AvailabilitySubmission, AvailabilityWindowAssignee, ShiftSwap } from '@/types/database'
 import { ClockTab } from './tabs/clock-tab'
@@ -49,18 +49,11 @@ interface Props {
 
 export function StaffModule({ profiles, activeClocks, timeOffRequests, shifts, shiftSwaps, availability, availabilityEntries, availabilityWindows, availabilitySubmissions, availabilityWindowAssignees, recentClocks, currentUser, orgHours, clockNotesVisibility }: Props) {
   const searchParams = useSearchParams()
-  const [tab, setTab] = useState<TabId>(() => {
-    const fromUrl = searchParams.get('tab')
-    if (fromUrl && tabs.some((t) => t.id === fromUrl)) return fromUrl as TabId
-    return 'clock'
-  })
-
-  useEffect(() => {
-    const fromUrl = searchParams.get('tab')
-    if (fromUrl && tabs.some((t) => t.id === fromUrl) && fromUrl !== tab) {
-      setTab(fromUrl as TabId)
-    }
-  }, [searchParams, tab])
+  const fromUrl = searchParams.get('tab')
+  const urlTab = fromUrl && tabs.some((t) => t.id === fromUrl) ? (fromUrl as TabId) : null
+  const [localTab, setLocalTab] = useState<TabId>('clock')
+  const tab = urlTab ?? localTab
+  const setTab = setLocalTab
   const isAdmin = currentUser.role === 'owner' || currentUser.role === 'admin'
 
   // Operational staff are those who should appear on schedule/availability/hours reports.
@@ -131,7 +124,6 @@ export function StaffModule({ profiles, activeClocks, timeOffRequests, shifts, s
           availabilityEntries={operationalAvailabilityEntries}
           currentUser={currentUser}
           isAdmin={isAdmin}
-          orgId={currentUser.orgId}
         />
       )}
       {tab === 'timeoff' && (
