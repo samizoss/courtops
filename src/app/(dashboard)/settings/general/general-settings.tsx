@@ -69,6 +69,7 @@ export function GeneralSettings({ org, orgSettings }: { org: Org; orgSettings: O
   const [address, setAddress] = useState(org.address || '')
   const [websiteUrl, setWebsiteUrl] = useState(org.website_url || '')
   const [dailyHours, setDailyHours] = useState<Record<number, DayHours>>(() => buildDailyHours(orgSettings))
+  const [weekStartDay, setWeekStartDay] = useState<number>((orgSettings as Record<string, unknown>)?.week_start_day as number ?? 0)
   const [arriveBefore, setArriveBefore] = useState(orgSettings?.staff_arrive_before_min ?? 0)
   const [departAfter, setDepartAfter] = useState(orgSettings?.staff_depart_after_min ?? 0)
   const [saving, setSaving] = useState(false)
@@ -140,6 +141,7 @@ export function GeneralSettings({ org, orgSettings }: { org: Org; orgSettings: O
         open_days: openDays,
         staff_arrive_before_min: arriveBefore,
         staff_depart_after_min: departAfter,
+        week_start_day: weekStartDay,
       }
 
       if (orgSettings) {
@@ -269,6 +271,23 @@ export function GeneralSettings({ org, orgSettings }: { org: Org; orgSettings: O
             className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
           />
           <p className="text-xs text-gray-500 mt-1">Where the contact widget snippet will live.</p>
+        </div>
+
+        {/* Week Start Day */}
+        <div className="border-t border-gray-800 pt-5 mt-5">
+          <h3 className="text-lg font-semibold mb-1">Calendar Week Start</h3>
+          <p className="text-gray-400 text-sm mb-3">Which day should calendars and schedules start on?</p>
+          <select
+            value={weekStartDay}
+            onChange={(e) => { setWeekStartDay(Number(e.target.value)); markDirty() }}
+            className="w-full max-w-xs px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+          >
+            {DAYS.map((day) => (
+              <option key={day.value} value={day.value}>
+                {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][day.value]}
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* Business Hours */}

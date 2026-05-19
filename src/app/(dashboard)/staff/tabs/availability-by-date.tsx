@@ -86,6 +86,7 @@ interface Props {
   operationalProfiles: Profile[]
   currentUser: { userId: string; orgId: string; role: string; fullName: string }
   isAdmin: boolean
+  weekStartDay?: number
 }
 
 interface CellState {
@@ -123,6 +124,7 @@ export function AvailabilityByDateTab({
   operationalProfiles,
   currentUser,
   isAdmin,
+  weekStartDay = 0,
 }: Props) {
   const router = useRouter()
   const { toast } = useToast()
@@ -188,7 +190,7 @@ export function AvailabilityByDateTab({
     ;(async () => {
       const { createClient } = await import('@/lib/supabase/client')
       const supabase = createClient()
-      const { start, end } = visibleRange(anchor, mode)
+      const { start, end } = visibleRange(anchor, mode, weekStartDay)
       const startKey = fmtDateKey(start)
       const endKey = fmtDateKey(end)
       const { data } = await supabase
@@ -452,6 +454,7 @@ export function AvailabilityByDateTab({
       )}
 
       <CalendarMonthGrid
+        weekStartDay={weekStartDay}
         anchor={anchor}
         mode={mode}
         onAnchorChange={setAnchor}
@@ -526,6 +529,7 @@ function DayAvailabilityModal({
 
   function handleTimeBlockChange(text: string) {
     onUpdate({ shifts: text, is_available: true, is_unavailable: false })
+    setTimeout(onSave, 0)
   }
 
   function handleSaveAndClose() {
@@ -809,7 +813,15 @@ function PersonRow({
         {cell.saving && <span className="text-[9px] text-gray-600 italic">saving</span>}
       </div>
       {!cell.is_unavailable && (
-        <div className="flex items-center gap-1">
+        onOpenTimePicker ? (
+          <button
+            type="button"
+            onClick={onOpenTimePicker}
+            className="w-full text-left px-1.5 py-1 bg-gray-800 border border-dashed border-gray-700 rounded text-[10px] font-mono text-gray-400 hover:text-orange-300 hover:border-orange-500/40 transition-colors truncate"
+          >
+            {cell.shifts.trim() || (compact ? 'Set hours' : 'Tap to set available hours')}
+          </button>
+        ) : (
           <input
             type="text"
             value={cell.shifts}
@@ -817,19 +829,9 @@ function PersonRow({
             onBlur={onCommit}
             placeholder={compact ? 'or hrs' : 'or specify hours, e.g. 7 - 230'}
             maxLength={SHIFTS_MAX_LEN}
-            className="flex-1 min-w-0 px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-[10px] font-mono text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-orange-500"
+            className="w-full px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-[10px] font-mono text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-orange-500"
           />
-          {onOpenTimePicker && (
-            <button
-              type="button"
-              onClick={onOpenTimePicker}
-              className="shrink-0 px-1 py-0.5 bg-gray-800 border border-gray-700 rounded text-[10px] text-gray-400 hover:text-orange-400 hover:border-orange-500/40 transition-colors"
-              title="Pick hours visually"
-            >
-              🕐
-            </button>
-          )}
-        </div>
+        )
       )}
     </div>
   )

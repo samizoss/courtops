@@ -57,6 +57,7 @@ interface Props {
   timeOffRequests: TimeOffWithProfile[]
   orgHours?: OrgHours
   currentUser: { userId: string; orgId: string; role: string; fullName: string }
+  weekStartDay?: number
 }
 
 type FilterMode = 'mine' | 'all'
@@ -139,9 +140,10 @@ function generateMagicProposals(args: {
   availabilityEntries: AvailabilityEntry[]
   timeOffMap: Record<string, Set<string>>
   shifts: ShiftWithProfile[]
+  weekStartDay?: number
 }): MagicProposal[] {
-  const { anchor, mode, profiles, availabilityEntries, timeOffMap, shifts } = args
-  const range = visibleRange(anchor, mode)
+  const { anchor, mode, profiles, availabilityEntries, timeOffMap, shifts, weekStartDay = 0 } = args
+  const range = visibleRange(anchor, mode, weekStartDay)
   const startKey = fmtDateKey(range.start)
   const endKey = fmtDateKey(range.end)
 
@@ -312,6 +314,7 @@ export function ScheduleTab({
   timeOffRequests,
   orgHours,
   currentUser,
+  weekStartDay = 0,
 }: Props) {
   const router = useRouter()
   const { toast } = useToast()
@@ -405,10 +408,10 @@ export function ScheduleTab({
   const visibleShiftsForDate = (date: Date): ShiftWithProfile[] =>
     applyViewFilters(shiftsByDate[fmtDateKey(date)] ?? [])
 
-  const weekRangeStart = useMemo(() => visibleRange(anchor, 'week').start, [anchor])
+  const weekRangeStart = useMemo(() => visibleRange(anchor, 'week', weekStartDay).start, [anchor, weekStartDay])
 
   const hoursSummary = useMemo(() => {
-    const range = visibleRange(anchor, mode === 'day' ? 'week' : mode)
+    const range = visibleRange(anchor, mode === 'day' ? 'week' : mode, weekStartDay)
     const startKey = fmtDateKey(range.start)
     const endKey = fmtDateKey(range.end)
 
@@ -443,7 +446,7 @@ export function ScheduleTab({
   }, [profiles, shifts, availabilityEntries, anchor, mode, buildMode])
 
   const draftCountInRange = useMemo(() => {
-    const range = visibleRange(anchor, mode)
+    const range = visibleRange(anchor, mode, weekStartDay)
     const startKey = fmtDateKey(range.start)
     const endKey = fmtDateKey(range.end)
     return shifts.filter(
@@ -466,7 +469,7 @@ export function ScheduleTab({
     try {
       const { createClient } = await import('@/lib/supabase/client')
       const supabase = createClient()
-      const range = visibleRange(anchor, mode)
+      const range = visibleRange(anchor, mode, weekStartDay)
       const startKey = fmtDateKey(range.start)
       const endKey = fmtDateKey(range.end)
       const { error } = await supabase
@@ -500,6 +503,7 @@ export function ScheduleTab({
       availabilityEntries,
       timeOffMap,
       shifts,
+      weekStartDay,
     })
     if (proposals.length === 0) {
       toast('No magic proposals — no submitted availability in this range', 'error')
@@ -705,6 +709,7 @@ export function ScheduleTab({
 
       {mode === 'month' ? (
         <CalendarMonthGrid
+          weekStartDay={weekStartDay}
           anchor={anchor}
           mode="month"
           onAnchorChange={setAnchor}
@@ -764,6 +769,7 @@ export function ScheduleTab({
             onAnchorChange={setAnchor}
             onModeChange={setMode}
             toolbarRight={toolbarRight}
+            weekStartDay={weekStartDay}
           />
           <ScheduleTimeGrid
             mode={mode}
@@ -849,6 +855,7 @@ export function ScheduleTab({
             router.refresh()
           }}
           onDeleteShift={handleDeleteShift}
+          weekStartDay={weekStartDay}
         />
       )}
 
@@ -877,22 +884,18 @@ interface ScheduleToolbarProps {
   onAnchorChange: (next: Date) => void
   onModeChange: (next: ViewMode) => void
   toolbarRight: React.ReactNode
+  weekStartDay?: number
 }
 
-/**
- * Stand-in toolbar for day/week views. Mirrors the layout of
- * CalendarMonthGrid's toolbar so the UI is consistent across all three
- * view modes — back/Today/forward + visible-range label + day/week/month
- * mode switch + filter buttons (slot via toolbarRight).
- */
 function ScheduleToolbar({
   anchor,
   mode,
   onAnchorChange,
   onModeChange,
   toolbarRight,
+  weekStartDay = 0,
 }: ScheduleToolbarProps) {
-  const range = useMemo(() => visibleRange(anchor, mode), [anchor, mode])
+  const range = useMemo(() => visibleRange(anchor, mode, weekStartDay), [anchor, mode, weekStartDay])
   return (
     <div className="flex flex-wrap items-center gap-2">
       <button
@@ -1225,6 +1228,7 @@ interface DayAssignPopoverProps {
   onClose: () => void
   onAssigned: () => void
   onDeleteShift: (id: string) => void
+  weekStartDay?: number
 }
 
 function DayAssignPopover({
@@ -1238,6 +1242,7 @@ function DayAssignPopover({
   onClose,
   onAssigned,
   onDeleteShift,
+  weekStartDay = 0,
 }: DayAssignPopoverProps) {
   const { toast } = useToast()
   const dateKey = fmtDateKey(date)
@@ -1275,8 +1280,8 @@ function DayAssignPopover({
 
   // Weekly hours load for the picked staffer — for the week containing this popover's date.
   // Used to surface "this week: assigned X.Y / target Z.Z" + over-target warning.
-  const weekStart = useMemo(() => fmtDateKey(startOfWeek(date)), [date])
-  const weekEnd = useMemo(() => fmtDateKey(addDays(startOfWeek(date), 6)), [date])
+  const weekStart = useMemo(() => fmtDateKey(startOfWeek(date, weekStartDay)), [date, weekStartDay])
+  const weekEnd = useMemo(() => fmtDateKey(addDays(startOfWeek(date, weekStartDay), 6)), [date, weekStartDay])
 
   const pickedHours = useMemo(() => {
     if (!form.user_id) return null

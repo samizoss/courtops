@@ -2,7 +2,6 @@
 
 import { useMemo } from 'react'
 import {
-  DAY_LABELS_SHORT,
   ViewMode,
   addDays,
   fmtDateKey,
@@ -10,6 +9,7 @@ import {
   fmtMonthYear,
   fmtShortDate,
   isSameDay,
+  rotatedDayLabels,
   startOfDay,
   stepAnchor,
   visibleRange,
@@ -30,6 +30,7 @@ interface Props {
   renderCell: (props: RenderCellProps) => React.ReactNode
   topBanner?: React.ReactNode
   toolbarRight?: React.ReactNode
+  weekStartDay?: number
 }
 
 export function CalendarMonthGrid({
@@ -40,9 +41,11 @@ export function CalendarMonthGrid({
   renderCell,
   topBanner,
   toolbarRight,
+  weekStartDay = 0,
 }: Props) {
-  const range = useMemo(() => visibleRange(anchor, mode), [anchor, mode])
+  const range = useMemo(() => visibleRange(anchor, mode, weekStartDay), [anchor, mode, weekStartDay])
   const today = useMemo(() => startOfDay(new Date()), [])
+  const dayLabels = useMemo(() => rotatedDayLabels(weekStartDay), [weekStartDay])
 
   const rows = useMemo<Date[][]>(() => {
     if (mode === 'day') return [[range.start]]
@@ -51,7 +54,7 @@ export function CalendarMonthGrid({
       for (let i = 0; i < 7; i++) days.push(addDays(range.start, i))
       return [days]
     }
-    const weeks = weeksInMonthView(anchor)
+    const weeks = weeksInMonthView(anchor, weekStartDay)
     const out: Date[][] = []
     for (let w = 0; w < weeks; w++) {
       const week: Date[] = []
@@ -59,7 +62,7 @@ export function CalendarMonthGrid({
       out.push(week)
     }
     return out
-  }, [mode, range.start, anchor])
+  }, [mode, range.start, anchor, weekStartDay])
 
   const anchorMonth = anchor.getMonth()
 
@@ -120,7 +123,7 @@ export function CalendarMonthGrid({
       <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
         {mode !== 'day' && (
           <div className="grid grid-cols-7 border-b border-gray-800 bg-gray-800/40">
-            {DAY_LABELS_SHORT.map((d) => (
+            {dayLabels.map((d) => (
               <div
                 key={d}
                 className="px-2 py-2 text-[11px] font-semibold text-gray-400 uppercase tracking-wide"

@@ -1,10 +1,17 @@
 // Pure date helpers for the availability + schedule calendar views.
-// Sunday-first, local time (no UTC drift).
+// Configurable week start (0=Sun, 1=Mon, etc.), local time (no UTC drift).
 
-export const DAY_LABELS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-export const DAY_LABELS_FULL = [
+const _DAY_LABELS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const _DAY_LABELS_FULL = [
   'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
 ]
+
+export const DAY_LABELS_SHORT = _DAY_LABELS_SHORT
+export const DAY_LABELS_FULL = _DAY_LABELS_FULL
+
+export function rotatedDayLabels(weekStart: number): string[] {
+  return [..._DAY_LABELS_SHORT.slice(weekStart), ..._DAY_LABELS_SHORT.slice(0, weekStart)]
+}
 
 export type ViewMode = 'day' | 'week' | 'month'
 
@@ -18,22 +25,23 @@ export function addDays(d: Date, n: number): Date {
   return out
 }
 
-/** Sunday of the week containing d (local time). */
-export function startOfWeek(d: Date): Date {
+/** First day of the week containing d, using weekStart (0=Sun, 1=Mon, ...). */
+export function startOfWeek(d: Date, weekStart = 0): Date {
   const out = startOfDay(d)
-  out.setDate(out.getDate() - out.getDay())
+  const diff = (out.getDay() - weekStart + 7) % 7
+  out.setDate(out.getDate() - diff)
   return out
 }
 
-/** Sunday of the week containing the 1st of d's month. */
-export function startOfMonthView(d: Date): Date {
+/** First day of the calendar month view (week row containing the 1st). */
+export function startOfMonthView(d: Date, weekStart = 0): Date {
   const firstOfMonth = new Date(d.getFullYear(), d.getMonth(), 1)
-  return startOfWeek(firstOfMonth)
+  return startOfWeek(firstOfMonth, weekStart)
 }
 
 /** Number of weeks (4-6) needed to cover the calendar month containing d. */
-export function weeksInMonthView(d: Date): number {
-  const start = startOfMonthView(d)
+export function weeksInMonthView(d: Date, weekStart = 0): number {
+  const start = startOfMonthView(d, weekStart)
   const lastOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0)
   const days = Math.ceil((lastOfMonth.getTime() - start.getTime()) / 86400000) + 1
   return Math.ceil(days / 7)
@@ -67,17 +75,17 @@ export function isSameDay(a: Date, b: Date): boolean {
   )
 }
 
-export function visibleRange(anchor: Date, mode: ViewMode): { start: Date; end: Date } {
+export function visibleRange(anchor: Date, mode: ViewMode, weekStart = 0): { start: Date; end: Date } {
   if (mode === 'day') {
     const s = startOfDay(anchor)
     return { start: s, end: s }
   }
   if (mode === 'week') {
-    const s = startOfWeek(anchor)
+    const s = startOfWeek(anchor, weekStart)
     return { start: s, end: addDays(s, 6) }
   }
-  const s = startOfMonthView(anchor)
-  const weeks = weeksInMonthView(anchor)
+  const s = startOfMonthView(anchor, weekStart)
+  const weeks = weeksInMonthView(anchor, weekStart)
   return { start: s, end: addDays(s, weeks * 7 - 1) }
 }
 

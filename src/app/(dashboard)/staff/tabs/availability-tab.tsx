@@ -20,6 +20,7 @@ interface Props {
   operationalProfiles: Profile[]
   currentUser: { userId: string; orgId: string; role: string; fullName: string }
   isAdmin: boolean
+  weekStartDay?: number
 }
 
 export function AvailabilityTab({
@@ -31,6 +32,7 @@ export function AvailabilityTab({
   operationalProfiles,
   currentUser,
   isAdmin,
+  weekStartDay,
 }: Props) {
   return (
     <AvailabilityByDateTab
@@ -42,6 +44,7 @@ export function AvailabilityTab({
       operationalProfiles={operationalProfiles}
       currentUser={currentUser}
       isAdmin={isAdmin}
+      weekStartDay={weekStartDay}
     />
   )
 }
