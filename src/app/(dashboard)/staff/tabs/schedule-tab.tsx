@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/toast'
 import { CalendarMonthGrid } from '@/components/calendar-month-grid'
@@ -70,18 +70,27 @@ function parseTimeMinutes(t: string): number | null {
 /** Best-effort parse of free-text shifts ("7 - 230", "open - 9, 5 - close").
  *  Returns total estimated hours. Used for the hours-summary "available"
  *  number — a rough sanity check, not a precise count.
+ *  Gracefully handles "NA", "N/A", blank tokens, and unparseable free-text
+ *  by skipping them instead of producing bogus totals.
  */
 function approximateHours(shifts: string | null): number {
   if (!shifts) return 0
+  const cleaned = shifts.trim()
+  if (!cleaned) return 0
+  if (/^n\/?a$/i.test(cleaned) || /^off$/i.test(cleaned) || /^none$/i.test(cleaned)) return 0
   let total = 0
-  for (const tok of shifts.split(',')) {
-    const halves = tok.split(/[-–]/).map((s) => s.trim())
+  for (const tok of cleaned.split(',')) {
+    const trimmed = tok.trim()
+    if (!trimmed) continue
+    const halves = trimmed.split(/[-–]/).map((s) => s.trim())
     if (halves.length !== 2) continue
+    if (!halves[0] || !halves[1]) continue
     const a = parseLooseHHMM(halves[0])
     const b = parseLooseHHMM(halves[1])
     if (a == null || b == null) continue
     let dur = b - a
     if (dur < 0) dur += 24 * 60
+    if (dur > 16 * 60) continue
     total += dur
   }
   return total / 60
@@ -230,6 +239,9 @@ function generateMagicProposals(args: {
 }
 
 function parseLooseHHMM(raw: string): number | null {
+  const lower = raw.toLowerCase().trim()
+  if (!lower) return null
+  if (/^(open|close|na|n\/a|off|none|tbd|x)$/i.test(lower)) return null
   const digits = raw.replace(/[^\d]/g, '')
   if (!digits) return null
   let h = 0
@@ -243,7 +255,8 @@ function parseLooseHHMM(raw: string): number | null {
     m = parseInt(digits.slice(2, 4), 10)
   }
   if (h < 0 || h > 23 || m < 0 || m > 59) return null
-  const lower = raw.toLowerCase()
+  if (lower.includes('p') && h < 12) h += 12
+  if (lower.includes('a') && h === 12) h = 0
   if (!lower.includes('a') && !lower.includes('p') && h >= 1 && h <= 6) h += 12
   return h * 60 + m
 }
@@ -306,11 +319,12 @@ export function ScheduleTab({
   const [anchor, setAnchor] = useState<Date>(() => startOfDay(new Date()))
   const [filter, setFilter] = useState<FilterMode>(isAdmin ? 'all' : 'mine')
 
-  // Role + draft visibility toggles. Sami's coverage-gap use case 2026-05-05:
-  // toggle off Management to see the front-desk gap on a given day; toggle
-  // Drafts off to see only the published schedule, on to see proposals
-  // alongside. Default: all roles visible, drafts visible (so admin sees
-  // their proposals immediately after running magic-schedule).
+  // Build mode: admin-only toggle that separates "viewing the published
+  // schedule" from "building/editing draft shifts". Magic schedule, Publish,
+  // + Assign, and draft visibility all live behind this toggle.
+  const [buildMode, setBuildMode] = useState(false)
+
+  // Role + draft visibility toggles — only meaningful in build mode.
   const [hiddenRoles, setHiddenRoles] = useState<Set<ShiftRole>>(new Set())
   const [showDrafts, setShowDrafts] = useState(true)
 
@@ -330,6 +344,13 @@ export function ScheduleTab({
   //    Set when ANY user clicks a shift block/pill.
   const [dayPopover, setDayPopover] = useState<Date | null>(null)
   const [shiftDetail, setShiftDetail] = useState<ShiftWithProfile | null>(null)
+
+  useEffect(() => {
+    if (!buildMode) {
+      if (shiftDetail?.published_at == null && shiftDetail != null) setShiftDetail(null)
+      if (dayPopover) setDayPopover(null)
+    }
+  }, [buildMode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const { startHour, endHour } = useMemo(() => getTimelineRange(orgHours), [orgHours])
 
@@ -366,18 +387,19 @@ export function ScheduleTab({
   }, [shifts])
 
   // Apply ALL view filters: My/Total + role visibility + draft visibility.
+  // Outside build mode, drafts are always hidden regardless of showDrafts state.
   function applyViewFilters(input: ShiftWithProfile[]): ShiftWithProfile[] {
     let out = input
     if (filter === 'mine') out = out.filter((s) => s.user_id === currentUser.userId)
-    if (hiddenRoles.size > 0) out = out.filter((s) => !hiddenRoles.has(s.role))
-    if (!showDrafts) out = out.filter((s) => s.published_at != null)
+    if (buildMode && hiddenRoles.size > 0) out = out.filter((s) => !hiddenRoles.has(s.role))
+    if (!buildMode || !showDrafts) out = out.filter((s) => s.published_at != null)
     return out
   }
 
   const filteredShifts = useMemo<ShiftWithProfile[]>(
     () => applyViewFilters(shifts),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [shifts, filter, hiddenRoles, showDrafts, currentUser.userId]
+    [shifts, filter, hiddenRoles, showDrafts, buildMode, currentUser.userId]
   )
 
   const visibleShiftsForDate = (date: Date): ShiftWithProfile[] =>
@@ -401,6 +423,7 @@ export function ScheduleTab({
     }
     for (const s of shifts) {
       if (s.shift_date < startKey || s.shift_date > endKey) continue
+      if (!buildMode && s.published_at == null) continue
       const a = parseTimeMinutes(s.start_time)
       const b = parseTimeMinutes(s.end_time)
       if (a == null || b == null) continue
@@ -417,9 +440,8 @@ export function ScheduleTab({
     return Object.values(rows)
       .filter((r) => r.assignedHours > 0 || r.availableHours > 0)
       .sort((a, b) => a.profile.full_name.localeCompare(b.profile.full_name))
-  }, [profiles, shifts, availabilityEntries, anchor, mode])
+  }, [profiles, shifts, availabilityEntries, anchor, mode, buildMode])
 
-  const draftCount = useMemo(() => shifts.filter((s) => s.published_at == null).length, [shifts])
   const draftCountInRange = useMemo(() => {
     const range = visibleRange(anchor, mode)
     const startKey = fmtDateKey(range.start)
@@ -528,7 +550,20 @@ export function ScheduleTab({
           {f === 'mine' ? 'My schedule' : 'Total schedule'}
         </button>
       ))}
-      {isAdmin && mode !== 'day' && (
+      {isAdmin && (
+        <button
+          onClick={() => setBuildMode((v) => !v)}
+          className={`text-xs px-3 py-1.5 rounded border transition-colors ${
+            buildMode
+              ? 'bg-yellow-500/20 text-yellow-200 border-yellow-500/40'
+              : 'bg-gray-800 hover:bg-gray-700 text-gray-400 border-gray-700'
+          }`}
+          title={buildMode ? 'Exit build mode — view published schedule only' : 'Enter build mode — create drafts, run magic schedule, then publish'}
+        >
+          {buildMode ? '✏ Building' : '✏ Build'}
+        </button>
+      )}
+      {isAdmin && buildMode && mode !== 'day' && (
         <button
           onClick={handleMagicSchedule}
           disabled={magicRunning}
@@ -538,7 +573,7 @@ export function ScheduleTab({
           {magicRunning ? 'Running…' : '✨ Magic schedule'}
         </button>
       )}
-      {isAdmin && draftCountInRange > 0 && (
+      {isAdmin && buildMode && draftCountInRange > 0 && (
         <button
           onClick={handlePublishDrafts}
           disabled={publishing}
@@ -556,7 +591,7 @@ export function ScheduleTab({
   }
 
   const handleEmptyDayClick = (d: Date) => {
-    if (!isAdmin) return
+    if (!isAdmin || !buildMode) return
     setDayPopover(d)
   }
 
@@ -614,9 +649,8 @@ export function ScheduleTab({
 
   return (
     <div className="space-y-4">
-      {/* Visibility chip row — admin coverage tool. Not shown for staff (My/Total
-          is enough). Chips toggle role visibility individually + drafts on/off. */}
-      {isAdmin && (
+      {/* Visibility chip row — admin coverage tool in build mode only. */}
+      {isAdmin && buildMode && (
         <div className="flex flex-wrap items-center gap-2 bg-gray-900/40 border border-gray-800 rounded-lg px-3 py-2">
           <span className="text-[10px] text-gray-500 uppercase tracking-wide">Show</span>
           {ALL_SHIFT_ROLES.map((r) => {
@@ -708,7 +742,7 @@ export function ScheduleTab({
                     </button>
                   )
                 })}
-                {isAdmin && (
+                {isAdmin && buildMode && (
                   <button
                     onClick={() => setDayPopover(date)}
                     className="text-[10px] w-full text-left text-gray-500 hover:text-orange-400 transition-colors mt-0.5"
@@ -740,7 +774,7 @@ export function ScheduleTab({
             endHour={endHour}
             onShiftClick={handleShiftClick}
             onEmptyClick={handleEmptyDayClick}
-            isAdmin={isAdmin}
+            isAdmin={isAdmin && buildMode}
           />
         </div>
       )}
@@ -822,6 +856,8 @@ export function ScheduleTab({
         <ShiftDetailPopover
           shift={shiftDetail}
           isAdmin={isAdmin}
+          orgId={orgId}
+          currentUserId={currentUser.userId}
           onClose={() => setShiftDetail(null)}
           onDelete={handleDeleteShift}
           onPublish={handlePublishOne}
@@ -909,36 +945,109 @@ function ScheduleToolbar({
 interface ShiftDetailPopoverProps {
   shift: ShiftWithProfile
   isAdmin: boolean
+  orgId: string
+  currentUserId: string
   onClose: () => void
   onDelete: (id: string) => void
   onPublish: (id: string) => void
   onRoleChanged: () => void
 }
 
-/** Click-to-detail popover for a single shift. Admin can change role, publish (if draft), or remove. */
-function ShiftDetailPopover({ shift, isAdmin, onClose, onDelete, onPublish, onRoleChanged }: ShiftDetailPopoverProps) {
+/** Click-to-detail popover for a single shift. Admin can change role/time/notes, publish (if draft), or remove. */
+function ShiftDetailPopover({ shift, isAdmin, orgId, currentUserId, onClose, onDelete, onPublish, onRoleChanged }: ShiftDetailPopoverProps) {
   const { toast } = useToast()
   const date = new Date(shift.shift_date + 'T12:00:00')
   const isDraft = shift.published_at == null
   const [role, setRole] = useState<ShiftRole>(shift.role)
-  const [savingRole, setSavingRole] = useState(false)
-  const roleDirty = role !== shift.role
+  const [startTime, setStartTime] = useState(shift.start_time)
+  const [endTime, setEndTime] = useState(shift.end_time)
+  const [notes, setNotes] = useState(shift.notes ?? '')
+  const [saving, setSaving] = useState(false)
+  const [openingSwap, setOpeningSwap] = useState(false)
 
-  async function handleSaveRole() {
-    if (!roleDirty || savingRole) return
-    setSavingRole(true)
+  const isPublished = shift.published_at != null
+  const isMyShift = shift.user_id === currentUserId
+
+  async function handleOpenForSwap(swapType: 'swap' | 'take') {
+    const label = swapType === 'take' ? 'open for anyone to take' : 'open for swap'
+    const reason = prompt(`Why are you opening this shift? (optional)`)
+    if (reason === null) return
+    setOpeningSwap(true)
     try {
       const { createClient } = await import('@/lib/supabase/client')
       const supabase = createClient()
-      const { error } = await supabase.from('shifts').update({ role }).eq('id', shift.id)
+
+      const { data: existing } = await supabase
+        .from('shift_swaps')
+        .select('id')
+        .eq('shift_id', shift.id)
+        .in('status', ['open', 'claimed'])
+        .limit(1)
+      if (existing && existing.length > 0) {
+        toast('This shift already has an open swap request', 'error')
+        return
+      }
+
+      const { error } = await supabase.from('shift_swaps').insert({
+        org_id: orgId,
+        shift_id: shift.id,
+        original_user_id: shift.user_id,
+        swap_type: swapType,
+        status: 'open',
+        reason: reason?.trim() || null,
+      })
       if (error) throw error
-      toast('Role updated')
-      onRoleChanged()
+      toast(`Shift ${label} — share the link from the Shift Swap tab`)
+      onClose()
+      window.location.reload()
     } catch (err) {
-      toast(err instanceof Error ? err.message : 'Failed to update role', 'error')
+      toast(err instanceof Error ? err.message : 'Failed to open swap', 'error')
       console.error(err)
     } finally {
-      setSavingRole(false)
+      setOpeningSwap(false)
+    }
+  }
+
+  const isDirty =
+    role !== shift.role ||
+    startTime !== shift.start_time ||
+    endTime !== shift.end_time ||
+    notes !== (shift.notes ?? '')
+
+  async function handleSave() {
+    if (!isDirty || saving) return
+    setSaving(true)
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      if (!startTime || !endTime) {
+        toast('Start and end times are required', 'error')
+        setSaving(false)
+        return
+      }
+      const fmtTime = (t: string) => (t.length === 5 ? t + ':00' : t)
+      if (startTime >= endTime) {
+        toast('Start time must be before end time', 'error')
+        setSaving(false)
+        return
+      }
+      const { error } = await supabase
+        .from('shifts')
+        .update({
+          role,
+          start_time: fmtTime(startTime),
+          end_time: fmtTime(endTime),
+          notes: notes.trim() || null,
+        })
+        .eq('id', shift.id)
+      if (error) throw error
+      toast('Shift updated')
+      onRoleChanged()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed to update shift', 'error')
+      console.error(err)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -982,35 +1091,42 @@ function ShiftDetailPopover({ shift, isAdmin, onClose, onDelete, onPublish, onRo
             <span className="text-gray-500 text-xs uppercase tracking-wide w-16 shrink-0">
               Time
             </span>
-            <span className="text-white font-mono">
-              {fmtTimeRange12h(shift.start_time, shift.end_time)}
-            </span>
+            {isAdmin ? (
+              <div className="flex items-center gap-2">
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  className="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-sm text-white focus:outline-none focus:ring-1 focus:ring-orange-500"
+                />
+                <span className="text-gray-500">–</span>
+                <input
+                  type="time"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                  className="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-sm text-white focus:outline-none focus:ring-1 focus:ring-orange-500"
+                />
+              </div>
+            ) : (
+              <span className="text-white font-mono">
+                {fmtTimeRange12h(shift.start_time, shift.end_time)}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <span className="text-gray-500 text-xs uppercase tracking-wide w-16 shrink-0">
               Role
             </span>
             {isAdmin ? (
-              <>
-                <select
-                  value={role}
-                  onChange={(e) => setRole(e.target.value as ShiftRole)}
-                  className="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-sm text-white focus:outline-none focus:ring-1 focus:ring-orange-500"
-                >
-                  {ALL_SHIFT_ROLES.map((r) => (
-                    <option key={r} value={r}>{SHIFT_ROLE_LABELS[r]}</option>
-                  ))}
-                </select>
-                {roleDirty && (
-                  <button
-                    onClick={handleSaveRole}
-                    disabled={savingRole}
-                    className="text-xs px-2 py-1 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white rounded transition-colors"
-                  >
-                    {savingRole ? 'Saving…' : 'Save'}
-                  </button>
-                )}
-              </>
+              <select
+                value={role}
+                onChange={(e) => setRole(e.target.value as ShiftRole)}
+                className="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-sm text-white focus:outline-none focus:ring-1 focus:ring-orange-500"
+              >
+                {ALL_SHIFT_ROLES.map((r) => (
+                  <option key={r} value={r}>{SHIFT_ROLE_LABELS[r]}</option>
+                ))}
+              </select>
             ) : (
               <span
                 className={`text-xs px-2 py-0.5 rounded border ${getRoleBadgeColor(shift.role)}`}
@@ -1019,15 +1135,46 @@ function ShiftDetailPopover({ shift, isAdmin, onClose, onDelete, onPublish, onRo
               </span>
             )}
           </div>
-          {shift.notes && (
-            <div className="flex items-start gap-2">
-              <span className="text-gray-500 text-xs uppercase tracking-wide w-16 shrink-0 pt-0.5">
-                Notes
-              </span>
-              <span className="text-gray-200">{shift.notes}</span>
-            </div>
-          )}
+          <div className="flex items-start gap-2">
+            <span className="text-gray-500 text-xs uppercase tracking-wide w-16 shrink-0 pt-1">
+              Notes
+            </span>
+            {isAdmin ? (
+              <input
+                type="text"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="optional"
+                className="flex-1 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-sm text-white focus:outline-none focus:ring-1 focus:ring-orange-500"
+              />
+            ) : (
+              shift.notes && <span className="text-gray-200">{shift.notes}</span>
+            )}
+          </div>
         </div>
+
+        {/* Swap actions — available to the shift owner (or admin) on published shifts */}
+        {isPublished && (isMyShift || isAdmin) && (
+          <div className="px-5 py-3 border-t border-gray-800">
+            <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-2">Shift swap</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleOpenForSwap('take')}
+                disabled={openingSwap}
+                className="text-xs px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 rounded border border-blue-500/30 transition-colors disabled:opacity-50"
+              >
+                {openingSwap ? 'Opening…' : 'Open for take'}
+              </button>
+              <button
+                onClick={() => handleOpenForSwap('swap')}
+                disabled={openingSwap}
+                className="text-xs px-3 py-1.5 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 rounded border border-purple-500/30 transition-colors disabled:opacity-50"
+              >
+                {openingSwap ? 'Opening…' : 'Open for swap'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {isAdmin && (
           <div className="px-5 py-3 border-t border-gray-800 flex justify-end gap-2 flex-wrap">
@@ -1037,10 +1184,19 @@ function ShiftDetailPopover({ shift, isAdmin, onClose, onDelete, onPublish, onRo
             >
               Close
             </button>
+            {isDirty && (
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="px-3 py-1.5 text-sm bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white rounded transition-colors"
+              >
+                {saving ? 'Saving…' : 'Save changes'}
+              </button>
+            )}
             {isDraft && (
               <button
                 onClick={() => onPublish(shift.id)}
-                className="px-3 py-1.5 text-sm bg-orange-600 hover:bg-orange-500 text-white rounded transition-colors"
+                className="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-500 text-white rounded transition-colors"
               >
                 Publish
               </button>
@@ -1150,6 +1306,10 @@ function DayAssignPopover({
     e.preventDefault()
     if (!form.user_id) {
       toast('Pick a staff member first', 'error')
+      return
+    }
+    if (form.start_time >= form.end_time) {
+      toast('Start time must be before end time', 'error')
       return
     }
     setSaving(true)

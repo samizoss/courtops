@@ -226,6 +226,19 @@ export function AvailabilityWindowsStrip({
               {isAdmin && (
                 <>
                   <button
+                    onClick={() => {
+                      const url = `${window.location.origin}/staff?tab=availability&window=${w.id}`
+                      navigator.clipboard.writeText(url).then(
+                        () => toast('Link copied — paste into your group chat'),
+                        () => toast('Failed to copy link', 'error')
+                      )
+                    }}
+                    className="ml-1.5 text-[10px] text-gray-400 hover:text-green-400 underline"
+                    title="Copy a link staff can use to submit their availability"
+                  >
+                    Copy link
+                  </button>
+                  <button
                     onClick={() => setManageWindowId(w.id)}
                     className="ml-1.5 text-[10px] text-gray-400 hover:text-blue-400 underline"
                   >

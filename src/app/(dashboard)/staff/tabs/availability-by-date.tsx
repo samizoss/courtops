@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/toast'
 import { CalendarMonthGrid } from '@/components/calendar-month-grid'
 import { ViewMode, fmtDateKey, fmtShortDate, startOfDay, visibleRange } from '@/lib/calendar'
+import { TimeBlockPicker } from '@/components/time-block-picker'
 import type {
   Profile,
   AvailabilityEntry,
@@ -15,6 +16,64 @@ import type {
 import { AvailabilityWindowsStrip } from './availability-windows-strip'
 
 const SHIFTS_MAX_LEN = 200
+
+/**
+ * Light validation: can we reasonably parse this free-text shifts entry?
+ * Returns null if valid, or an error string if not. Only validates non-empty
+ * strings on cells where is_available=true (if they typed hours, those hours
+ * should be parseable as time ranges).
+ */
+function validateShiftsText(text: string): string | null {
+  const trimmed = text.trim()
+  if (!trimmed) return null
+  if (/^n\/?a$/i.test(trimmed) || /^off$/i.test(trimmed) || /^none$/i.test(trimmed)) {
+    return `"${trimmed}" — if you're unavailable, use the ✗ button instead`
+  }
+  const tokens = trimmed.split(',')
+  let parsedAny = false
+  for (const tok of tokens) {
+    const t = tok.trim()
+    if (!t) continue
+    const halves = t.split(/[-–]/).map((s) => s.trim())
+    if (halves.length === 2 && halves[0] && halves[1]) {
+      const a = parseLooseTime(halves[0])
+      const b = parseLooseTime(halves[1])
+      if (a != null && b != null) {
+        if (a >= b) return `"${t}" — start time must be before end time`
+        parsedAny = true; continue
+      }
+    }
+    if (/^\d{1,2}(:\d{2})?\s*(am?|pm?)?$/i.test(t)) { parsedAny = true; continue }
+    return `Can't understand "${t}" — try a format like "7 - 230" or "9a - 5p"`
+  }
+  if (!parsedAny && tokens.length > 0) {
+    return `Can't understand "${trimmed}" — try a format like "7 - 230" or "9a - 5p"`
+  }
+  return null
+}
+
+function parseLooseTime(raw: string): number | null {
+  const lower = raw.toLowerCase().trim()
+  if (!lower) return null
+  if (/^(open|close|all|any)$/i.test(lower)) return null
+  const digits = lower.replace(/[^\d]/g, '')
+  if (!digits) return null
+  let h = 0
+  let m = 0
+  if (digits.length <= 2) h = parseInt(digits, 10)
+  else if (digits.length === 3) {
+    h = parseInt(digits.slice(0, 1), 10)
+    m = parseInt(digits.slice(1), 10)
+  } else {
+    h = parseInt(digits.slice(0, 2), 10)
+    m = parseInt(digits.slice(2, 4), 10)
+  }
+  if (h < 0 || h > 23 || m < 0 || m > 59) return null
+  if (lower.includes('p') && h < 12) h += 12
+  if (lower.includes('a') && h === 12) h = 0
+  if (!lower.includes('a') && !lower.includes('p') && h >= 1 && h <= 6) h += 12
+  return h * 60 + m
+}
 
 interface Props {
   initialEntries: AvailabilityEntry[]
@@ -71,6 +130,8 @@ export function AvailabilityByDateTab({
   const [anchor, setAnchor] = useState<Date>(() => startOfDay(new Date()))
   const [submissions, setSubmissions] = useState<AvailabilitySubmission[]>(initialSubmissions)
   const [submittingWindowId, setSubmittingWindowId] = useState<string | null>(null)
+
+  const [selectedDay, setSelectedDay] = useState<{ date: Date; userId: string } | null>(null)
 
   const [cells, setCells] = useState<Record<string, CellState>>(() => {
     const map: Record<string, CellState> = {}
@@ -177,17 +238,25 @@ export function AvailabilityByDateTab({
 
   async function saveCell(userId: string, date: Date) {
     const k = cellKey(userId, fmtDateKey(date))
-    const cell = cells[k]
-    if (!cell || !cell.dirty) return
+    // Read latest state atomically via functional updater to avoid stale closures
+    // (e.g. when called via setTimeout after a toggle update)
+    let cellSnapshot: CellState | null = null
+    setCells((prev) => {
+      const c = prev[k]
+      if (!c || !c.dirty) return prev
+      cellSnapshot = c
+      return { ...prev, [k]: { ...c, saving: true } }
+    })
+    if (!cellSnapshot) return
+    const snap = cellSnapshot as CellState
 
-    setCells((prev) => ({ ...prev, [k]: { ...prev[k], saving: true } }))
     try {
       const { createClient } = await import('@/lib/supabase/client')
       const supabase = createClient()
-      const trimmed = cell.shifts.trim().slice(0, SHIFTS_MAX_LEN)
+      const trimmed = snap.shifts.trim().slice(0, SHIFTS_MAX_LEN)
 
       // Empty + neither toggle = delete row.
-      if (!trimmed && !cell.is_available && !cell.is_unavailable) {
+      if (!trimmed && !snap.is_available && !snap.is_unavailable) {
         await supabase
           .from('availability_entries')
           .delete()
@@ -203,9 +272,9 @@ export function AvailabilityByDateTab({
               user_id: userId,
               entry_date: fmtDateKey(date),
               // Unavailable wipes any typed shifts so the row can't lie.
-              shifts: cell.is_unavailable ? null : trimmed || null,
-              is_available: cell.is_available,
-              is_unavailable: cell.is_unavailable,
+              shifts: snap.is_unavailable ? null : trimmed || null,
+              is_available: snap.is_available,
+              is_unavailable: snap.is_unavailable,
               updated_at: new Date().toISOString(),
             },
             { onConflict: 'org_id,user_id,entry_date' }
@@ -221,6 +290,33 @@ export function AvailabilityByDateTab({
   }
 
   async function submitWindow(windowId: string) {
+    const win = windows.find((w) => w.id === windowId)
+    if (!win) return
+
+    // Validate: scan cells inside this window for the current user.
+    // Flag any "available" cells with unparseable shifts text.
+    const issues: string[] = []
+    const d = new Date(win.start_date + 'T12:00:00')
+    const endDate = new Date(win.end_date + 'T12:00:00')
+    while (d <= endDate) {
+      const cell = getCell(currentUser.userId, d)
+      if (cell.is_available && cell.shifts.trim()) {
+        const err = validateShiftsText(cell.shifts)
+        if (err) {
+          const dateLabel = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+          issues.push(`${dateLabel}: ${err}`)
+        }
+      }
+      d.setDate(d.getDate() + 1)
+    }
+    if (issues.length > 0) {
+      const msg = issues.length === 1
+        ? `Fix before submitting:\n${issues[0]}`
+        : `Fix ${issues.length} entries before submitting:\n${issues.join('\n')}`
+      toast(msg, 'error')
+      return
+    }
+
     setSubmittingWindowId(windowId)
     try {
       const { createClient } = await import('@/lib/supabase/client')
@@ -362,7 +458,6 @@ export function AvailabilityByDateTab({
         onModeChange={setMode}
         renderCell={({ date }) => {
           const win = windowForDate(date, windows)
-          // Window must be open AND (admin OR not yet submitted for this window).
           const editable =
             isAdmin || (win?.status === 'open' && !submissionFor(win.id, currentUser.userId))
           return (
@@ -378,10 +473,165 @@ export function AvailabilityByDateTab({
               updateCell={updateCell}
               saveCell={saveCell}
               compact={mode === 'month'}
+              onOpenTimePicker={(userId) => setSelectedDay({ date, userId })}
             />
           )
         }}
       />
+
+      {selectedDay && (
+        <DayAvailabilityModal
+          date={selectedDay.date}
+          profileName={
+            visibleProfiles.find((p) => p.id === selectedDay.userId)?.full_name ?? ''
+          }
+          cell={getCell(selectedDay.userId, selectedDay.date)}
+          editable={(() => {
+            const win = windowForDate(selectedDay.date, windows)
+            if (isAdmin) return true
+            if (!win || win.status !== 'open') return false
+            return !submissionFor(win.id, selectedDay.userId)
+          })()}
+          onUpdate={(patch) => updateCell(selectedDay.userId, selectedDay.date, patch)}
+          onSave={() => saveCell(selectedDay.userId, selectedDay.date)}
+          onClose={() => setSelectedDay(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function DayAvailabilityModal({
+  date,
+  profileName,
+  cell,
+  editable,
+  onUpdate,
+  onSave,
+  onClose,
+}: {
+  date: Date
+  profileName: string
+  cell: CellState
+  editable: boolean
+  onUpdate: (patch: Partial<CellState>) => void
+  onSave: () => void
+  onClose: () => void
+}) {
+  const dayLabel = date.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+  })
+
+  function handleTimeBlockChange(text: string) {
+    onUpdate({ shifts: text, is_available: true, is_unavailable: false })
+  }
+
+  function handleSaveAndClose() {
+    onSave()
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-sm max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-4 border-b border-gray-800">
+          <div>
+            <h3 className="text-sm font-semibold text-white">{dayLabel}</h3>
+            <p className="text-xs text-gray-400">{profileName}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-gray-500 hover:text-white text-lg transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="p-4 space-y-4">
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (!editable) return
+                onUpdate({ is_available: true, is_unavailable: false })
+                setTimeout(onSave, 0)
+              }}
+              disabled={!editable}
+              className={`flex-1 py-2 rounded text-xs font-medium border transition-colors ${
+                cell.is_available && !cell.is_unavailable
+                  ? 'bg-green-500/25 text-green-300 border-green-500/40'
+                  : 'bg-gray-800 text-gray-400 border-gray-700 hover:bg-green-500/10 hover:text-green-300'
+              } disabled:opacity-50`}
+            >
+              ✓ Available
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!editable) return
+                onUpdate({ is_unavailable: true, is_available: false, shifts: '' })
+                setTimeout(onSave, 0)
+              }}
+              disabled={!editable}
+              className={`flex-1 py-2 rounded text-xs font-medium border transition-colors ${
+                cell.is_unavailable
+                  ? 'bg-red-500/25 text-red-300 border-red-500/40'
+                  : 'bg-gray-800 text-gray-400 border-gray-700 hover:bg-red-500/10 hover:text-red-300'
+              } disabled:opacity-50`}
+            >
+              ✗ Unavailable
+            </button>
+          </div>
+
+          {!cell.is_unavailable && editable && (
+            <>
+              <div>
+                <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">
+                  Tap or drag to select your available hours
+                </label>
+                <TimeBlockPicker
+                  value={cell.shifts}
+                  onChange={handleTimeBlockChange}
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">
+                  Or type manually
+                </label>
+                <input
+                  type="text"
+                  value={cell.shifts}
+                  onChange={(e) => onUpdate({ shifts: e.target.value })}
+                  onBlur={onSave}
+                  placeholder="e.g. 7a - 2:30p, 5p - 8p"
+                  maxLength={SHIFTS_MAX_LEN}
+                  className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-xs font-mono text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                />
+              </div>
+            </>
+          )}
+
+          {!cell.is_unavailable && !editable && cell.shifts && (
+            <div className="text-xs text-gray-300 font-mono bg-gray-800 rounded p-2">
+              {cell.shifts}
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 p-4 border-t border-gray-800">
+          <button
+            type="button"
+            onClick={handleSaveAndClose}
+            className="px-4 py-1.5 bg-orange-600 hover:bg-orange-500 text-white text-xs rounded transition-colors"
+          >
+            Done
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -398,6 +648,7 @@ interface DayCellProps {
   updateCell: (userId: string, date: Date, patch: Partial<CellState>) => void
   saveCell: (userId: string, date: Date) => void
   compact: boolean
+  onOpenTimePicker: (userId: string) => void
 }
 
 function DayCell({
@@ -412,6 +663,7 @@ function DayCell({
   updateCell,
   saveCell,
   compact,
+  onOpenTimePicker,
 }: DayCellProps) {
   return (
     <div className="space-y-1">
@@ -445,6 +697,7 @@ function DayCell({
             compact={compact}
             onChange={(patch) => updateCell(p.id, date, patch)}
             onCommit={() => saveCell(p.id, date)}
+            onOpenTimePicker={rowEditable ? () => onOpenTimePicker(p.id) : undefined}
           />
         )
       })}
@@ -459,6 +712,7 @@ function PersonRow({
   compact,
   onChange,
   onCommit,
+  onOpenTimePicker,
 }: {
   label: string
   cell: CellState
@@ -466,6 +720,7 @@ function PersonRow({
   compact: boolean
   onChange: (patch: Partial<CellState>) => void
   onCommit: () => void
+  onOpenTimePicker?: () => void
 }) {
   if (!editable) {
     if (cell.is_unavailable) {
@@ -553,18 +808,28 @@ function PersonRow({
         </span>
         {cell.saving && <span className="text-[9px] text-gray-600 italic">saving</span>}
       </div>
-      {/* Hours input shown only when not "Unavailable" — both opt-in and unset
-          allow specifying constrained hours. */}
       {!cell.is_unavailable && (
-        <input
-          type="text"
-          value={cell.shifts}
-          onChange={(e) => onChange({ shifts: e.target.value })}
-          onBlur={onCommit}
-          placeholder={compact ? 'or hrs' : 'or specify hours, e.g. 7 - 230'}
-          maxLength={SHIFTS_MAX_LEN}
-          className="w-full px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-[10px] font-mono text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-orange-500"
-        />
+        <div className="flex items-center gap-1">
+          <input
+            type="text"
+            value={cell.shifts}
+            onChange={(e) => onChange({ shifts: e.target.value })}
+            onBlur={onCommit}
+            placeholder={compact ? 'or hrs' : 'or specify hours, e.g. 7 - 230'}
+            maxLength={SHIFTS_MAX_LEN}
+            className="flex-1 min-w-0 px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded text-[10px] font-mono text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-orange-500"
+          />
+          {onOpenTimePicker && (
+            <button
+              type="button"
+              onClick={onOpenTimePicker}
+              className="shrink-0 px-1 py-0.5 bg-gray-800 border border-gray-700 rounded text-[10px] text-gray-400 hover:text-orange-400 hover:border-orange-500/40 transition-colors"
+              title="Pick hours visually"
+            >
+              🕐
+            </button>
+          )}
+        </div>
       )}
     </div>
   )

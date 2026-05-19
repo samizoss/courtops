@@ -33,6 +33,7 @@ export default async function StaffPage() {
     { data: activeClocks },
     { data: timeOffRequests },
     { data: shifts },
+    { data: shiftSwaps },
     { data: availability },
     { data: availabilityEntries },
     { data: availabilityWindows },
@@ -45,6 +46,7 @@ export default async function StaffPage() {
     supabase.from('time_clock').select('*, profile:profiles!time_clock_user_id_fkey(full_name)').is('clock_out', null),
     supabase.from('time_off_requests').select('*, profile:profiles!time_off_requests_user_id_fkey(full_name), reviewer:profiles!time_off_requests_reviewed_by_fkey(full_name)').order('created_at', { ascending: false }).limit(20),
     shiftsScopedQuery,
+    supabase.from('shift_swaps').select('*').eq('org_id', userOrg.orgId).in('status', ['open', 'claimed']).order('created_at', { ascending: false }),
     supabase.from('availability').select('*, profile:profiles!availability_user_id_fkey(full_name)').order('day_of_week'),
     supabase.from('availability_entries').select('*').gte('entry_date', availabilityRangeStart).lte('entry_date', availabilityRangeEnd),
     supabase.from('availability_windows').select('*').eq('org_id', userOrg.orgId).gte('end_date', availabilityRangeStart).lte('start_date', availabilityRangeEnd).order('start_date', { ascending: false }),
@@ -72,6 +74,7 @@ export default async function StaffPage() {
       activeClocks={activeClocks ?? []}
       timeOffRequests={timeOffRequests ?? []}
       shifts={shifts ?? []}
+      shiftSwaps={shiftSwaps ?? []}
       availability={availability ?? []}
       availabilityEntries={availabilityEntries ?? []}
       availabilityWindows={availabilityWindows ?? []}
