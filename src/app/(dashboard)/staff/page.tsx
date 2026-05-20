@@ -48,7 +48,7 @@ export default async function StaffPage() {
     shiftsScopedQuery,
     supabase.from('shift_swaps').select('*').eq('org_id', userOrg.orgId).in('status', ['open', 'claimed']).order('created_at', { ascending: false }),
     supabase.from('availability').select('*, profile:profiles!availability_user_id_fkey(full_name)').order('day_of_week'),
-    supabase.from('availability_entries').select('*').gte('entry_date', availabilityRangeStart).lte('entry_date', availabilityRangeEnd),
+    supabase.from('availability_entries').select('*').eq('org_id', userOrg.orgId).gte('entry_date', availabilityRangeStart).lte('entry_date', availabilityRangeEnd),
     supabase.from('availability_windows').select('*').eq('org_id', userOrg.orgId).gte('end_date', availabilityRangeStart).lte('start_date', availabilityRangeEnd).order('start_date', { ascending: false }),
     supabase.from('availability_submissions').select('*').eq('org_id', userOrg.orgId),
     supabase.from('availability_window_assignees').select('*').eq('org_id', userOrg.orgId),

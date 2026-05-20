@@ -1,7 +1,86 @@
 # CourtOps — Current State
 
-> **Snapshot date:** 2026-05-04 (post-Sami QA round 2)
+> **Snapshot date:** 2026-05-19 (post Geneva meeting + shipping session)
 > **For a fresh Claude session:** read this top-to-bottom. Document is organized newest-first: today's session log (full conversation context + decisions) → active queue → historical session logs → infrastructure reference (DB, migrations, env, gotchas) → operational notes. When in doubt about live state, trust `git log`, Supabase schema, and the Vercel production deployment over anything written here.
+
+---
+
+## 2026-05-19 — Geneva meeting roadmap + shipping session
+
+### What shipped today
+
+**PR #32** (squash-merged) — All 7 commitments from the 2026-05-05 meeting + QA:
+- Shift Swap V1, build-mode toggle, edit draft shift time/notes, TimeBlockPicker, window share-link, availability validation, approximateHours fix
+- 3-agent QA pass found 16 issues → all fixed (stale closures, race conditions, status guards, time validation)
+- Second QA pass (8 more fixes): deny/cancel status guards, saveCell stale closure via functional updater, empty time validation, inverted-range rejection, parseLooseHHMM PM handling, DayAssignPopover start<end check
+
+**PR #33** (squash-merged) — Availability drag-to-select + week start day:
+- Staff availability cells now tap-to-open the TimeBlockPicker modal (drag to select hours visually instead of typing)
+- TimeBlockPicker auto-saves on drag complete
+- New org setting: "Calendar Week Start" in Settings → General (Migration 018: `week_start_day` on `org_settings`)
+- All calendar views (schedule, availability, magic schedule) respect the week start day setting
+- Set to Monday for Geneva (Mon-Sun weeks)
+
+**Migrations applied to production:** 017 (shift_swaps), 018 (week_start_day)
+
+### Geneva meeting roadmap (2026-05-19)
+
+Sami met with Geneva. Full prioritized roadmap below drives all near-term work.
+
+**CRITICAL BUG:** Sami's test availability submission didn't show up in the build view. Sticky save issue needs fix before Maddie QAs tonight. This is the immediate blocker.
+
+**Next action:** Fix the availability save bug → Maddie QA pass → Bilhah loom tutorial → launch June window (due 5/26) → schedule build meeting 5/27-28.
+
+---
+
+## Active queue (2026-05-19 Geneva meeting roadmap)
+
+### This week — June schedule rollout blocker
+
+1. **Fix availability submission save bug** — Sami's test submission didn't show in the build view. Sticky save issue. Must fix before Maddie QAs tonight.
+2. **Maddie QA pass** — have her test availability submission as a non-system user this afternoon/evening. Go/no-go decision by tomorrow afternoon.
+3. **Bilhah loom tutorial** — short walkthrough of availability submission for staff, with prompt to verify typed times render correctly.
+4. **Launch June availability window** — due date May 26, hard cutoff (late = not on schedule). Schedule build meeting May 27 or 28 with Geneva.
+5. **Manually clear/rebuild remainder of May schedule** in the system since the imported one is off.
+
+### Near-term (next 2-4 weeks)
+
+6. **Admin reassign on shifts** — click into a shift and reassign directly without forcing a full swap workflow.
+7. **Swap/take approval email notifications to Geneva** — only when action is required (don't spam every new open shift).
+8. **"Hide inactive staff" toggle in scheduling views** — so inactive folks + people like Kevin/Travis can be hidden from the roster view.
+9. **Drag-to-create on admin build view** — mirror the availability UI which already supports drag.
+10. **Draft schedule mode** — build out a full month, review, then publish (don't auto-publish on save).
+11. **Tasks/notifications hub per user** — central screen showing outstanding items: swaps to approve (admin), open availability windows (staff), etc.
+12. **Limit availability submission to club's open hours** — don't show submission slots for times the club is closed.
+
+### Magic Schedule improvements
+
+13. **Minimum shift length setting** (per role, front desk is main target) — enforced in Magic Schedule but doesn't block availability submissions. Admin can override.
+14. **Shift overlap setting** — configurable buffer (e.g. 10-15 min) between back-to-back shifts.
+15. **Learning logic** — Magic Schedule learns from past approved schedules per club (target hours, patterns) so it improves over time.
+16. **No double-bookings** as a hard rule in Magic Schedule output.
+
+### Pipeline / Court Reserve sync (post-scheduling phase)
+
+17. **De-dupe membership names** currently syncing from Court Reserve.
+18. **Two-way custom field strategy** — define standard custom fields (lead type, lead generator, pipeline activity, etc.) clubs add in CR so CourtOps data mirrors back. Clubs lose nothing if they stop using CourtOps.
+19. **Assigned-to vs activity-by reporting** — track who's doing the work on a lead vs who it's assigned to (spiff/commission visibility).
+20. **Leagues handling** — CR has no leagues API. Evaluate whether CourtOps should be source of truth for league data feeding the website, or whether a different CR calendar widget is better. Summer priority, not urgent.
+
+### Reports & checklists (longer horizon)
+
+21. **Checklist history view** — see what was completed on past days (Geneva off Friday, checks Saturday).
+22. **Daily/weekly checklist completion reports** — emailed digest instead of clicking into each day.
+23. **Day-of-week / week-of-month triggered checklists** (not just daily recurring).
+24. **Canned reports + export-all** — explicit decision: don't build a custom report builder. Ship canned reports, let clubs request new ones as paid customization.
+25. **Payout/commission calculation report** — Geneva to send her current Excel. Decide whether this lives in The Jar only or becomes a configurable module across clubs.
+
+### Settings additions captured
+
+- ✅ Week start day (Sunday vs Monday) — done, deployed
+- Minimum shift length (per role) — ties to Magic Schedule improvement #13
+- Shift overlap buffer — ties to Magic Schedule improvement #14
+- Hide inactive staff toggle — ties to near-term #8
 
 ---
 
@@ -143,22 +222,21 @@ See `docs/scheduling-design-v1.md` for full reasoning + V1.0/V1.1/V2.0 roadmap +
 
 ---
 
-## 2026-05-05 Geneva walkthrough — commitments still owed
+## 2026-05-05 Geneva walkthrough — commitments
 
-Sami ran the weekly with Travis + Geneva + Bilhah + Kevin. Full notes at `docs/meetings/2026-05-05-courtops-weekly.md`. Same-day commitments that haven't shipped yet, in roughly Sami's stated priority order:
+Sami ran the weekly with Travis + Geneva + Bilhah + Kevin. Full notes at `docs/meetings/2026-05-05-courtops-weekly.md`.
 
-### Same-day "by end of day" (highest priority — Sami's words on the call)
+### ✅ Shipped (PR #32 — `feat/may5-meeting-items`, 2026-05-19)
 
-1. **Shift Swap V1** — From schedule view: click shift → "Open for swap" / "Open for take" → shift lands in a new Shift Swap tab (replaces Time Off tab name). Staff sees open-shift list + a copy-link Geneva can text. Show "previously-available" staff with caveat. Restaurant industry model. Audit-trail fields baked in per `docs/scheduling-design-v1.md` § 6. **Sami told Travis this was active-build during the meeting.**
+All 7 same-day commitments shipped + 16 QA fixes applied. Branch awaiting merge.
 
-### Specific UX commitments from the live demo
-
-2. **Edit draft shift time + notes in ShiftDetailPopover.** Today only role is editable on a draft; Sami needs start/end + notes too. Use case: "Ella's available 9-5, I really only need 9-noon — let me trim without re-creating." Small.
-3. **Build-mode toggle on Schedule tab** — separate "View published" from "Build draft" UI. Magic schedule + Save Draft move into Build mode. Structural refactor.
-4. **Drag-on-time-grid availability UI** — replace the current cell-per-day form with a calendar-like grid where staff paints unavailable/available blocks by tap-dragging. Mobile-friendly. Travis confirmed direction.
-5. **Window-open share-link** Geneva can paste into a text/group chat. Spec from Q2 already in CURRENT_STATE; now build it.
-6. **Availability validation rules** on Submit. Server-side parse: "can a robot reasonably understand this submission?" Reject if not.
-7. **Fix `approximateHours` parsing** of Alicia's-style NA + blank entries. Today the hours summary shows wrong totals for staff who use ambiguous free-text.
+1. ✅ **Shift Swap V1** — Migration 017: `shift_swaps` table with RLS. `ShiftDetailPopover` → "Open for swap" / "Open for take" on published shifts (with duplicate-swap guard). New `ShiftSwapTab` component: open/claimed lists, claim (with race-condition check), approve (shift-first then status), deny (with Cancel abort), cancel (clears claimed_by). Copy-link with deep-link swap ID. Available-staff hints from availability data.
+2. ✅ **Edit draft shift time + notes** — `ShiftDetailPopover` now has `<input type="time">` for start/end + text input for notes. Saves normalized to `HH:MM:SS`. Validates `start < end`.
+3. ✅ **Build-mode toggle** — `buildMode` state on Schedule tab. Off = published-only view (drafts hidden, assign buttons hidden, magic schedule hidden, popovers auto-close). On = full build UI. Hours summary respects buildMode.
+4. ✅ **Drag-on-time-grid availability UI** — New `TimeBlockPicker` component (30-min slots, 6a–10p, pointer-drag). `DayAvailabilityModal` opens from 🕐 button on each editable cell. Controlled state pattern: prop-derived via `useMemo`, local override only during drag. Manual text input + visual grid stay in sync.
+5. ✅ **Window-open share-link** — "Copy link" button on open availability window pills (admin only). URL includes `&window=<id>` for deep-linking.
+6. ✅ **Availability validation** — `validateShiftsText()` + `parseLooseTime()` (now with AM/PM handling). Blocks submit with per-date error messages for unparseable entries. Catches NA/off/none with "use the ✗ button" guidance.
+7. ✅ **Fix `approximateHours`** — Handles NA/N/A/off/none/blank/TBD without NaN. `parseLooseHHMM` rejects keywords. Rejects >16hr durations.
 
 ### Lower priority (popped on the call as nice-to-haves)
 
@@ -177,28 +255,30 @@ Sami ran the weekly with Travis + Geneva + Bilhah + Kevin. Full notes at `docs/m
 
 ---
 
-## Active queue (post-2026-05-04 evening — superseded by meeting commitments above)
+## Historical: Active queue (pre-2026-05-19 — superseded by Geneva meeting roadmap above)
 
-Roughly priority-ordered. **Several items now shipped — see "Recently shipped" below.** Remaining:
+Roughly priority-ordered. **Several items now shipped — see "Recently shipped" below.** Remaining items folded into the new roadmap above where applicable.
 
 ### Cleared to ship (Sami's 2026-05-05 direction)
 
 - **Daily checklists historical view** — Geneva wants to look back at past days. Date picker (admin sees any past day, read-only) + date-range report. Possibly CSV export. Mid-effort.
 - **DOB + school-day calendar data model** (foundational from `scheduling-design-v1.md` § 3). Add `profiles.date_of_birth`, `club_school_calendar(org_id, date, is_school_day)`, `profile_school_day_overrides`. Just schema — no UI, no enforcement engine. Unblocks V2.0 compliance work without committing to rule semantics.
 - **Audit trail fields on a future shift-swap table** (`scheduling-design-v1.md` § 6). When shift-swap eventually ships, the swap table needs `original_assignee`, `accepted_by`, `approved_by`, `timestamp_requested`, `timestamp_finalized`, `reason_text` baked in from day one.
-- **Shift-swap split (post-publish only flow)** — Sami answer to Q3: availability flows ONLY through windows; once schedule is published, shift swap is the only path to change a staffer's commitment. Restaurant model. Build with the audit-trail fields above. Still V1.1 in the design doc.
-- **Unavailability granularity refactor** — Q1 answer is "Set Availability" stays (industry standard). The 30-min tap-to-toggle redesign from `scheduling-design-v1.md` § 2 can proceed without terminology debate. Treat as a polish iteration on the existing month grid; consider whether 30-min is necessary for V1.0 (current free-text gives more flexibility, 30-min loses granularity for "open-2:30" style entries Geneva uses).
+- ~~**Shift-swap split (post-publish only flow)**~~ → Shipped in PR #32 as Shift Swap V1.
+- ~~**Unavailability granularity refactor**~~ → Shipped in PR #32 as TimeBlockPicker (30-min tap/drag grid in DayAvailabilityModal).
 - **CR sync expansion screen** (Sami's 2026-05-05 ask). Unified Settings → Court Reserve view showing membership costs (have it), CR calendar/events (need the API endpoints), reservations, courts, programs. Click any record → deep-link to the record in CR (e.g. `https://app.courtreserve.com/Online/MembersDirectory/EditMember/{orgId}?memberId={memberId}`). Need an investigation pass on what CR API actually exposes. Sami also flagged "league sync" as something he's uncertain about — confirm CR has a league/program endpoint before building.
-- **Window-open notification email + share-link** (Sami's Q2 answer). When admin opens a window, Resend sends each assignee an email with the link to submit. Window pill also shows a "Copy share link" button so Geneva can paste into a text/group chat. Token-based URL that lands them at `/login` (or directly into the availability tab if logged in).
+- **Window-open notification email** (Sami's Q2 answer). When admin opens a window, Resend sends each assignee an email with the link to submit. ~~Window pill also shows a "Copy share link" button~~ → share-link shipped in PR #32. Email notification still TODO (needs Resend integration for window-open trigger).
 
-### Recently shipped (2026-05-04 → 2026-05-05)
+### Recently shipped (2026-05-04 → 2026-05-19)
 
 - ✅ PR #24 — Per-window assignees redesign
 - ✅ PR #25 — Roster sortable + filterable table
 - ✅ PR #26 — Sidebar trim (Tasks/Pipeline/Content/Messages/Guide/Notifications now owner-only)
 - ✅ PR #27 — Settings → Memberships (CR types cached + displayed)
 - ✅ PR #29 — Magic-schedule confirmed-as-drafts-only (publish-immediately variant removed); Geneva-meeting answers captured.
-- ✅ PR #30 (this) — Schedule view role + drafts visibility toggles; Roster archived view + Reactivate.
+- ✅ PR #30 — Schedule view role + drafts visibility toggles; Roster archived view + Reactivate.
+- ✅ PR #31 — 2026-05-05 meeting notes captured.
+- ✅ PR #32 (pending merge) — All 7 commitments from 5/5 meeting + 16 QA fixes. Branch: `feat/may5-meeting-items`.
 
 ### Other backlog
 2. **Membership types in Settings + CR API scan** — Sami: "I'm wondering if we shouldn't scan the court reserve API and see what just informational stuff we should be able to get from the court reserve sync." **Already discovered:** `src/lib/courtreserve.ts` has `getMembershipTypes()` — endpoint exists, we just don't store/display the result. Lift: cache CR membership types in `cr_membership_types` table on each sync, Settings → Memberships sub-page reads from there. Worth investigating other CR endpoints (location, hours, courts, programs) to inform whether address/hours fields should auto-populate from CR.
@@ -207,7 +287,7 @@ Roughly priority-ordered. **Several items now shipped — see "Recently shipped"
 5. **Checklists Admin IA question** — Sami mused that maybe Checklists Admin shouldn't be a top-level destination. Open question, no action.
 6. **Twilio provisioning** for window-open SMS notifications.
 7. **Pipeline auto-advance** + **CR sync cron**.
-8. **Shift-swap split** from Time Off.
+8. ~~**Shift-swap split** from Time Off.~~ → Shipped in PR #32 as Shift Swap V1.
 
 ### Lower-priority (not committed for any near-term meeting)
 
