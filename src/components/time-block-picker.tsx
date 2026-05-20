@@ -80,9 +80,12 @@ function parseTime(raw: string): number | null {
 interface Props {
   value: string
   onChange: (text: string) => void
+  closedSlots?: Set<number>
 }
 
-export function TimeBlockPicker({ value, onChange }: Props) {
+export { slotToMinutes, SLOT_MINUTES, START_HOUR, END_HOUR, TOTAL_SLOTS }
+
+export function TimeBlockPicker({ value, onChange, closedSlots }: Props) {
   const fromProp = useMemo(() => textToSlots(value), [value])
   const [dragSlots, setDragSlots] = useState<Set<number> | null>(null)
   const [dragging, setDragging] = useState(false)
@@ -98,6 +101,7 @@ export function TimeBlockPicker({ value, onChange }: Props) {
   )
 
   function handlePointerDown(index: number) {
+    if (closedSlots?.has(index)) return
     const base = dragSlots ?? fromProp
     const newValue = !base.has(index)
     setDragging(true)
@@ -110,6 +114,7 @@ export function TimeBlockPicker({ value, onChange }: Props) {
 
   function handlePointerEnter(index: number) {
     if (!dragging) return
+    if (closedSlots?.has(index)) return
     setDragSlots((prev) => {
       const base = prev ?? fromProp
       const next = new Set(base)
@@ -131,7 +136,9 @@ export function TimeBlockPicker({ value, onChange }: Props) {
 
   function selectAll() {
     const all = new Set<number>()
-    for (let i = 0; i < TOTAL_SLOTS; i++) all.add(i)
+    for (let i = 0; i < TOTAL_SLOTS; i++) {
+      if (!closedSlots?.has(i)) all.add(i)
+    }
     setDragSlots(null)
     commitSlots(all)
   }
@@ -198,11 +205,15 @@ export function TimeBlockPicker({ value, onChange }: Props) {
               className={`h-[24px] border-b border-r border-gray-800 transition-colors touch-none ${
                 s.isHourMark ? 'border-t border-gray-700' : ''
               } ${
-                selected.has(s.index)
-                  ? 'bg-green-500/30 hover:bg-green-500/40'
-                  : 'bg-gray-900 hover:bg-gray-800'
+                closedSlots?.has(s.index)
+                  ? 'bg-gray-800/40 cursor-not-allowed'
+                  : selected.has(s.index)
+                    ? 'bg-green-500/30 hover:bg-green-500/40'
+                    : 'bg-gray-900 hover:bg-gray-800'
               }`}
-              title={`${s.label} – ${minutesToLabel(slotToMinutes(s.index) + SLOT_MINUTES)}`}
+              title={closedSlots?.has(s.index)
+                ? `${s.label} – Closed`
+                : `${s.label} – ${minutesToLabel(slotToMinutes(s.index) + SLOT_MINUTES)}`}
             />
           </div>
         ))}

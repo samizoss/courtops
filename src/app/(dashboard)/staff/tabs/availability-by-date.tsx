@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/toast'
 import { CalendarMonthGrid } from '@/components/calendar-month-grid'
 import { ViewMode, fmtDateKey, fmtShortDate, startOfDay, visibleRange } from '@/lib/calendar'
-import { TimeBlockPicker } from '@/components/time-block-picker'
+import { TimeBlockPicker, START_HOUR, SLOT_MINUTES, TOTAL_SLOTS } from '@/components/time-block-picker'
 import type {
   Profile,
   AvailabilityEntry,
@@ -13,9 +13,33 @@ import type {
   AvailabilitySubmission,
   AvailabilityWindowAssignee,
 } from '@/types/database'
+import type { OrgHours } from '../staff-module'
 import { AvailabilityWindowsStrip } from './availability-windows-strip'
 
 const SHIFTS_MAX_LEN = 200
+
+function closedSlotsForDay(date: Date, orgHours?: OrgHours): Set<number> | undefined {
+  if (!orgHours) return undefined
+  const dow = date.getDay()
+  const daily = orgHours.daily_hours
+  const dayEntry = daily?.[String(dow)]
+  const openMin = parseHHMM(dayEntry?.open ?? orgHours.open_time)
+  const closeMin = parseHHMM(dayEntry?.close ?? orgHours.close_time)
+  if (openMin == null || closeMin == null) return undefined
+  const closed = new Set<number>()
+  for (let i = 0; i < TOTAL_SLOTS; i++) {
+    const slotMin = START_HOUR * 60 + i * SLOT_MINUTES
+    if (slotMin < openMin || slotMin >= closeMin) closed.add(i)
+  }
+  return closed.size > 0 ? closed : undefined
+}
+
+function parseHHMM(t: string | null | undefined): number | null {
+  if (!t) return null
+  const [h, m] = t.split(':').map((s) => parseInt(s, 10))
+  if (Number.isNaN(h) || Number.isNaN(m)) return null
+  return h * 60 + m
+}
 
 /**
  * Light validation: can we reasonably parse this free-text shifts entry?
@@ -87,6 +111,7 @@ interface Props {
   currentUser: { userId: string; orgId: string; role: string; fullName: string }
   isAdmin: boolean
   weekStartDay?: number
+  orgHours?: OrgHours
 }
 
 interface CellState {
@@ -125,6 +150,7 @@ export function AvailabilityByDateTab({
   currentUser,
   isAdmin,
   weekStartDay = 0,
+  orgHours,
 }: Props) {
   const router = useRouter()
   const { toast } = useToast()
@@ -493,6 +519,7 @@ export function AvailabilityByDateTab({
           onUpdate={(patch) => updateCell(selectedDay.userId, selectedDay.date, patch)}
           onSave={() => saveCell(selectedDay.userId, selectedDay.date)}
           onClose={() => setSelectedDay(null)}
+          closedSlots={closedSlotsForDay(selectedDay.date, orgHours)}
         />
       )}
     </div>
@@ -507,6 +534,7 @@ function DayAvailabilityModal({
   onUpdate,
   onSave,
   onClose,
+  closedSlots,
 }: {
   date: Date
   profileName: string
@@ -515,6 +543,7 @@ function DayAvailabilityModal({
   onUpdate: (patch: Partial<CellState>) => void
   onSave: () => void
   onClose: () => void
+  closedSlots?: Set<number>
 }) {
   const dayLabel = date.toLocaleDateString('en-US', {
     weekday: 'long',
@@ -594,6 +623,7 @@ function DayAvailabilityModal({
                 <TimeBlockPicker
                   value={cell.shifts}
                   onChange={handleTimeBlockChange}
+                  closedSlots={closedSlots}
                 />
               </div>
 
