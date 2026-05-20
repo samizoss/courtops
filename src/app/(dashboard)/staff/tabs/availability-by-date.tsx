@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/toast'
 import { CalendarMonthGrid } from '@/components/calendar-month-grid'
@@ -149,6 +149,9 @@ export function AvailabilityByDateTab({
     return map
   })
 
+  const cellsRef = useRef(cells)
+  cellsRef.current = cells
+
   // Admin calendar rows: union of assignees across ALL windows in scope.
   // If no windows have any assignees yet, fall back to operationalProfiles
   // so the calendar isn't empty before any windows are configured.
@@ -240,17 +243,9 @@ export function AvailabilityByDateTab({
 
   async function saveCell(userId: string, date: Date) {
     const k = cellKey(userId, fmtDateKey(date))
-    // Read latest state atomically via functional updater to avoid stale closures
-    // (e.g. when called via setTimeout after a toggle update)
-    let cellSnapshot: CellState | null = null
-    setCells((prev) => {
-      const c = prev[k]
-      if (!c || !c.dirty) return prev
-      cellSnapshot = c
-      return { ...prev, [k]: { ...c, saving: true } }
-    })
-    if (!cellSnapshot) return
-    const snap = cellSnapshot as CellState
+    const snap = cellsRef.current[k]
+    if (!snap || !snap.dirty) return
+    setCells((prev) => ({ ...prev, [k]: { ...prev[k], saving: true } }))
 
     try {
       const { createClient } = await import('@/lib/supabase/client')
