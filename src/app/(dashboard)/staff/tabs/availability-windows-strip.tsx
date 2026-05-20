@@ -133,6 +133,14 @@ export function AvailabilityWindowsStrip({
 
       toast(`Availability window opened (${selectedAssignees.size} expected to submit)`)
       setShowOpen(false)
+
+      // Notify assignees (in-app + email) — fire-and-forget so the UI doesn't block.
+      fetch('/api/staff/availability-notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ windowId: created.id }),
+      }).catch(() => {})
+
       router.refresh()
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Failed to open window', 'error')

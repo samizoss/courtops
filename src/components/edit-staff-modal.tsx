@@ -123,7 +123,7 @@ export function EditStaffModal({
       if (sendReset) {
         const { error: resetError } = await supabase.auth.resetPasswordForEmail(
           form.email.trim(),
-          { redirectTo: `${window.location.origin}/reset-password` }
+          { redirectTo: `${window.location.origin}/auth/callback?next=/reset-password` }
         )
         if (resetError) {
           toast(`Saved, but password reset email failed: ${resetError.message}`, 'error')
