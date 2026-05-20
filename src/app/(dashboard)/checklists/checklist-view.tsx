@@ -25,6 +25,7 @@ interface Props {
   userId: string
   isAdmin: boolean
   readOnly?: boolean
+  today: string
   checklist: {
     id: string
     name: string
@@ -44,7 +45,7 @@ function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
 }
 
-export function ChecklistView({ checklist, orgId, userId, readOnly = false }: Props) {
+export function ChecklistView({ checklist, orgId, userId, readOnly = false, today }: Props) {
   const router = useRouter()
   const { toast } = useToast()
   const [loading, setLoading] = useState<string | null>(null)
@@ -72,7 +73,7 @@ export function ChecklistView({ checklist, orgId, userId, readOnly = false }: Pr
           item_id: item.id,
           org_id: orgId,
           completed_by: userId,
-          completed_date: new Date().toISOString().split('T')[0],
+          completed_date: today,
         })
         if (error) throw error
       }
