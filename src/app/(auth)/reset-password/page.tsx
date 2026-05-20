@@ -9,23 +9,34 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [ready, setReady] = useState(false)
+  const [expired, setExpired] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
     let subscription: { unsubscribe: () => void } | null = null
 
-    async function listenForRecovery() {
+    async function init() {
       const { createClient } = await import('@/lib/supabase/client')
       const supabase = createClient()
+
       const { data } = supabase.auth.onAuthStateChange((event) => {
         if (event === 'PASSWORD_RECOVERY') {
           setReady(true)
         }
       })
       subscription = data.subscription
+
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        setReady(true)
+      } else {
+        setTimeout(() => {
+          setExpired(true)
+        }, 4000)
+      }
     }
 
-    listenForRecovery()
+    init()
 
     return () => {
       subscription?.unsubscribe()
@@ -56,7 +67,6 @@ export default function ResetPasswordPage() {
       setError(error.message)
       setLoading(false)
     } else {
-      // Sign out so they log in fresh with the new password
       await supabase.auth.signOut()
       router.push('/login?message=Password+updated+successfully')
     }
@@ -74,7 +84,22 @@ export default function ResetPasswordPage() {
 
         {!ready ? (
           <div className="bg-gray-900 border border-gray-700 rounded-lg p-4">
-            <p className="text-gray-400 text-sm">Verifying your reset link...</p>
+            {expired ? (
+              <div className="space-y-3">
+                <p className="text-red-400 text-sm font-medium">Reset link expired or invalid</p>
+                <p className="text-gray-400 text-sm">
+                  This link may have expired or already been used. Request a new one.
+                </p>
+                <a
+                  href="/forgot-password"
+                  className="block text-center text-sm text-orange-500 hover:text-orange-400 transition-colors"
+                >
+                  Request new reset link
+                </a>
+              </div>
+            ) : (
+              <p className="text-gray-400 text-sm">Verifying your reset link...</p>
+            )}
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
