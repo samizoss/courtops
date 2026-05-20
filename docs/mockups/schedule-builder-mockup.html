@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CourtOps — Schedule Builder Mockup v3</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #030712; color: #e5e7eb; min-height: 100vh; }
+  .container { max-width: 1280px; margin: 0 auto; padding: 24px; }
+
+  /* Nav pills */
+  .view-nav { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
+  .view-nav button { padding: 8px 20px; border-radius: 8px; border: 1px solid #374151; background: #111827; color: #9ca3af; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+  .view-nav button.active { background: #ea580c; border-color: #ea580c; color: #fff; }
+  .view-nav button:hover:not(.active) { border-color: #6b7280; color: #e5e7eb; }
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* Header */
+  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 12px; }
+  .header h1 { font-size: 22px; font-weight: 700; }
+  .subtext { font-size: 13px; color: #6b7280; margin-top: 4px; }
+  .badge { font-size: 11px; padding: 3px 10px; border-radius: 20px; font-weight: 600; }
+  .badge-open { background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.25); }
+
+  /* Cards */
+  .card { background: #111827; border: 1px solid #1f2937; border-radius: 12px; overflow: hidden; margin-bottom: 16px; }
+  .card-header { padding: 14px 20px; border-bottom: 1px solid #1f2937; display: flex; align-items: center; justify-content: space-between; }
+  .card-header h3 { font-size: 15px; font-weight: 600; }
+  .card-body { padding: 16px 20px; }
+
+  /* Submission chips */
+  .submission-strip { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+  .sub-chip { font-size: 11px; padding: 4px 10px; border-radius: 6px; display: flex; align-items: center; gap: 4px; }
+  .sub-chip.done { background: rgba(34,197,94,0.1); color: #4ade80; border: 1px solid rgba(34,197,94,0.2); }
+  .sub-chip.pending { background: rgba(251,191,36,0.1); color: #fbbf24; border: 1px solid rgba(251,191,36,0.2); }
+
+  /* Buttons */
+  .btn { padding: 8px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; border: none; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px; }
+  .btn-primary { background: #ea580c; color: #fff; }
+  .btn-primary:hover { background: #dc5409; }
+  .btn-secondary { background: #1f2937; color: #d1d5db; border: 1px solid #374151; }
+  .btn-secondary:hover { background: #374151; }
+  .btn-magic { background: linear-gradient(135deg, #7c3aed, #6d28d9); color: #fff; opacity: 0.5; }
+  .btn-sm { padding: 5px 12px; font-size: 11px; }
+  .btn-danger { background: rgba(239,68,68,0.1); color: #f87171; border: 1px solid rgba(239,68,68,0.2); }
+  .btn-take { background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.25); padding: 5px 14px; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; }
+  .v2-badge { font-size: 9px; padding: 2px 6px; border-radius: 4px; background: rgba(168,85,247,0.15); color: #a855f7; border: 1px solid rgba(168,85,247,0.25); font-weight: 600; vertical-align: middle; margin-left: 4px; }
+
+  /* ===== WEEK TIME GRID (Calendar-style) ===== */
+  .builder-layout { display: grid; grid-template-columns: 1fr 220px; gap: 16px; }
+  @media (max-width: 900px) { .builder-layout { grid-template-columns: 1fr; } }
+
+  .week-grid-wrap { overflow-x: auto; overflow-y: auto; max-height: 70vh; position: relative; }
+  .week-grid { display: grid; grid-template-columns: 48px repeat(7, 1fr); min-width: 700px; position: relative; }
+
+  /* Time labels column */
+  .time-label { font-size: 9px; font-family: monospace; color: #6b7280; text-align: right; padding-right: 6px; height: 24px; line-height: 24px; position: relative; top: -8px; }
+
+  /* Day column header */
+  .day-header { text-align: center; font-size: 11px; font-weight: 600; color: #9ca3af; padding: 8px 4px; border-bottom: 1px solid #1f2937; background: #111827; position: sticky; top: 0; z-index: 10; text-transform: uppercase; letter-spacing: 0.03em; }
+  .day-header.today { color: #ea580c; }
+  .time-corner { border-bottom: 1px solid #1f2937; background: #111827; position: sticky; top: 0; z-index: 11; }
+
+  /* Day column — the vertical strip for one day */
+  .day-col { position: relative; border-left: 1px solid #1f2937; min-height: calc(32 * 24px); /* 32 half-hour slots × 24px each */ }
+  .time-gutter { min-height: calc(32 * 24px); }
+
+  /* Half-hour slot lines */
+  .slot-line { height: 24px; border-bottom: 1px solid #0d1117; position: relative; }
+  .slot-line.hour-mark { border-bottom-color: #1f2937; }
+  .slot-line:hover { background: rgba(234,88,12,0.04); }
+
+  /* Availability background strips */
+  .avail-strip { position: absolute; left: 0; right: 0; z-index: 1; pointer-events: none; border-radius: 2px; }
+  .avail-strip.full { background: rgba(34,197,94,0.08); }
+  .avail-strip.partial { background: rgba(251,191,36,0.06); }
+
+  /* Assigned shift blocks (like calendar events) */
+  .shift-block-ev { position: absolute; left: 3px; right: 3px; z-index: 3; border-radius: 6px; padding: 4px 6px; cursor: pointer; transition: filter 0.1s; overflow: hidden; }
+  .shift-block-ev:hover { filter: brightness(1.2); }
+  .shift-block-ev .ev-name { font-size: 10px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .shift-block-ev .ev-time { font-size: 9px; color: rgba(255,255,255,0.7); margin-top: 1px; }
+  .shift-block-ev .ev-role { font-size: 8px; color: rgba(255,255,255,0.5); margin-top: 1px; text-transform: uppercase; letter-spacing: 0.04em; }
+
+  /* Shift color themes by role */
+  .shift-fd { background: rgba(234,88,12,0.55); border: 1px solid rgba(234,88,12,0.7); }
+  .shift-mgmt { background: rgba(168,85,247,0.45); border: 1px solid rgba(168,85,247,0.6); }
+  .shift-coach { background: rgba(59,130,246,0.45); border: 1px solid rgba(59,130,246,0.6); }
+
+  /* Drag-selection overlay */
+  .drag-overlay { position: absolute; left: 2px; right: 2px; z-index: 5; background: rgba(234,88,12,0.2); border: 2px dashed rgba(234,88,12,0.6); border-radius: 4px; pointer-events: none; }
+
+  /* ===== ASSIGN POPOVER ===== */
+  .assign-popover { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 100; background: #111827; border: 1px solid #ea580c44; border-radius: 12px; width: 380px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+  .assign-popover .ap-head { padding: 14px 16px; border-bottom: 1px solid #1f2937; }
+  .assign-popover .ap-head h4 { font-size: 14px; font-weight: 600; }
+  .assign-popover .ap-head .ap-sub { font-size: 11px; color: #6b7280; margin-top: 4px; }
+  .assign-popover .ap-body { padding: 12px 16px; max-height: 350px; overflow-y: auto; }
+  .assign-popover .ap-footer { padding: 10px 16px; border-top: 1px solid #1f2937; }
+
+  /* Role picker */
+  .role-picker { display: flex; gap: 4px; margin-bottom: 10px; }
+  .role-chip { font-size: 10px; padding: 4px 10px; border-radius: 6px; border: 1px solid #374151; background: #1f2937; color: #9ca3af; cursor: pointer; transition: all 0.1s; font-weight: 600; }
+  .role-chip.active { border-color: #ea580c; background: rgba(234,88,12,0.15); color: #ea580c; }
+  .role-chip:hover:not(.active) { border-color: #6b7280; color: #d1d5db; }
+
+  /* Staff option row in popover */
+  .staff-option { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-radius: 6px; margin-bottom: 4px; cursor: pointer; transition: background 0.1s; }
+  .staff-option:hover { background: #1f2937; }
+  .staff-option.unavailable { opacity: 0.3; cursor: default; }
+  .staff-option.unavailable:hover { background: transparent; }
+  .so-left { display: flex; align-items: center; gap: 10px; }
+  .so-avatar { width: 28px; height: 28px; border-radius: 50%; background: #374151; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; color: #9ca3af; flex-shrink: 0; }
+  .so-name { font-size: 12px; font-weight: 600; color: #d1d5db; }
+  .so-detail { font-size: 10px; margin-top: 1px; }
+  .so-detail.avail { color: #4ade80; }
+  .so-detail.partial { color: #fbbf24; }
+  .so-detail.off { color: #ef4444; }
+  .so-hours { font-size: 10px; color: #6b7280; text-align: right; }
+
+  .overlay-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 99; }
+
+  /* ===== HOURS SUMMARY SIDEBAR ===== */
+  .summary-panel { position: sticky; top: 20px; }
+  .summary-card { background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 16px; }
+  .summary-card h4 { font-size: 10px; font-weight: 600; margin-bottom: 12px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.05em; }
+  .summary-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #0d1117; }
+  .summary-row:last-child { border-bottom: none; }
+  .summary-name { font-size: 12px; font-weight: 500; color: #d1d5db; }
+  .summary-bar-wrap { width: 80px; height: 6px; background: #1f2937; border-radius: 3px; overflow: hidden; margin: 0 8px; }
+  .summary-bar { height: 100%; border-radius: 3px; transition: width 0.3s; }
+  .summary-bar.low { background: #4ade80; }
+  .summary-bar.mid { background: #fbbf24; }
+  .summary-bar.high { background: #f87171; }
+  .summary-hours { font-size: 11px; font-weight: 600; color: #9ca3af; min-width: 40px; text-align: right; }
+  .summary-divider { border: none; border-top: 1px solid #1f2937; margin: 12px 0; }
+  .summary-stat { display: flex; justify-content: space-between; font-size: 11px; padding: 3px 0; }
+  .summary-stat .label { color: #6b7280; }
+  .summary-stat .value { color: #d1d5db; font-weight: 600; }
+  .summary-stat .value.warn { color: #fbbf24; }
+  .summary-stat .value.good { color: #4ade80; }
+
+  /* ===== PUBLISHED SCHEDULE VIEW ===== */
+  .sched-grid { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .sched-grid th { padding: 10px 8px; text-align: left; font-weight: 600; color: #9ca3af; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #1f2937; background: #111827; }
+  .sched-grid td { padding: 6px 6px; border-bottom: 1px solid #0f1520; vertical-align: top; }
+  .shift-block { padding: 6px 10px; border-radius: 6px; margin-bottom: 4px; font-size: 11px; }
+  .shift-block .name { font-weight: 600; color: #e5e7eb; }
+  .shift-block .time { color: #9ca3af; margin-top: 2px; }
+  .sblock-fd { background: rgba(234,88,12,0.1); border-left: 3px solid #ea580c; }
+  .sblock-mgmt { background: rgba(168,85,247,0.08); border-left: 3px solid #a855f7; }
+  .sblock-coach { background: rgba(59,130,246,0.08); border-left: 3px solid #60a5fa; }
+
+  /* Coverage */
+  .coverage-card { background: rgba(251,191,36,0.05); border: 1px solid rgba(251,191,36,0.2); border-radius: 10px; padding: 16px; margin-top: 12px; }
+  .coverage-card h4 { font-size: 14px; font-weight: 600; color: #fbbf24; margin-bottom: 10px; }
+  .coverage-item { display: flex; align-items: flex-start; justify-content: space-between; padding: 10px 14px; background: #111827; border: 1px solid #1f2937; border-radius: 8px; margin-bottom: 8px; gap: 10px; }
+  .coverage-left { display: flex; align-items: center; gap: 12px; flex: 1; }
+  .coverage-avatar { width: 32px; height: 32px; border-radius: 50%; background: #374151; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #9ca3af; flex-shrink: 0; }
+  .coverage-info .ci-name { font-size: 13px; font-weight: 600; }
+  .coverage-info .ci-detail { font-size: 11px; color: #6b7280; margin-top: 2px; }
+  .coverage-actions { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
+
+  /* Claim condition */
+  .claim-condition { background: rgba(59,130,246,0.06); border: 1px solid rgba(59,130,246,0.15); border-radius: 8px; padding: 8px 12px; margin-top: 6px; }
+  .claim-condition .cc-label { font-size: 10px; color: #60a5fa; font-weight: 600; margin-bottom: 4px; }
+  .claim-condition .cc-text { font-size: 11px; color: #9ca3af; font-style: italic; }
+
+  /* Modal */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
+  .modal { background: #111827; border: 1px solid #374151; border-radius: 12px; width: 100%; max-width: 460px; }
+  .modal-head { padding: 16px 20px; border-bottom: 1px solid #1f2937; display: flex; justify-content: space-between; align-items: center; }
+  .modal-head h3 { font-size: 16px; font-weight: 600; }
+  .modal-close { background: none; border: none; color: #6b7280; font-size: 20px; cursor: pointer; }
+  .modal-body { padding: 20px; }
+  .modal-body label { display: block; font-size: 12px; color: #9ca3af; margin-bottom: 6px; font-weight: 500; }
+  .modal-body textarea, .modal-body input[type="text"] { width: 100%; padding: 8px 12px; background: #0d1117; border: 1px solid #374151; border-radius: 8px; color: #e5e7eb; font-size: 13px; margin-bottom: 14px; font-family: inherit; }
+  .modal-body textarea { resize: vertical; min-height: 60px; }
+  .checkbox-row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 14px; padding: 10px 12px; background: rgba(234,88,12,0.06); border: 1px solid rgba(234,88,12,0.15); border-radius: 8px; }
+  .checkbox-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: #ea580c; margin-top: 1px; flex-shrink: 0; }
+  .cb-text { font-size: 12px; color: #d1d5db; }
+  .cb-sub { font-size: 10px; color: #6b7280; margin-top: 2px; }
+  .modal-footer { padding: 14px 20px; border-top: 1px solid #1f2937; display: flex; justify-content: flex-end; gap: 8px; }
+
+  /* Legend */
+  .legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px; font-size: 10px; color: #6b7280; }
+  .legend-item { display: flex; align-items: center; gap: 4px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div style="margin-bottom: 16px;">
+    <h1 style="font-size: 13px; color: #6b7280; font-weight: 400;">
+      Court<span style="color: #ea580c; font-weight: 700;">Ops</span> &nbsp;→&nbsp; Staff &nbsp;→&nbsp; Mockup v3
+    </h1>
+  </div>
+
+  <div class="view-nav">
+    <button class="active" onclick="showView('builder')">Build Schedule (Admin)</button>
+    <button onclick="showView('schedule')">Schedule (Everyone)</button>
+    <button onclick="showView('coverage')">Need Coverage</button>
+  </div>
+
+  <!-- ====================================================== -->
+  <!-- VIEW 1: BUILD SCHEDULE — Calendar-style time grid       -->
+  <!-- ====================================================== -->
+  <div id="view-builder" class="view active">
+    <div class="header">
+      <div>
+        <h1>June 2026 <span class="badge badge-open">Open</span></h1>
+        <p class="subtext">June 1 – 30 · Due May 28 · 6 of 8 submitted</p>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button class="btn btn-magic btn-sm" title="V2 — auto-fill based on availability + fairness">✨ Magic Schedule <span class="v2-badge">V2</span></button>
+        <button class="btn btn-secondary btn-sm">Save Draft</button>
+        <button class="btn btn-primary btn-sm">Publish</button>
+      </div>
+    </div>
+
+    <div class="submission-strip">
+      <div class="sub-chip done">✓ Geneva</div>
+      <div class="sub-chip done">✓ Maddie</div>
+      <div class="sub-chip done">✓ Cade</div>
+      <div class="sub-chip done">✓ Eli</div>
+      <div class="sub-chip done">✓ Cody</div>
+      <div class="sub-chip done">✓ Ella</div>
+      <div class="sub-chip pending">⏳ Alesia</div>
+      <div class="sub-chip pending">⏳ Daniel</div>
+    </div>
+
+    <div class="builder-layout">
+      <!-- Main week grid -->
+      <div>
+        <div class="card">
+          <div class="card-header">
+            <h3>Week of June 1</h3>
+            <div style="display:flex;gap:6px;">
+              <button class="btn btn-secondary btn-sm" style="font-size:10px;">← Prev</button>
+              <button class="btn btn-secondary btn-sm" style="font-size:10px;">Next →</button>
+            </div>
+          </div>
+          <div class="card-body" style="padding:0;">
+            <div class="week-grid-wrap" id="weekGrid">
+              <div class="week-grid">
+                <!-- Header row -->
+                <div class="time-corner"></div>
+                <div class="day-header">Mon 6/1</div>
+                <div class="day-header">Tue 6/2</div>
+                <div class="day-header">Wed 6/3</div>
+                <div class="day-header">Thu 6/4</div>
+                <div class="day-header">Fri 6/5</div>
+                <div class="day-header">Sat 6/6</div>
+                <div class="day-header">Sun 6/7</div>
+
+                <!-- Time gutter + day columns -->
+                <div class="time-gutter" id="timeGutter"></div>
+                <div class="day-col" id="day-0"></div>
+                <div class="day-col" id="day-1"></div>
+                <div class="day-col" id="day-2"></div>
+                <div class="day-col" id="day-3"></div>
+                <div class="day-col" id="day-4"></div>
+                <div class="day-col" id="day-5"></div>
+                <div class="day-col" id="day-6"></div>
+              </div>
+            </div>
+            <div style="padding: 8px 16px 12px;">
+              <div class="legend">
+                <div class="legend-item"><div class="legend-dot" style="background:rgba(34,197,94,0.15);"></div> Available</div>
+                <div class="legend-item"><div class="legend-dot" style="background:rgba(251,191,36,0.12);"></div> Partial avail</div>
+                <div class="legend-item"><div class="legend-dot" style="background:rgba(234,88,12,0.55);border:1px solid rgba(234,88,12,0.7);border-radius:4px;"></div> Assigned (FD)</div>
+                <div class="legend-item"><div class="legend-dot" style="background:rgba(168,85,247,0.45);border:1px solid rgba(168,85,247,0.6);border-radius:4px;"></div> Assigned (Mgmt)</div>
+              </div>
+              <p style="font-size:10px;color:#4b5563;margin-top:6px;">Click + drag vertically on any day to select a time range, then pick who to assign.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hours summary sidebar -->
+      <div class="summary-panel">
+        <div class="summary-card">
+          <h4>Hours This Week</h4>
+          <div class="summary-row">
+            <span class="summary-name">Geneva</span>
+            <div class="summary-bar-wrap"><div class="summary-bar mid" style="width:75%;"></div></div>
+            <span class="summary-hours">24h</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-name">Maddie</span>
+            <div class="summary-bar-wrap"><div class="summary-bar low" style="width:37%;"></div></div>
+            <span class="summary-hours">12h</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-name">Cade</span>
+            <div class="summary-bar-wrap"><div class="summary-bar low" style="width:37%;"></div></div>
+            <span class="summary-hours">12h</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-name">Eli</span>
+            <div class="summary-bar-wrap"><div class="summary-bar low" style="width:25%;"></div></div>
+            <span class="summary-hours">8h</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-name">Cody</span>
+            <div class="summary-bar-wrap"><div class="summary-bar low" style="width:18%;"></div></div>
+            <span class="summary-hours">6h</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-name">Ella</span>
+            <div class="summary-bar-wrap"><div class="summary-bar low" style="width:12%;"></div></div>
+            <span class="summary-hours">4h</span>
+          </div>
+
+          <hr class="summary-divider">
+
+          <div class="summary-stat">
+            <span class="label">Total scheduled</span>
+            <span class="value">66h</span>
+          </div>
+          <div class="summary-stat">
+            <span class="label">Target coverage</span>
+            <span class="value warn">66 / 112h</span>
+          </div>
+          <div class="summary-stat">
+            <span class="label">Avg hrs/person</span>
+            <span class="value">11.0h</span>
+          </div>
+
+          <hr class="summary-divider">
+
+          <div style="font-size:10px;color:#6b7280;margin-bottom:8px;">Availability vs Scheduled</div>
+          <div class="summary-row">
+            <span class="summary-name" style="font-size:11px;">Geneva</span>
+            <span class="summary-hours" style="font-size:10px;">24 / 52h</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-name" style="font-size:11px;">Maddie</span>
+            <span class="summary-hours" style="font-size:10px;">12 / 60h</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-name" style="font-size:11px;">Cade</span>
+            <span class="summary-hours" style="font-size:10px;">12 / 66h</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-name" style="font-size:11px;">Eli</span>
+            <span class="summary-hours" style="font-size:10px;">8 / 58h</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-name" style="font-size:11px;">Cody</span>
+            <span class="summary-hours" style="font-size:10px;">6 / 36h</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-name" style="font-size:11px;">Ella</span>
+            <span class="summary-hours" style="font-size:10px;">4 / 50h</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================== -->
+  <!-- VIEW 2: Published Schedule (everyone sees)              -->
+  <!-- ====================================================== -->
+  <div id="view-schedule" class="view">
+    <div class="header">
+      <div>
+        <h1>Schedule</h1>
+        <p class="subtext">Week of June 1 – 7, 2026</p>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-secondary btn-sm">← Prev</button>
+        <button class="btn btn-secondary btn-sm">This Week</button>
+        <button class="btn btn-secondary btn-sm">Next →</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="grid-wrap" style="overflow-x:auto;">
+        <table class="sched-grid">
+          <thead><tr>
+            <th style="width:50px;"></th>
+            <th>Mon 6/1</th><th>Tue 6/2</th><th>Wed 6/3</th><th>Thu 6/4</th><th>Fri 6/5</th><th>Sat 6/6</th><th>Sun 6/7</th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td style="font-size:10px;color:#6b7280;font-weight:600;">AM</td>
+              <td><div class="shift-block sblock-fd"><span class="name">Geneva</span><div class="time">6a–12p · Front Desk</div></div></td>
+              <td><div class="shift-block sblock-fd"><span class="name">Maddie</span><div class="time">6a–12p · Front Desk</div></div></td>
+              <td><div class="shift-block sblock-fd"><span class="name">Geneva</span><div class="time">6a–12p · Front Desk</div></div></td>
+              <td><div class="shift-block sblock-fd"><span class="name">Maddie</span><div class="time">6a–12p · Front Desk</div></div></td>
+              <td><div class="shift-block sblock-fd"><span class="name">Geneva</span><div class="time">6a–12p · Front Desk</div></div></td>
+              <td><div class="shift-block sblock-fd"><span class="name">Eli</span><div class="time">7a–1p · Front Desk</div></div></td>
+              <td><div class="shift-block sblock-fd"><span class="name">Cody</span><div class="time">7a–1p · Front Desk</div></div></td>
+            </tr>
+            <tr>
+              <td style="font-size:10px;color:#6b7280;font-weight:600;">PM</td>
+              <td><div class="shift-block sblock-fd"><span class="name">Cade</span><div class="time">12p–6p · Front Desk</div></div></td>
+              <td><div class="shift-block sblock-fd"><span class="name">Eli</span><div class="time">12p–6p · Front Desk</div></div></td>
+              <td><div class="shift-block sblock-fd"><span class="name">Cade</span><div class="time">12p–6p · Front Desk</div></div></td>
+              <td><div class="shift-block sblock-fd"><span class="name">Ella</span><div class="time">12p–6p · Front Desk</div></div></td>
+              <td><div class="shift-block sblock-fd"><span class="name">Cody</span><div class="time">12p–6p · Front Desk</div></div></td>
+              <td><div class="shift-block sblock-fd"><span class="name">Maddie</span><div class="time">1p–7p · Front Desk</div></div></td>
+              <td><div class="shift-block sblock-fd"><span class="name">Ella</span><div class="time">1p–7p · Front Desk</div></div></td>
+            </tr>
+            <tr>
+              <td style="font-size:10px;color:#6b7280;font-weight:600;">EVE</td>
+              <td><div class="shift-block sblock-mgmt"><span class="name">Geneva</span><div class="time">6p–10p · Mgmt</div></div></td>
+              <td><div class="shift-block sblock-fd"><span class="name">Cody</span><div class="time">6p–10p · Front Desk</div></div></td>
+              <td><div class="shift-block sblock-fd"><span class="name">Ella</span><div class="time">6p–10p · Front Desk</div></div></td>
+              <td><div class="shift-block sblock-fd"><span class="name">Cade</span><div class="time">6p–10p · Front Desk</div></div></td>
+              <td><div class="shift-block sblock-fd"><span class="name">Eli</span><div class="time">6p–10p · Front Desk</div></div></td>
+              <td><div class="shift-block sblock-fd"><span class="name">Cody</span><div class="time">7p–10p · Front Desk</div></div></td>
+              <td><div class="shift-block sblock-fd"><span class="name">Eli</span><div class="time">7p–10p · Front Desk</div></div></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="coverage-card">
+      <h4>⚡ Shifts Needing Coverage</h4>
+      <div class="coverage-item">
+        <div class="coverage-left">
+          <div class="coverage-avatar">CS</div>
+          <div class="coverage-info">
+            <div class="ci-name">Cade needs coverage</div>
+            <div class="ci-detail">Wed 6/3 · 12p–6p · Front Desk · "Family thing came up"</div>
+          </div>
+        </div>
+        <button class="btn-take">I'll take it</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================== -->
+  <!-- VIEW 3: Need Coverage                                   -->
+  <!-- ====================================================== -->
+  <div id="view-coverage" class="view">
+    <div class="header">
+      <div>
+        <h1>Need Coverage</h1>
+        <p class="subtext">Post a shift for someone else to take. They claim it, admin approves.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h3>Your Upcoming Shifts</h3></div>
+      <div class="card-body" style="padding:12px 20px;">
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#0d1117;border-radius:8px;">
+            <div><div style="font-size:13px;font-weight:600;">Wed, June 3</div><div style="font-size:11px;color:#6b7280;">12p–6p · Front Desk</div></div>
+            <button class="btn btn-danger btn-sm" onclick="document.getElementById('modal-post').style.display='flex'">I need coverage</button>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#0d1117;border-radius:8px;">
+            <div><div style="font-size:13px;font-weight:600;">Fri, June 5</div><div style="font-size:11px;color:#6b7280;">12p–6p · Front Desk</div></div>
+            <button class="btn btn-danger btn-sm" onclick="document.getElementById('modal-post').style.display='flex'">I need coverage</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="coverage-card">
+      <h4>⚡ Open Coverage Requests</h4>
+      <div class="coverage-item">
+        <div class="coverage-left">
+          <div class="coverage-avatar">EH</div>
+          <div class="coverage-info">
+            <div class="ci-name">Ella needs coverage</div>
+            <div class="ci-detail">Sat 6/6 · 6a–10p · Front Desk · "Doctor appointment"</div>
+          </div>
+        </div>
+        <div class="coverage-actions">
+          <button class="btn-take" onclick="document.getElementById('modal-claim').style.display='flex'">I'll take it</button>
+        </div>
+      </div>
+      <div class="coverage-item" style="flex-direction:column;">
+        <div style="display:flex;align-items:center;justify-content:space-between;width:100%;">
+          <div class="coverage-left">
+            <div class="coverage-avatar">CP</div>
+            <div class="coverage-info">
+              <div class="ci-name">Cody needs coverage</div>
+              <div class="ci-detail">Sun 6/7 · 7a–1p · Front Desk · "Out of town"</div>
+            </div>
+          </div>
+          <div class="coverage-actions">
+            <button class="btn-take" onclick="document.getElementById('modal-claim').style.display='flex'">I'll take it</button>
+          </div>
+        </div>
+        <div class="claim-condition" style="width:100%;margin-top:8px;">
+          <div class="cc-label">Maddie offered (with conditions)</div>
+          <div class="cc-text">"I can cover 7a–10a but have class at 10:30. Can someone do the second half?"</div>
+          <div style="margin-top:6px;display:flex;gap:6px;">
+            <button class="btn btn-sm" style="background:rgba(34,197,94,0.1);color:#4ade80;border:1px solid rgba(34,197,94,0.2);font-size:10px;" onclick="alert('Approved! Maddie covers 7a–10a. The 10a–1p portion stays open for coverage.')">Accept partial</button>
+            <button class="btn btn-sm btn-secondary" style="font-size:10px;">Decline</button>
+          </div>
+        </div>
+      </div>
+      <p style="font-size:10px;color:#6b7280;margin-top:8px;">Claims go to admin for approval. Partial offers are welcome — some coverage is better than none.</p>
+    </div>
+
+    <!-- Post Coverage Modal -->
+    <div id="modal-post" class="modal-overlay" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+      <div class="modal">
+        <div class="modal-head">
+          <h3>Need Coverage</h3>
+          <button class="modal-close" onclick="document.getElementById('modal-post').style.display='none'">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div style="padding:10px 14px;background:#0d1117;border-radius:8px;margin-bottom:16px;">
+            <div style="font-size:13px;font-weight:600;">Wed, June 3</div>
+            <div style="font-size:11px;color:#6b7280;">12p–6p · Front Desk</div>
+          </div>
+          <label>Reason (optional)</label>
+          <textarea placeholder="e.g. Family thing came up"></textarea>
+          <div class="checkbox-row">
+            <input type="checkbox" checked>
+            <div>
+              <div class="cb-text">Notify all staff by email</div>
+              <div class="cb-sub">Everyone on the schedule gets an email that this shift needs coverage</div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="document.getElementById('modal-post').style.display='none'">Cancel</button>
+          <button class="btn btn-primary" onclick="document.getElementById('modal-post').style.display='none';alert('Posted! Staff notified.')">Post for Coverage</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Claim Modal -->
+    <div id="modal-claim" class="modal-overlay" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+      <div class="modal">
+        <div class="modal-head">
+          <h3>Claim This Shift</h3>
+          <button class="modal-close" onclick="document.getElementById('modal-claim').style.display='none'">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div style="padding:10px 14px;background:#0d1117;border-radius:8px;margin-bottom:16px;">
+            <div style="font-size:13px;font-weight:600;">Sat 6/6 · Ella's shift</div>
+            <div style="font-size:11px;color:#6b7280;">6a–10p · Front Desk</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
+            <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#0d1117;border:1px solid #374151;border-radius:8px;cursor:pointer;margin-bottom:0;" onclick="document.getElementById('condition-box').style.display='none'">
+              <input type="radio" name="claim-type" checked style="accent-color:#4ade80;">
+              <div>
+                <div class="cb-text">I can take the full shift</div>
+                <div class="cb-sub">6a–10p, no conditions</div>
+              </div>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#0d1117;border:1px solid #374151;border-radius:8px;cursor:pointer;margin-bottom:0;" onclick="document.getElementById('condition-box').style.display='block'">
+              <input type="radio" name="claim-type" style="accent-color:#fbbf24;">
+              <div>
+                <div class="cb-text">I can help, but...</div>
+                <div class="cb-sub">Partial hours, might be late, etc.</div>
+              </div>
+            </label>
+          </div>
+          <div id="condition-box" style="display:none;">
+            <label>What can you do?</label>
+            <textarea placeholder="e.g. I can cover 6a–12p but have to leave by noon."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="document.getElementById('modal-claim').style.display='none'">Cancel</button>
+          <button class="btn btn-primary" onclick="document.getElementById('modal-claim').style.display='none';alert('Claim submitted! Admin will review.')">Submit</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ==============================
+// CONFIG
+// ==============================
+const START_HOUR = 6;
+const END_HOUR = 22;
+const SLOT_H = 24; // pixels per half-hour slot
+const SLOTS = (END_HOUR - START_HOUR) * 2; // 32 slots
+
+const DAYS = ['Mon 6/1','Tue 6/2','Wed 6/3','Thu 6/4','Fri 6/5','Sat 6/6','Sun 6/7'];
+
+// Staff availability data: per-day array of {name, startSlot, endSlot}
+// Slot 0 = 6:00 AM, slot 1 = 6:30 AM, etc.
+function hm(h,m){ return (h - START_HOUR)*2 + (m>=30?1:0); }
+
+const STAFF = [
+  { name: 'Geneva',  initials: 'GO', color: '#ea580c' },
+  { name: 'Maddie',  initials: 'MT', color: '#f59e0b' },
+  { name: 'Cade',    initials: 'CS', color: '#10b981' },
+  { name: 'Eli',     initials: 'EH', color: '#3b82f6' },
+  { name: 'Cody',    initials: 'CP', color: '#8b5cf6' },
+  { name: 'Ella',    initials: 'EB', color: '#ec4899' },
+];
+
+// Availability: dayIndex -> [{staffIdx, startSlot, endSlot}]
+const AVAIL = {
+  0: [ // Mon
+    {s:0,name:'Geneva',start:hm(6,0),end:hm(22,0)},
+    {s:1,name:'Maddie',start:hm(6,0),end:hm(14,0)},
+    {s:2,name:'Cade',start:hm(6,0),end:hm(22,0)},
+    {s:4,name:'Cody',start:hm(16,0),end:hm(22,0)},
+    {s:5,name:'Ella',start:hm(14,0),end:hm(22,0)},
+  ],
+  1: [ // Tue
+    {s:0,name:'Geneva',start:hm(6,0),end:hm(14,0)},
+    {s:1,name:'Maddie',start:hm(6,0),end:hm(22,0)},
+    {s:3,name:'Eli',start:hm(6,0),end:hm(22,0)},
+    {s:4,name:'Cody',start:hm(16,0),end:hm(22,0)},
+    {s:5,name:'Ella',start:hm(14,0),end:hm(22,0)},
+  ],
+  2: [ // Wed
+    {s:0,name:'Geneva',start:hm(6,0),end:hm(22,0)},
+    {s:1,name:'Maddie',start:hm(12,0),end:hm(22,0)},
+    {s:2,name:'Cade',start:hm(6,0),end:hm(22,0)},
+    {s:3,name:'Eli',start:hm(6,0),end:hm(16,0)},
+    {s:5,name:'Ella',start:hm(6,0),end:hm(22,0)},
+  ],
+  3: [ // Thu
+    {s:1,name:'Maddie',start:hm(6,0),end:hm(22,0)},
+    {s:2,name:'Cade',start:hm(14,0),end:hm(22,0)},
+    {s:3,name:'Eli',start:hm(6,0),end:hm(22,0)},
+    {s:5,name:'Ella',start:hm(6,0),end:hm(18,0)},
+  ],
+  4: [ // Fri
+    {s:0,name:'Geneva',start:hm(6,0),end:hm(22,0)},
+    {s:2,name:'Cade',start:hm(6,0),end:hm(22,0)},
+    {s:3,name:'Eli',start:hm(6,0),end:hm(22,0)},
+    {s:4,name:'Cody',start:hm(16,0),end:hm(22,0)},
+    {s:5,name:'Ella',start:hm(6,0),end:hm(16,0)},
+  ],
+  5: [ // Sat
+    {s:0,name:'Geneva',start:hm(8,0),end:hm(16,0)},
+    {s:1,name:'Maddie',start:hm(6,0),end:hm(22,0)},
+    {s:2,name:'Cade',start:hm(6,0),end:hm(22,0)},
+    {s:3,name:'Eli',start:hm(6,0),end:hm(22,0)},
+    {s:4,name:'Cody',start:hm(6,0),end:hm(22,0)},
+    {s:5,name:'Ella',start:hm(6,0),end:hm(22,0)},
+  ],
+  6: [ // Sun
+    {s:1,name:'Maddie',start:hm(6,0),end:hm(22,0)},
+    {s:2,name:'Cade',start:hm(12,0),end:hm(20,0)},
+    {s:3,name:'Eli',start:hm(6,0),end:hm(22,0)},
+    {s:4,name:'Cody',start:hm(6,0),end:hm(22,0)},
+    {s:5,name:'Ella',start:hm(6,0),end:hm(22,0)},
+  ],
+};
+
+// Pre-assigned shifts
+const SHIFTS = [
+  // Mon
+  {day:0, name:'Geneva', start:hm(6,0), end:hm(12,0), role:'Front Desk', cls:'shift-fd'},
+  {day:0, name:'Cade', start:hm(12,0), end:hm(18,0), role:'Front Desk', cls:'shift-fd'},
+  {day:0, name:'Geneva', start:hm(18,0), end:hm(22,0), role:'Mgmt', cls:'shift-mgmt'},
+  // Tue
+  {day:1, name:'Maddie', start:hm(6,0), end:hm(12,0), role:'Front Desk', cls:'shift-fd'},
+  {day:1, name:'Eli', start:hm(12,0), end:hm(18,0), role:'Front Desk', cls:'shift-fd'},
+  {day:1, name:'Cody', start:hm(18,0), end:hm(22,0), role:'Front Desk', cls:'shift-fd'},
+  // Wed
+  {day:2, name:'Geneva', start:hm(6,0), end:hm(12,0), role:'Front Desk', cls:'shift-fd'},
+  {day:2, name:'Cade', start:hm(12,0), end:hm(18,0), role:'Front Desk', cls:'shift-fd'},
+  {day:2, name:'Ella', start:hm(18,0), end:hm(22,0), role:'Front Desk', cls:'shift-fd'},
+  // Thu
+  {day:3, name:'Maddie', start:hm(6,0), end:hm(12,0), role:'Front Desk', cls:'shift-fd'},
+  {day:3, name:'Ella', start:hm(12,0), end:hm(18,0), role:'Front Desk', cls:'shift-fd'},
+  {day:3, name:'Cade', start:hm(18,0), end:hm(22,0), role:'Front Desk', cls:'shift-fd'},
+  // Fri
+  {day:4, name:'Geneva', start:hm(6,0), end:hm(12,0), role:'Front Desk', cls:'shift-fd'},
+  {day:4, name:'Cody', start:hm(12,0), end:hm(18,0), role:'Front Desk', cls:'shift-fd'},
+  {day:4, name:'Eli', start:hm(18,0), end:hm(22,0), role:'Front Desk', cls:'shift-fd'},
+  // Sat
+  {day:5, name:'Eli', start:hm(7,0), end:hm(13,0), role:'Front Desk', cls:'shift-fd'},
+  {day:5, name:'Maddie', start:hm(13,0), end:hm(19,0), role:'Front Desk', cls:'shift-fd'},
+  {day:5, name:'Cody', start:hm(19,0), end:hm(22,0), role:'Front Desk', cls:'shift-fd'},
+  // Sun
+  {day:6, name:'Cody', start:hm(7,0), end:hm(13,0), role:'Front Desk', cls:'shift-fd'},
+  {day:6, name:'Ella', start:hm(13,0), end:hm(19,0), role:'Front Desk', cls:'shift-fd'},
+  {day:6, name:'Eli', start:hm(19,0), end:hm(22,0), role:'Front Desk', cls:'shift-fd'},
+];
+
+function slotToTime(slot) {
+  const totalMin = START_HOUR * 60 + slot * 30;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  const ampm = h >= 12 ? 'p' : 'a';
+  const hh = h % 12 || 12;
+  return m === 0 ? hh + ampm : hh + ':' + String(m).padStart(2,'0') + ampm;
+}
+
+function slotToTimeLabel(slot) {
+  const totalMin = START_HOUR * 60 + slot * 30;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const hh = h % 12 || 12;
+  return m === 0 ? hh + ':00 ' + ampm : hh + ':' + String(m).padStart(2,'0') + ' ' + ampm;
+}
+
+// ==============================
+// BUILD THE GRID
+// ==============================
+function buildGrid() {
+  const gutter = document.getElementById('timeGutter');
+  gutter.innerHTML = '';
+  for (let i = 0; i < SLOTS; i++) {
+    const div = document.createElement('div');
+    div.className = 'slot-line' + (i % 2 === 0 ? ' hour-mark' : '');
+    if (i % 2 === 0) {
+      const label = document.createElement('div');
+      label.className = 'time-label';
+      label.textContent = slotToTime(i);
+      div.appendChild(label);
+    }
+    gutter.appendChild(div);
+  }
+
+  for (let d = 0; d < 7; d++) {
+    const col = document.getElementById('day-' + d);
+    col.innerHTML = '';
+    col.style.position = 'relative';
+
+    // Slot lines (for hover + drag targets)
+    for (let i = 0; i < SLOTS; i++) {
+      const slot = document.createElement('div');
+      slot.className = 'slot-line' + (i % 2 === 0 ? ' hour-mark' : '');
+      slot.dataset.day = d;
+      slot.dataset.slot = i;
+      col.appendChild(slot);
+    }
+
+    // Availability background strips — merge overlapping into density
+    const avails = AVAIL[d] || [];
+    // Compute availability density per slot (how many people available)
+    const density = new Array(SLOTS).fill(0);
+    for (const a of avails) {
+      for (let s = a.start; s < a.end && s < SLOTS; s++) {
+        density[s]++;
+      }
+    }
+    // Render density as background strips
+    let rangeStart = null;
+    let rangeVal = 0;
+    for (let s = 0; s <= SLOTS; s++) {
+      const v = s < SLOTS ? density[s] : 0;
+      if (v !== rangeVal) {
+        if (rangeStart !== null && rangeVal > 0) {
+          const strip = document.createElement('div');
+          strip.className = 'avail-strip';
+          const opacity = Math.min(0.06 + rangeVal * 0.04, 0.25);
+          strip.style.background = `rgba(34,197,94,${opacity})`;
+          strip.style.top = (rangeStart * SLOT_H) + 'px';
+          strip.style.height = ((s - rangeStart) * SLOT_H) + 'px';
+          strip.title = rangeVal + ' staff available';
+          col.appendChild(strip);
+        }
+        rangeStart = s;
+        rangeVal = v;
+      }
+    }
+
+    // Assigned shift blocks
+    for (const shift of SHIFTS.filter(s => s.day === d)) {
+      const block = document.createElement('div');
+      block.className = 'shift-block-ev ' + shift.cls;
+      block.style.top = (shift.start * SLOT_H) + 'px';
+      block.style.height = ((shift.end - shift.start) * SLOT_H) + 'px';
+      block.innerHTML = `
+        <div class="ev-name">${shift.name}</div>
+        <div class="ev-time">${slotToTime(shift.start)}–${slotToTime(shift.end)}</div>
+        <div class="ev-role">${shift.role}</div>
+      `;
+      block.onclick = (e) => {
+        e.stopPropagation();
+        showShiftPopover(shift, d);
+      };
+      col.appendChild(block);
+    }
+  }
+
+  // Wire up drag-to-select
+  setupDrag();
+}
+
+// ==============================
+// DRAG-TO-SELECT
+// ==============================
+let dragState = null;
+
+function setupDrag() {
+  for (let d = 0; d < 7; d++) {
+    const col = document.getElementById('day-' + d);
+    const slots = col.querySelectorAll('.slot-line');
+
+    slots.forEach((slot) => {
+      slot.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        const s = parseInt(slot.dataset.slot);
+        dragState = { day: d, startSlot: s, endSlot: s, col };
+        updateDragOverlay();
+      });
+
+      slot.addEventListener('pointerenter', () => {
+        if (!dragState || dragState.day !== d) return;
+        dragState.endSlot = parseInt(slot.dataset.slot);
+        updateDragOverlay();
+      });
+    });
+  }
+
+  document.addEventListener('pointerup', () => {
+    if (!dragState) return;
+    const minSlot = Math.min(dragState.startSlot, dragState.endSlot);
+    const maxSlot = Math.max(dragState.startSlot, dragState.endSlot) + 1;
+    removeDragOverlay();
+
+    if (maxSlot - minSlot >= 1) {
+      showAssignPopover(dragState.day, minSlot, maxSlot);
+    }
+    dragState = null;
+  });
+}
+
+function updateDragOverlay() {
+  removeDragOverlay();
+  if (!dragState) return;
+  const minSlot = Math.min(dragState.startSlot, dragState.endSlot);
+  const maxSlot = Math.max(dragState.startSlot, dragState.endSlot);
+  const overlay = document.createElement('div');
+  overlay.className = 'drag-overlay';
+  overlay.id = 'dragOverlay';
+  overlay.style.top = (minSlot * SLOT_H) + 'px';
+  overlay.style.height = ((maxSlot - minSlot + 1) * SLOT_H) + 'px';
+  // Show time label inside
+  overlay.innerHTML = `<div style="font-size:10px;font-weight:600;color:#ea580c;padding:4px 6px;">${slotToTime(minSlot)} – ${slotToTime(maxSlot + 1)}</div>`;
+  dragState.col.appendChild(overlay);
+}
+
+function removeDragOverlay() {
+  const existing = document.getElementById('dragOverlay');
+  if (existing) existing.remove();
+}
+
+// ==============================
+// ASSIGN POPOVER (after drag)
+// ==============================
+function showAssignPopover(dayIdx, startSlot, endSlot) {
+  closePopovers();
+
+  const dayLabel = DAYS[dayIdx];
+  const timeRange = slotToTime(startSlot) + ' – ' + slotToTime(endSlot);
+  const avails = AVAIL[dayIdx] || [];
+
+  // Determine which staff are available during this range
+  const staffAvail = STAFF.map((staff, idx) => {
+    const a = avails.find(av => av.s === idx);
+    if (!a) return { ...staff, idx, status: 'unavailable', detail: 'Not available' };
+    // Check overlap
+    const overlapStart = Math.max(a.start, startSlot);
+    const overlapEnd = Math.min(a.end, endSlot);
+    if (overlapEnd <= overlapStart) return { ...staff, idx, status: 'unavailable', detail: 'Not available this time' };
+    if (overlapStart <= startSlot && overlapEnd >= endSlot) {
+      return { ...staff, idx, status: 'full', detail: 'Available full block' };
+    }
+    return { ...staff, idx, status: 'partial', detail: `Available ${slotToTime(overlapStart)}–${slotToTime(overlapEnd)}` };
+  });
+
+  // Sort: full first, partial second, unavailable last
+  const order = { full: 0, partial: 1, unavailable: 2 };
+  staffAvail.sort((a, b) => order[a.status] - order[b.status]);
+
+  const bg = document.createElement('div');
+  bg.id = 'assign-bg';
+  bg.className = 'overlay-bg';
+  bg.onclick = closePopovers;
+
+  const pop = document.createElement('div');
+  pop.id = 'assign-pop';
+  pop.className = 'assign-popover';
+
+  pop.innerHTML = `
+    <div class="ap-head">
+      <h4>${dayLabel}</h4>
+      <div class="ap-sub">${timeRange} · Select role + staff</div>
+    </div>
+    <div class="ap-body">
+      <div class="role-picker">
+        <div class="role-chip active" data-role="front-desk" onclick="selectRole(this)">Front Desk</div>
+        <div class="role-chip" data-role="mgmt" onclick="selectRole(this)">Management</div>
+        <div class="role-chip" data-role="coach" onclick="selectRole(this)">Coach</div>
+      </div>
+      <div style="font-size:10px;color:#6b7280;margin-bottom:8px;">Who do you want to fill this time?</div>
+      ${staffAvail.map(sa => `
+        <div class="staff-option ${sa.status === 'unavailable' ? 'unavailable' : ''}" ${sa.status !== 'unavailable' ? `onclick="assignStaff('${sa.name}', '${dayLabel}', '${timeRange}')"` : ''}>
+          <div class="so-left">
+            <div class="so-avatar" style="${sa.status !== 'unavailable' ? `background:${sa.color}22;color:${sa.color}` : ''}">${sa.initials}</div>
+            <div>
+              <div class="so-name">${sa.name}</div>
+              <div class="so-detail ${sa.status}">${sa.detail}</div>
+            </div>
+          </div>
+          <div class="so-hours">${sa.status === 'full' ? '✓' : sa.status === 'partial' ? '~' : '✗'}</div>
+        </div>
+      `).join('')}
+    </div>
+    <div class="ap-footer" style="display:flex;justify-content:space-between;align-items:center;">
+      <button class="btn btn-secondary btn-sm" onclick="closePopovers()">Cancel</button>
+      <span style="font-size:10px;color:#4b5563;">Pick a person above</span>
+    </div>
+  `;
+
+  document.body.appendChild(bg);
+  document.body.appendChild(pop);
+}
+
+function showShiftPopover(shift, dayIdx) {
+  closePopovers();
+  const bg = document.createElement('div');
+  bg.id = 'assign-bg';
+  bg.className = 'overlay-bg';
+  bg.onclick = closePopovers;
+
+  const pop = document.createElement('div');
+  pop.id = 'assign-pop';
+  pop.className = 'assign-popover';
+  pop.innerHTML = `
+    <div class="ap-head">
+      <h4>${shift.name} · ${DAYS[dayIdx]}</h4>
+      <div class="ap-sub">${slotToTime(shift.start)}–${slotToTime(shift.end)} · ${shift.role}</div>
+    </div>
+    <div class="ap-body" style="padding:16px;">
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button class="btn btn-secondary btn-sm" onclick="alert('Would open reassign dialog');closePopovers();">Reassign to someone else</button>
+        <button class="btn btn-secondary btn-sm" onclick="alert('Would adjust shift times');closePopovers();">Change time</button>
+        <button class="btn btn-danger btn-sm" onclick="alert('Shift removed');closePopovers();">Remove shift</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(bg);
+  document.body.appendChild(pop);
+}
+
+function selectRole(el) {
+  el.parentElement.querySelectorAll('.role-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function assignStaff(name, day, time) {
+  const roleEl = document.querySelector('.role-chip.active');
+  const role = roleEl ? roleEl.textContent : 'Front Desk';
+  alert(`Assigned ${name} to ${day} ${time} as ${role}`);
+  closePopovers();
+}
+
+function closePopovers() {
+  const bg = document.getElementById('assign-bg');
+  const pop = document.getElementById('assign-pop');
+  if (bg) bg.remove();
+  if (pop) pop.remove();
+}
+
+function showView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.view-nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  event.target.classList.add('active');
+}
+
+// Init
+buildGrid();
+</script>
+</body>
+</html>

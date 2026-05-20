@@ -39,6 +39,7 @@ export function AvailabilityWindowsStrip({
   const [showOpen, setShowOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [manageWindowId, setManageWindowId] = useState<string | null>(null)
+  const [detailWindowId, setDetailWindowId] = useState<string | null>(null)
 
   // Default assignee set for a brand-new window: previous window's assignees
   // if any windows exist, else all schedulable+visible staff. Computed once
@@ -230,9 +231,16 @@ export function AvailabilityWindowsStrip({
               showSubmitted={isAdmin}
               submittedCount={submittedCount(w.id)}
               totalCount={assigneeCount(w.id)}
+              onSubmittedClick={isAdmin ? () => setDetailWindowId(w.id) : undefined}
             >
               {isAdmin && (
                 <>
+                  <button
+                    onClick={() => setDetailWindowId(w.id)}
+                    className="ml-1.5 text-[10px] text-gray-400 hover:text-blue-400 underline"
+                  >
+                    Details
+                  </button>
                   <button
                     onClick={() => {
                       const url = `${window.location.origin}/staff?tab=availability&window=${w.id}`
@@ -250,7 +258,7 @@ export function AvailabilityWindowsStrip({
                     onClick={() => setManageWindowId(w.id)}
                     className="ml-1.5 text-[10px] text-gray-400 hover:text-blue-400 underline"
                   >
-                    Manage assignees
+                    Assignees
                   </button>
                   <button
                     onClick={() => lockWindow(w.id, w.label)}
@@ -275,9 +283,16 @@ export function AvailabilityWindowsStrip({
               showSubmitted={isAdmin}
               submittedCount={submittedCount(w.id)}
               totalCount={assigneeCount(w.id)}
+              onSubmittedClick={isAdmin ? () => setDetailWindowId(w.id) : undefined}
             >
               {isAdmin && (
                 <>
+                  <button
+                    onClick={() => setDetailWindowId(w.id)}
+                    className="ml-1.5 text-[10px] text-gray-400 hover:text-blue-400 underline"
+                  >
+                    Details
+                  </button>
                   <button
                     onClick={() => unlockWindow(w.id)}
                     className="ml-1.5 text-[10px] text-gray-400 hover:text-orange-400 underline"
@@ -425,6 +440,21 @@ export function AvailabilityWindowsStrip({
           }}
         />
       )}
+
+      {detailWindowId && (
+        <WindowDetailModal
+          window={windows.find((w) => w.id === detailWindowId)!}
+          assignees={assignees.filter((a) => a.window_id === detailWindowId)}
+          submissions={submissions.filter((s) => s.window_id === detailWindowId)}
+          profiles={profiles}
+          orgId={orgId}
+          onClose={() => setDetailWindowId(null)}
+          onSaved={() => {
+            setDetailWindowId(null)
+            router.refresh()
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -561,12 +591,14 @@ function WindowPill({
   showSubmitted,
   submittedCount,
   totalCount,
+  onSubmittedClick,
 }: {
   w: AvailabilityWindow
   children?: React.ReactNode
   showSubmitted: boolean
   submittedCount: number
   totalCount: number
+  onSubmittedClick?: () => void
 }) {
   const start = new Date(w.start_date + 'T12:00:00')
   const end = new Date(w.end_date + 'T12:00:00')
@@ -594,14 +626,26 @@ function WindowPill({
         </span>
       )}
       {showSubmitted && totalCount > 0 && (
-        <span
-          className={`ml-1.5 text-[10px] ${
-            w.status === 'open' ? 'text-blue-300' : 'text-gray-500'
-          }`}
-          title="Submitted / expected to submit"
-        >
-          {submittedCount}/{totalCount} submitted
-        </span>
+        onSubmittedClick ? (
+          <button
+            onClick={(e) => { e.stopPropagation(); onSubmittedClick() }}
+            className={`ml-1.5 text-[10px] hover:underline ${
+              w.status === 'open' ? 'text-blue-300 hover:text-blue-200' : 'text-gray-500 hover:text-gray-400'
+            }`}
+            title="View submission status"
+          >
+            {submittedCount}/{totalCount} submitted
+          </button>
+        ) : (
+          <span
+            className={`ml-1.5 text-[10px] ${
+              w.status === 'open' ? 'text-blue-300' : 'text-gray-500'
+            }`}
+            title="Submitted / expected to submit"
+          >
+            {submittedCount}/{totalCount} submitted
+          </span>
+        )
       )}
       {showSubmitted && totalCount === 0 && (
         <span className="ml-1.5 text-[10px] text-gray-500" title="No assignees set">
@@ -617,5 +661,217 @@ function WindowPill({
       </span>
       {children}
     </span>
+  )
+}
+
+function WindowDetailModal({
+  window: w,
+  assignees,
+  submissions,
+  profiles,
+  orgId,
+  onClose,
+  onSaved,
+}: {
+  window: AvailabilityWindow
+  assignees: AvailabilityWindowAssignee[]
+  submissions: AvailabilitySubmission[]
+  profiles: Profile[]
+  orgId: string
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const { toast } = useToast()
+  const [dueDate, setDueDate] = useState(w.due_date ?? '')
+  const [savingDue, setSavingDue] = useState(false)
+  const [nudging, setNudging] = useState<string | null>(null)
+
+  const submissionMap = new Map(submissions.map((s) => [s.user_id, s]))
+  const profileMap = new Map(profiles.map((p) => [p.id, p]))
+
+  const rows = assignees
+    .map((a) => {
+      const profile = profileMap.get(a.user_id)
+      const sub = submissionMap.get(a.user_id)
+      return { userId: a.user_id, name: profile?.full_name ?? 'Unknown', submitted: !!sub, submittedAt: sub?.submitted_at ?? null }
+    })
+    .sort((a, b) => {
+      if (a.submitted !== b.submitted) return a.submitted ? 1 : -1
+      return a.name.localeCompare(b.name)
+    })
+
+  const pendingCount = rows.filter((r) => !r.submitted).length
+
+  async function saveDueDate() {
+    setSavingDue(true)
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      const { error } = await supabase
+        .from('availability_windows')
+        .update({ due_date: dueDate || null })
+        .eq('id', w.id)
+      if (error) throw error
+      toast(dueDate ? `Due date updated to ${new Date(dueDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : 'Due date removed')
+      onSaved()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed to update due date', 'error')
+      console.error(err)
+    } finally {
+      setSavingDue(false)
+    }
+  }
+
+  async function nudgeUser(userId: string, name: string) {
+    setNudging(userId)
+    try {
+      const res = await fetch('/api/staff/availability-notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ windowId: w.id, userId }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error || 'Failed to send reminder')
+      }
+      toast(`Reminder sent to ${name.split(' ')[0]}`)
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed to send reminder', 'error')
+      console.error(err)
+    } finally {
+      setNudging(null)
+    }
+  }
+
+  async function nudgeAllPending() {
+    const pending = rows.filter((r) => !r.submitted)
+    if (pending.length === 0) return
+    if (!confirm(`Send a reminder to ${pending.length} staff who haven't submitted yet?`)) return
+    setNudging('all')
+    let sent = 0
+    for (const row of pending) {
+      try {
+        const res = await fetch('/api/staff/availability-notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ windowId: w.id, userId: row.userId }),
+        })
+        if (res.ok) sent++
+      } catch { /* continue */ }
+    }
+    toast(`Reminders sent to ${sent} of ${pending.length} staff`)
+    setNudging(null)
+  }
+
+  const dueDateChanged = (dueDate || '') !== (w.due_date ?? '')
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold">{w.label}</h3>
+            <p className="text-xs text-gray-500">
+              {fmtShortDate(new Date(w.start_date + 'T12:00:00'))}–{fmtShortDate(new Date(w.end_date + 'T12:00:00'))}
+              {' · '}
+              <span className={w.status === 'open' ? 'text-green-400' : 'text-gray-500'}>{w.status}</span>
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-500 hover:text-white text-xl leading-none">
+            ×
+          </button>
+        </div>
+
+        {/* Due date editor */}
+        <div className="px-5 py-3 border-b border-gray-800">
+          <label className="block text-[10px] text-gray-500 mb-1 uppercase tracking-wide">Due date</label>
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              className="flex-1 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-orange-500"
+            />
+            {dueDateChanged && (
+              <button
+                onClick={saveDueDate}
+                disabled={savingDue}
+                className="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white text-xs rounded transition-colors"
+              >
+                {savingDue ? 'Saving...' : 'Save'}
+              </button>
+            )}
+            {dueDate && (
+              <button
+                onClick={() => setDueDate('')}
+                className="text-xs text-gray-500 hover:text-red-400"
+                title="Remove due date"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Submission status */}
+        <div className="px-5 py-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] text-gray-500 uppercase tracking-wide">
+              Submissions ({rows.length - pendingCount}/{rows.length})
+            </span>
+            {pendingCount > 0 && (
+              <button
+                onClick={nudgeAllPending}
+                disabled={nudging === 'all'}
+                className="text-[10px] text-amber-400 hover:text-amber-300 underline disabled:opacity-50"
+              >
+                {nudging === 'all' ? 'Sending...' : `Remind all pending (${pendingCount})`}
+              </button>
+            )}
+          </div>
+          <div className="space-y-1">
+            {rows.map((row) => (
+              <div
+                key={row.userId}
+                className="flex items-center justify-between px-2 py-1.5 rounded bg-gray-800/50"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span
+                    className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                      row.submitted ? 'bg-green-500' : 'bg-gray-600'
+                    }`}
+                  />
+                  <span className="text-sm text-gray-200 truncate">{row.name}</span>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {row.submitted ? (
+                    <span className="text-[10px] text-green-400">
+                      Submitted {row.submittedAt ? new Date(row.submittedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
+                    </span>
+                  ) : (
+                    <>
+                      <span className="text-[10px] text-gray-500">Pending</span>
+                      <button
+                        onClick={() => nudgeUser(row.userId, row.name)}
+                        disabled={nudging === row.userId || nudging === 'all'}
+                        className="text-[10px] px-2 py-0.5 bg-amber-600/20 text-amber-400 hover:bg-amber-600/30 rounded disabled:opacity-50 transition-colors"
+                      >
+                        {nudging === row.userId ? 'Sending...' : 'Remind'}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
