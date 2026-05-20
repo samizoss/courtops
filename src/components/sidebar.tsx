@@ -170,7 +170,7 @@ export function Sidebar() {
         {/* Spacer for mobile top bar */}
         <div className="h-14 md:hidden" />
 
-        <nav className="flex-1 p-3 space-y-1">
+        <nav className="flex-1 overflow-y-auto min-h-0 p-3 space-y-1">
           {visibleNav.map((item) => {
             const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
             return (
