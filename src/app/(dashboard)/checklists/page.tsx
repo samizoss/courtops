@@ -12,7 +12,14 @@ export default async function ChecklistsPage({ searchParams }: { searchParams: P
   if (!userOrg) return null
 
   const params = await searchParams
-  const today = new Date().toISOString().split('T')[0]
+
+  const { data: org } = await supabase
+    .from('orgs')
+    .select('timezone')
+    .eq('id', userOrg.orgId)
+    .single()
+  const tz = org?.timezone || 'America/Chicago'
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date())
   const selectedDate = params.date || today
   const isToday = selectedDate === today
   const isAdmin = userOrg.role === 'owner' || userOrg.role === 'admin'
@@ -102,6 +109,7 @@ export default async function ChecklistsPage({ searchParams }: { searchParams: P
               userId={userOrg.userId}
               isAdmin={isAdmin}
               readOnly={!isToday}
+              today={today}
             />
           ))}
         </div>
