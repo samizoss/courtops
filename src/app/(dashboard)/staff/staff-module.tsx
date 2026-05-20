@@ -142,6 +142,7 @@ export function StaffModule({ profiles, activeClocks, timeOffRequests, shifts, s
           currentUser={currentUser}
           isAdmin={isAdmin}
           weekStartDay={weekStartDay}
+          orgHours={orgHours}
         />
       )}
     </div>

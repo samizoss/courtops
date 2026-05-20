@@ -7,6 +7,7 @@ import type {
   AvailabilitySubmission,
   AvailabilityWindowAssignee,
 } from '@/types/database'
+import type { OrgHours } from '../staff-module'
 import { AvailabilityByDateTab } from './availability-by-date'
 
 interface Props {
@@ -21,6 +22,7 @@ interface Props {
   currentUser: { userId: string; orgId: string; role: string; fullName: string }
   isAdmin: boolean
   weekStartDay?: number
+  orgHours?: OrgHours
 }
 
 export function AvailabilityTab({
@@ -33,6 +35,7 @@ export function AvailabilityTab({
   currentUser,
   isAdmin,
   weekStartDay,
+  orgHours,
 }: Props) {
   return (
     <AvailabilityByDateTab
@@ -45,6 +48,7 @@ export function AvailabilityTab({
       currentUser={currentUser}
       isAdmin={isAdmin}
       weekStartDay={weekStartDay}
+      orgHours={orgHours}
     />
   )
 }

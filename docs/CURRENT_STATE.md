@@ -46,12 +46,13 @@ Sami met with Geneva. Full prioritized roadmap below drives all near-term work.
 ### Near-term (next 2-4 weeks)
 
 6. **Admin reassign on shifts** — click into a shift and reassign directly without forcing a full swap workflow.
-7. **Swap/take approval email notifications to Geneva** — only when action is required (don't spam every new open shift).
+7. **Swap/take approval email notifications to Geneva** — only when action is required (don't spam every new open shift). Currently no notifications exist for swaps — admin has to check the Shift Swap tab manually.
+7b. **Shift swap history view** — currently only shows `open` + `claimed` swaps. Need a historical view of past approved/denied/cancelled swaps with full audit trail (who opened, who claimed, who approved/denied, timestamps, deny reason).
 8. **"Hide inactive staff" toggle in scheduling views** — so inactive folks + people like Kevin/Travis can be hidden from the roster view.
 9. **Drag-to-create on admin build view** — mirror the availability UI which already supports drag.
 10. **Draft schedule mode** — build out a full month, review, then publish (don't auto-publish on save).
 11. **Tasks/notifications hub per user** — central screen showing outstanding items: swaps to approve (admin), open availability windows (staff), etc.
-12. **Limit availability submission to club's open hours** — don't show submission slots for times the club is closed.
+12. ~~**Limit availability submission to club's open hours**~~ — ✅ Done (PR #35). TimeBlockPicker now greys out slots outside the club's daily open/close hours from org_settings. Staff can't select closed-hour slots.
 
 ### Magic Schedule improvements
 
