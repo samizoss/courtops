@@ -1,13 +1,6 @@
 'use client'
 
-// Restaurant-style schedule timeline. Used by the Schedule tab for both Day
-// (single column) and Week (7 columns Sun–Sat) views. Each shift renders as a
-// positioned block whose top = start time and height = duration. Overlapping
-// shifts in the same day-column are split into side-by-side lanes so the user
-// can see both — Geneva specifically asked for this on 2026-04-28 ("Geneva
-// 9–2:30 + Cody 1–5 should look like two shifts, not one merged block").
-
-import { useMemo } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   DAY_LABELS_SHORT,
   DAY_LABELS_FULL,
@@ -17,14 +10,12 @@ import {
   startOfDay,
 } from '@/lib/calendar'
 import { fmtTimeRange12hCompact } from '@/lib/format'
-import type { ShiftRole, ScheduleShift } from '@/types/database'
+import type { ShiftRole, ScheduleShift, AvailabilityEntry } from '@/types/database'
 
 export interface ShiftWithProfile extends ScheduleShift {
   profile?: { full_name: string }
 }
 
-// Solid + saturated role colors for the timeline blocks. Bordered + tinted
-// background so blocks read clearly against the dark grid even when small.
 const roleBlockColors: Record<ShiftRole, string> = {
   'front-desk': 'bg-blue-600/40 border-blue-400/60 text-blue-50 hover:bg-blue-600/55',
   coaching: 'bg-green-600/40 border-green-400/60 text-green-50 hover:bg-green-600/55',
@@ -43,7 +34,6 @@ const roleBadgeColors: Record<ShiftRole, string> = {
   other: 'bg-gray-500/20 text-gray-200 border-gray-500/40',
 }
 
-/** Short role labels for tight pill rendering. */
 const ROLE_SHORT: Record<ShiftRole, string> = {
   'front-desk': 'FD',
   coaching: 'Coach',
@@ -61,28 +51,65 @@ export function getRoleShortLabel(role: ShiftRole): string {
   return ROLE_SHORT[role]
 }
 
+function parseLooseHHMM(raw: string): number | null {
+  const lower = raw.toLowerCase().trim()
+  if (!lower) return null
+  if (/^(open|close|na|n\/a|off|none|tbd|x)$/i.test(lower)) return null
+  const digits = raw.replace(/[^\d]/g, '')
+  if (!digits) return null
+  let h = 0, m = 0
+  if (digits.length <= 2) h = parseInt(digits, 10)
+  else if (digits.length === 3) { h = parseInt(digits.slice(0, 1), 10); m = parseInt(digits.slice(1), 10) }
+  else { h = parseInt(digits.slice(0, 2), 10); m = parseInt(digits.slice(2, 4), 10) }
+  if (h < 0 || h > 23 || m < 0 || m > 59) return null
+  if (lower.includes('p') && h < 12) h += 12
+  if (lower.includes('a') && h === 12) h = 0
+  if (!lower.includes('a') && !lower.includes('p') && h >= 1 && h <= 6) h += 12
+  return h * 60 + m
+}
+
+function parseAvailBlocks(shifts: string | null): { start: number; end: number }[] {
+  if (!shifts) return []
+  const out: { start: number; end: number }[] = []
+  for (const tok of shifts.split(',')) {
+    const halves = tok.split(/[-–]/).map((s) => s.trim())
+    if (halves.length !== 2) continue
+    const a = parseLooseHHMM(halves[0])
+    const b = parseLooseHHMM(halves[1])
+    if (a == null || b == null || b <= a) continue
+    out.push({ start: a, end: b })
+  }
+  return out
+}
+
+function minutesToHHMM(min: number): string {
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
+function minutesTo12h(min: number): string {
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  const ampm = h >= 12 ? 'p' : 'a'
+  const hh = h % 12 || 12
+  return m === 0 ? `${hh}${ampm}` : `${hh}:${String(m).padStart(2, '0')}${ampm}`
+}
+
 interface Props {
-  /** 'day' renders a single day-column; 'week' renders Sun–Sat. */
   mode: 'day' | 'week'
-  /** Anchor date — for 'day' it's the displayed day; for 'week' the week containing this date. */
   anchor: Date
-  /** Sun anchor of the visible range (passed in so caller can keep it consistent with toolbar). */
   rangeStart: Date
-  /** All shifts that may fall in the visible range. The grid filters by date itself. */
   shifts: ShiftWithProfile[]
-  /** Hour to start the time axis at (24h). Default 5. */
   startHour?: number
-  /** Hour to end the time axis at (24h, exclusive). Default 23. */
   endHour?: number
-  /** Click handler on an existing shift block. */
   onShiftClick?: (shift: ShiftWithProfile) => void
-  /** Click handler on empty area — passes the date that was clicked. */
   onEmptyClick?: (date: Date) => void
-  /** Whether admin affordances (empty-cell click, "+ Assign" hint) should show. */
+  onDragSelect?: (date: Date, startTime: string, endTime: string) => void
+  availabilityEntries?: AvailabilityEntry[]
   isAdmin: boolean
 }
 
-/** Convert a "HH:MM" or "HH:MM:SS" to fractional hours, or null. */
 function timeToHours(t: string): number | null {
   const [h, m] = t.split(':').map((s) => parseInt(s, 10))
   if (Number.isNaN(h) || Number.isNaN(m)) return null
@@ -96,15 +123,6 @@ interface PositionedShift extends ShiftWithProfile {
   lanes: number
 }
 
-/**
- * Greedy left-pack lane assignment. Shifts sorted by start time get the
- * lowest free lane that doesn't overlap any active shift in that lane. Two
- * shifts overlap iff their [start, end) intervals intersect. The result is
- * guaranteed to give every shift a lane and the per-shift `lanes` count
- * reflects the day-wide max simultaneous overlap, so non-overlapping shifts
- * get full width while a 3-way overlap shrinks to 1/3 width for those three
- * shifts.
- */
 function assignLanes(dayShifts: ShiftWithProfile[]): PositionedShift[] {
   if (dayShifts.length === 0) return []
 
@@ -155,6 +173,8 @@ export function ScheduleTimeGrid({
   endHour = 23,
   onShiftClick,
   onEmptyClick,
+  onDragSelect,
+  availabilityEntries,
   isAdmin,
 }: Props) {
   const today = useMemo(() => startOfDay(new Date()), [])
@@ -197,7 +217,16 @@ export function ScheduleTimeGrid({
     return result
   }, [shifts, days, startHour, endHour, totalHours])
 
-  // ~36px per hour fits 18 hours in ~650px — week view stays roughly one screen.
+  const entriesByDate = useMemo(() => {
+    if (!availabilityEntries) return {}
+    const map: Record<string, AvailabilityEntry[]> = {}
+    for (const e of availabilityEntries) {
+      if (!map[e.entry_date]) map[e.entry_date] = []
+      map[e.entry_date].push(e)
+    }
+    return map
+  }, [availabilityEntries])
+
   const pxPerHour = 36
   const gridHeight = pxPerHour * totalHours
 
@@ -273,10 +302,13 @@ export function ScheduleTimeGrid({
               hourTicks={hourTicks}
               startHour={startHour}
               totalHours={totalHours}
+              gridHeight={gridHeight}
               isToday={isToday_}
               isAdmin={isAdmin}
               onShiftClick={onShiftClick}
               onEmptyClick={onEmptyClick}
+              onDragSelect={onDragSelect}
+              dayEntries={entriesByDate[key]}
             />
           )
         })}
@@ -291,10 +323,13 @@ interface DayColumnProps {
   hourTicks: number[]
   startHour: number
   totalHours: number
+  gridHeight: number
   isToday: boolean
   isAdmin: boolean
   onShiftClick?: (shift: ShiftWithProfile) => void
   onEmptyClick?: (date: Date) => void
+  onDragSelect?: (date: Date, startTime: string, endTime: string) => void
+  dayEntries?: AvailabilityEntry[]
 }
 
 function DayColumn({
@@ -303,25 +338,137 @@ function DayColumn({
   hourTicks,
   startHour,
   totalHours,
+  gridHeight,
   isToday,
   isAdmin,
   onShiftClick,
   onEmptyClick,
+  onDragSelect,
+  dayEntries,
 }: DayColumnProps) {
+  const colRef = useRef<HTMLDivElement>(null)
+  const justDraggedRef = useRef(false)
+  const dragRef = useRef<{ startSlot: number; currentSlot: number } | null>(null)
+  const [drag, setDrag] = useState<{ startSlot: number; currentSlot: number } | null>(null)
+
+  const totalSlots = totalHours * 2
+  const slotHeight = gridHeight / totalSlots
+  const startHourMin = startHour * 60
+
+  const slotDensity = useMemo(() => {
+    const density = new Array(totalSlots).fill(0)
+    if (!dayEntries?.length) return density
+    for (const entry of dayEntries) {
+      if (!entry.is_available) continue
+      const blocks = parseAvailBlocks(entry.shifts)
+      if (blocks.length === 0) {
+        for (let i = 0; i < totalSlots; i++) density[i]++
+      } else {
+        for (const blk of blocks) {
+          const s = Math.max(0, Math.floor((blk.start - startHourMin) / 30))
+          const e = Math.min(totalSlots, Math.ceil((blk.end - startHourMin) / 30))
+          for (let i = s; i < e; i++) density[i]++
+        }
+      }
+    }
+    return density
+  }, [dayEntries, totalSlots, startHourMin])
+
+  const densityStrips = useMemo(() => {
+    const strips: { start: number; end: number; count: number }[] = []
+    let rStart = 0
+    let rCount = slotDensity[0]
+    for (let i = 1; i <= totalSlots; i++) {
+      const c = i < totalSlots ? slotDensity[i] : -1
+      if (c !== rCount) {
+        if (rCount > 0) strips.push({ start: rStart, end: i, count: rCount })
+        rStart = i
+        rCount = c
+      }
+    }
+    return strips
+  }, [slotDensity, totalSlots])
+
+  const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isAdmin || !onDragSelect || !colRef.current) return
+    if ((e.target as HTMLElement).closest('button')) return
+    const rect = colRef.current.getBoundingClientRect()
+    const y = e.clientY - rect.top
+    const slot = Math.max(0, Math.min(totalSlots - 1, Math.floor(y / slotHeight)))
+    const state = { startSlot: slot, currentSlot: slot }
+    dragRef.current = state
+    setDrag(state)
+    colRef.current.setPointerCapture(e.pointerId)
+    e.preventDefault()
+  }, [isAdmin, onDragSelect, totalSlots, slotHeight])
+
+  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current || !colRef.current) return
+    const rect = colRef.current.getBoundingClientRect()
+    const y = e.clientY - rect.top
+    const slot = Math.max(0, Math.min(totalSlots - 1, Math.floor(y / slotHeight)))
+    if (slot !== dragRef.current.currentSlot) {
+      const state = { ...dragRef.current, currentSlot: slot }
+      dragRef.current = state
+      setDrag(state)
+    }
+  }, [totalSlots, slotHeight])
+
+  const handlePointerUp = useCallback(() => {
+    const d = dragRef.current
+    if (!d) return
+    dragRef.current = null
+    setDrag(null)
+
+    const minSlot = Math.min(d.startSlot, d.currentSlot)
+    const maxSlot = Math.max(d.startSlot, d.currentSlot)
+    if (maxSlot >= minSlot) {
+      justDraggedRef.current = true
+      setTimeout(() => { justDraggedRef.current = false }, 100)
+      const startMin = startHourMin + minSlot * 30
+      const endMin = startHourMin + (maxSlot + 1) * 30
+      onDragSelect?.(date, minutesToHHMM(startMin), minutesToHHMM(endMin))
+    }
+  }, [startHourMin, date, onDragSelect])
+
   const handleEmptyClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isAdmin || !onEmptyClick) return
+    if (justDraggedRef.current) return
     if (e.target !== e.currentTarget && !(e.target as HTMLElement).dataset.empty) return
     onEmptyClick(date)
   }
 
+  const dragMinSlot = drag ? Math.min(drag.startSlot, drag.currentSlot) : 0
+  const dragMaxSlot = drag ? Math.max(drag.startSlot, drag.currentSlot) : 0
+
   return (
     <div
-      className={`relative border-l border-gray-800 ${
+      ref={colRef}
+      className={`relative border-l border-gray-800 touch-none ${
         isToday ? 'bg-orange-500/[0.04]' : ''
-      } ${isAdmin ? 'cursor-pointer hover:bg-gray-800/30' : ''}`}
+      } ${isAdmin ? 'cursor-crosshair' : ''}`}
       onClick={handleEmptyClick}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
       data-empty="true"
     >
+      {/* Availability density background */}
+      {densityStrips.map((s, idx) => {
+        const top = (s.start / totalSlots) * 100
+        const height = ((s.end - s.start) / totalSlots) * 100
+        const opacity = Math.min(0.06 + s.count * 0.04, 0.25)
+        return (
+          <div
+            key={idx}
+            className="absolute left-0 right-0 pointer-events-none"
+            style={{ top: `${top}%`, height: `${height}%`, background: `rgba(34, 197, 94, ${opacity})` }}
+            data-empty="true"
+          />
+        )
+      })}
+
+      {/* Hour tick lines */}
       {hourTicks.map((h, i) => {
         if (i === 0) return null
         const top = ((h - startHour) / totalHours) * 100
@@ -335,6 +482,21 @@ function DayColumn({
         )
       })}
 
+      {/* Half-hour tick lines (lighter) */}
+      {hourTicks.map((h, i) => {
+        if (i === hourTicks.length - 1) return null
+        const top = ((h + 0.5 - startHour) / totalHours) * 100
+        return (
+          <div
+            key={`half-${h}`}
+            className="absolute left-0 right-0 border-t border-gray-800/25 pointer-events-none"
+            style={{ top: `${top}%` }}
+            data-empty="true"
+          />
+        )
+      })}
+
+      {/* Shift blocks */}
       {positioned.map((p) => {
         const widthPct = 100 / p.lanes
         const leftPct = p.lane * widthPct
@@ -350,7 +512,7 @@ function DayColumn({
               e.stopPropagation()
               onShiftClick?.(p)
             }}
-            className={`absolute rounded text-left px-1.5 py-1 overflow-hidden transition-colors ${roleBlockColors[p.role]} ${
+            className={`absolute rounded text-left px-1.5 py-1 overflow-hidden transition-colors z-[2] ${roleBlockColors[p.role]} ${
               isDraft ? 'border-2 border-dashed opacity-60' : 'border'
             }`}
             style={{
@@ -381,13 +543,31 @@ function DayColumn({
         )
       })}
 
-      {isAdmin && positioned.length === 0 && (
+      {/* Drag overlay */}
+      {drag && (
+        <div
+          className="absolute left-[2px] right-[2px] z-[5] rounded pointer-events-none"
+          style={{
+            top: `${(dragMinSlot / totalSlots) * 100}%`,
+            height: `${((dragMaxSlot - dragMinSlot + 1) / totalSlots) * 100}%`,
+            background: 'rgba(234, 88, 12, 0.2)',
+            border: '2px dashed rgba(234, 88, 12, 0.6)',
+          }}
+        >
+          <div className="text-[10px] font-semibold text-orange-400 px-1.5 py-0.5">
+            {minutesTo12h(startHourMin + dragMinSlot * 30)} – {minutesTo12h(startHourMin + (dragMaxSlot + 1) * 30)}
+          </div>
+        </div>
+      )}
+
+      {/* Empty state hint */}
+      {isAdmin && positioned.length === 0 && !drag && (
         <div
           className="absolute inset-0 flex items-center justify-center pointer-events-none"
           data-empty="true"
         >
-          <span className="text-[10px] text-gray-600 hover:text-orange-400 transition-colors">
-            + Assign
+          <span className="text-[10px] text-gray-600">
+            Drag to assign
           </span>
         </div>
       )}
