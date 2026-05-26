@@ -347,6 +347,7 @@ export function ScheduleTab({
   //    Set when ANY user clicks a shift block/pill.
   const [dayPopover, setDayPopover] = useState<Date | null>(null)
   const [shiftDetail, setShiftDetail] = useState<ShiftWithProfile | null>(null)
+  const [dragPreFill, setDragPreFill] = useState<{ startTime: string; endTime: string } | null>(null)
 
   useEffect(() => {
     if (!buildMode) {
@@ -452,7 +453,7 @@ export function ScheduleTab({
     return shifts.filter(
       (s) => s.published_at == null && s.shift_date >= startKey && s.shift_date <= endKey
     ).length
-  }, [shifts, anchor, mode])
+  }, [shifts, anchor, mode, weekStartDay])
 
   const [magicRunning, setMagicRunning] = useState(false)
   const [publishing, setPublishing] = useState(false)
@@ -596,6 +597,13 @@ export function ScheduleTab({
 
   const handleEmptyDayClick = (d: Date) => {
     if (!isAdmin || !buildMode) return
+    setDragPreFill(null)
+    setDayPopover(d)
+  }
+
+  const handleDragSelect = (d: Date, startTime: string, endTime: string) => {
+    if (!isAdmin || !buildMode) return
+    setDragPreFill({ startTime, endTime })
     setDayPopover(d)
   }
 
@@ -760,8 +768,8 @@ export function ScheduleTab({
           }}
         />
       ) : (
-        // Day or Week view: hand-built toolbar (CalendarMonthGrid couples
-        // toolbar+body, but we want the toolbar with our own time-grid body).
+        // Day or Week view: hand-built toolbar + time grid.
+        // In build mode, hours summary appears as a sidebar; otherwise below.
         <div className="space-y-3">
           <ScheduleToolbar
             anchor={anchor}
@@ -771,20 +779,38 @@ export function ScheduleTab({
             toolbarRight={toolbarRight}
             weekStartDay={weekStartDay}
           />
-          <ScheduleTimeGrid
-            mode={mode}
-            anchor={anchor}
-            rangeStart={weekRangeStart}
-            shifts={filteredShifts}
-            startHour={startHour}
-            endHour={endHour}
-            onShiftClick={handleShiftClick}
-            onEmptyClick={handleEmptyDayClick}
-            isAdmin={isAdmin && buildMode}
-          />
+          <div className={isAdmin && buildMode ? 'grid grid-cols-1 xl:grid-cols-[1fr_220px] gap-4' : ''}>
+            <ScheduleTimeGrid
+              mode={mode}
+              anchor={anchor}
+              rangeStart={weekRangeStart}
+              shifts={filteredShifts}
+              startHour={startHour}
+              endHour={endHour}
+              onShiftClick={handleShiftClick}
+              onEmptyClick={handleEmptyDayClick}
+              onDragSelect={handleDragSelect}
+              availabilityEntries={isAdmin && buildMode ? availabilityEntries : undefined}
+              isAdmin={isAdmin && buildMode}
+            />
+            {isAdmin && buildMode && (
+              <HoursSidebar hoursSummary={hoursSummary} mode={mode} />
+            )}
+          </div>
+          {isAdmin && buildMode && (
+            <div className="flex items-center gap-2 text-[10px] text-gray-500">
+              <span className="inline-block w-3 h-2 rounded-sm" style={{ background: 'rgba(34,197,94,0.15)' }} />
+              Available
+              <span className="inline-block w-3 h-2 rounded-sm" style={{ background: 'rgba(34,197,94,0.25)' }} />
+              More available
+              <span className="text-gray-600 mx-1">·</span>
+              Click + drag vertically on any day to select a time range, then pick who to assign.
+            </div>
+          )}
         </div>
       )}
 
+      {!(isAdmin && buildMode && mode !== 'month') && (
       <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
         <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
           Hours summary ({mode === 'day' ? 'this week' : `this ${mode}`})
@@ -797,9 +823,6 @@ export function ScheduleTab({
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
             {hoursSummary.map((r) => {
               const target = r.profile.target_weekly_hours
-              // Overscheduling: assigned > target (and target is set + > 0).
-              // For 'month' mode the target is per-week so multiply by ~4.
-              // For 'week'/'day' the target is per-week as-is.
               const targetForRange = target == null
                 ? null
                 : mode === 'month'
@@ -839,6 +862,7 @@ export function ScheduleTab({
           </div>
         )}
       </div>
+      )}
 
       {dayPopover && isAdmin && (
         <DayAssignPopover
@@ -849,13 +873,16 @@ export function ScheduleTab({
           timeOffMap={timeOffMap}
           existingShifts={shiftsByDate[fmtDateKey(dayPopover)] ?? []}
           allShifts={shifts}
-          onClose={() => setDayPopover(null)}
+          onClose={() => { setDayPopover(null); setDragPreFill(null) }}
           onAssigned={() => {
             setDayPopover(null)
+            setDragPreFill(null)
             router.refresh()
           }}
           onDeleteShift={handleDeleteShift}
           weekStartDay={weekStartDay}
+          initialStartTime={dragPreFill?.startTime}
+          initialEndTime={dragPreFill?.endTime}
         />
       )}
 
@@ -874,6 +901,85 @@ export function ScheduleTab({
           }}
         />
       )}
+    </div>
+  )
+}
+
+function HoursSidebar({ hoursSummary, mode }: { hoursSummary: { profile: Profile; assignedHours: number; availableHours: number }[]; mode: ViewMode }) {
+  const totalScheduled = hoursSummary.reduce((sum, r) => sum + r.assignedHours, 0)
+  const totalAvailable = hoursSummary.reduce((sum, r) => sum + r.availableHours, 0)
+  const maxHours = Math.max(...hoursSummary.map((r) => r.assignedHours), 1)
+
+  return (
+    <div className="sticky top-5">
+      <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+        <h4 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-3">
+          Hours this {mode === 'day' ? 'week' : mode}
+        </h4>
+        {hoursSummary.length === 0 ? (
+          <p className="text-[10px] text-gray-600">No shifts yet.</p>
+        ) : (
+          <>
+            <div className="space-y-2">
+              {hoursSummary.map((r) => {
+                const target = r.profile.target_weekly_hours
+                const targetForRange = target == null ? null : mode === 'month' ? target * 4 : target
+                const isOver = targetForRange != null && targetForRange > 0 && r.assignedHours > targetForRange
+                const barWidth = Math.min(100, (r.assignedHours / maxHours) * 100)
+                return (
+                  <div key={r.profile.id} className="flex items-center gap-2">
+                    <span className="text-[11px] text-gray-300 w-16 truncate shrink-0">
+                      {r.profile.full_name.split(' ')[0]}
+                    </span>
+                    <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${
+                          isOver ? 'bg-red-400' : barWidth > 60 ? 'bg-yellow-400' : 'bg-green-400'
+                        }`}
+                        style={{ width: `${barWidth}%` }}
+                      />
+                    </div>
+                    <span className={`text-[10px] font-semibold min-w-[32px] text-right ${
+                      isOver ? 'text-red-400' : 'text-gray-400'
+                    }`}>
+                      {r.assignedHours.toFixed(0)}h
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+
+            <hr className="border-gray-800 my-3" />
+
+            <div className="space-y-1">
+              <div className="flex justify-between text-[11px]">
+                <span className="text-gray-500">Total scheduled</span>
+                <span className="text-gray-300 font-semibold">{totalScheduled.toFixed(0)}h</span>
+              </div>
+              <div className="flex justify-between text-[11px]">
+                <span className="text-gray-500">Avg hrs/person</span>
+                <span className="text-gray-300 font-semibold">
+                  {hoursSummary.length > 0 ? (totalScheduled / hoursSummary.length).toFixed(1) : 0}h
+                </span>
+              </div>
+            </div>
+
+            <hr className="border-gray-800 my-3" />
+
+            <div className="text-[10px] text-gray-500 mb-2">Scheduled vs Available</div>
+            <div className="space-y-1">
+              {hoursSummary.map((r) => (
+                <div key={r.profile.id} className="flex justify-between text-[10px]">
+                  <span className="text-gray-400">{r.profile.full_name.split(' ')[0]}</span>
+                  <span className="text-gray-500 font-mono">
+                    {r.assignedHours.toFixed(0)} / ~{r.availableHours.toFixed(0)}h
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
     </div>
   )
 }
@@ -1229,6 +1335,8 @@ interface DayAssignPopoverProps {
   onAssigned: () => void
   onDeleteShift: (id: string) => void
   weekStartDay?: number
+  initialStartTime?: string
+  initialEndTime?: string
 }
 
 function DayAssignPopover({
@@ -1243,6 +1351,8 @@ function DayAssignPopover({
   onAssigned,
   onDeleteShift,
   weekStartDay = 0,
+  initialStartTime,
+  initialEndTime,
 }: DayAssignPopoverProps) {
   const { toast } = useToast()
   const dateKey = fmtDateKey(date)
@@ -1254,29 +1364,63 @@ function DayAssignPopover({
     notes: string
   }>({
     user_id: '',
-    start_time: '08:00',
-    end_time: '14:00',
+    start_time: initialStartTime ?? '08:00',
+    end_time: initialEndTime ?? '14:00',
     role: 'front-desk',
     notes: '',
   })
   const [saving, setSaving] = useState(false)
 
   const rows = useMemo(() => {
+    const wantStart = initialStartTime ? parseTimeMinutes(initialStartTime) : null
+    const wantEnd = initialEndTime ? parseTimeMinutes(initialEndTime) : null
+
     return profiles
       .map((p) => {
         const e = entryMap[`${p.id}|${dateKey}`]
         const offToday = timeOffMap[p.id]?.has(dateKey)
-        let status: 'available' | 'no-submission' | 'time-off' = 'no-submission'
-        if (offToday) status = 'time-off'
-        else if (e?.is_available) status = 'available'
-        return { profile: p, status, shifts: e?.shifts ?? null }
+        let status: 'available' | 'partial' | 'no-submission' | 'time-off' = 'no-submission'
+        let detail: string | null = null
+        if (offToday) {
+          status = 'time-off'
+          detail = 'Time off'
+        } else if (e?.is_available) {
+          if (wantStart != null && wantEnd != null && e.shifts) {
+            const blocks = parseShiftBlocks(e.shifts)
+            if (blocks.length > 0) {
+              let covered = 0
+              for (const blk of blocks) {
+                const ov = Math.max(0, Math.min(blk.end, wantEnd) - Math.max(blk.start, wantStart))
+                covered += ov
+              }
+              const needed = wantEnd - wantStart
+              if (covered >= needed) {
+                status = 'available'
+                detail = 'Available full block'
+              } else if (covered > 0) {
+                status = 'partial'
+                detail = `Partial — ${e.shifts}`
+              } else {
+                status = 'no-submission'
+                detail = `Available other times — ${e.shifts}`
+              }
+            } else {
+              status = 'available'
+              detail = 'Available all day'
+            }
+          } else {
+            status = 'available'
+            detail = e?.shifts || null
+          }
+        }
+        return { profile: p, status, shifts: e?.shifts ?? null, detail }
       })
       .sort((a, b) => {
-        const order = { available: 0, 'no-submission': 1, 'time-off': 2 } as const
+        const order = { available: 0, partial: 1, 'no-submission': 2, 'time-off': 3 } as const
         if (order[a.status] !== order[b.status]) return order[a.status] - order[b.status]
         return a.profile.full_name.localeCompare(b.profile.full_name)
       })
-  }, [profiles, entryMap, timeOffMap, dateKey])
+  }, [profiles, entryMap, timeOffMap, dateKey, initialStartTime, initialEndTime])
 
   // Weekly hours load for the picked staffer — for the week containing this popover's date.
   // Used to surface "this week: assigned X.Y / target Z.Z" + over-target warning.
@@ -1414,17 +1558,21 @@ function DayAssignPopover({
                     className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                       r.status === 'available'
                         ? 'bg-green-400'
+                        : r.status === 'partial'
+                        ? 'bg-yellow-400'
                         : r.status === 'time-off'
                         ? 'bg-red-400'
-                        : 'bg-yellow-400'
+                        : 'bg-gray-500'
                     }`}
                   />
                   <span className="text-white truncate">{r.profile.full_name}</span>
-                  {r.shifts && (
-                    <span className="text-[10px] text-gray-500 font-mono ml-auto truncate">
-                      {r.shifts}
-                    </span>
-                  )}
+                  <span className={`text-[10px] ml-auto truncate ${
+                    r.status === 'available' ? 'text-green-400' :
+                    r.status === 'partial' ? 'text-yellow-400' :
+                    'text-gray-500'
+                  }`}>
+                    {r.detail ?? r.shifts ?? (r.status === 'no-submission' ? 'No submission' : '')}
+                  </span>
                 </button>
               )
             })}
@@ -1434,6 +1582,8 @@ function DayAssignPopover({
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-400 mr-1" />
             Available
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-yellow-400 ml-3 mr-1" />
+            Partial
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-gray-500 ml-3 mr-1" />
             No submission
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-400 ml-3 mr-1" />
             Time off
