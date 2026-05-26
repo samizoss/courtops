@@ -96,6 +96,15 @@ function minutesTo12h(min: number): string {
   return m === 0 ? `${hh}${ampm}` : `${hh}:${String(m).padStart(2, '0')}${ampm}`
 }
 
+interface ProfileMap {
+  [userId: string]: string // userId → first name
+}
+
+interface ClosedHoursRange {
+  openMin: number
+  closeMin: number
+}
+
 interface Props {
   mode: 'day' | 'week'
   anchor: Date
@@ -107,6 +116,8 @@ interface Props {
   onEmptyClick?: (date: Date) => void
   onDragSelect?: (date: Date, startTime: string, endTime: string) => void
   availabilityEntries?: AvailabilityEntry[]
+  profileMap?: ProfileMap
+  orgHours?: { open_time: string | null; close_time: string | null; daily_hours: Record<string, { open: string; close: string }> | null }
   isAdmin: boolean
 }
 
@@ -164,6 +175,27 @@ function assignLanes(dayShifts: ShiftWithProfile[]): PositionedShift[] {
   }))
 }
 
+function parseHHMM(t: string | null | undefined): number | null {
+  if (!t) return null
+  const [h, m] = t.split(':').map((s) => parseInt(s, 10))
+  if (Number.isNaN(h) || Number.isNaN(m)) return null
+  return h * 60 + m
+}
+
+function getClosedRange(
+  date: Date,
+  orgHours?: Props['orgHours'],
+): ClosedHoursRange | null {
+  if (!orgHours) return null
+  const dow = date.getDay()
+  const daily = orgHours.daily_hours
+  const dayEntry = daily?.[String(dow)]
+  const openMin = parseHHMM(dayEntry?.open ?? orgHours.open_time)
+  const closeMin = parseHHMM(dayEntry?.close ?? orgHours.close_time)
+  if (openMin == null || closeMin == null) return null
+  return { openMin, closeMin }
+}
+
 export function ScheduleTimeGrid({
   mode,
   anchor,
@@ -175,6 +207,8 @@ export function ScheduleTimeGrid({
   onEmptyClick,
   onDragSelect,
   availabilityEntries,
+  profileMap,
+  orgHours,
   isAdmin,
 }: Props) {
   const today = useMemo(() => startOfDay(new Date()), [])
@@ -309,6 +343,8 @@ export function ScheduleTimeGrid({
               onEmptyClick={onEmptyClick}
               onDragSelect={onDragSelect}
               dayEntries={entriesByDate[key]}
+              profileMap={profileMap}
+              closedRange={getClosedRange(d, orgHours)}
             />
           )
         })}
@@ -330,6 +366,8 @@ interface DayColumnProps {
   onEmptyClick?: (date: Date) => void
   onDragSelect?: (date: Date, startTime: string, endTime: string) => void
   dayEntries?: AvailabilityEntry[]
+  profileMap?: ProfileMap
+  closedRange?: ClosedHoursRange | null
 }
 
 function DayColumn({
@@ -345,6 +383,8 @@ function DayColumn({
   onEmptyClick,
   onDragSelect,
   dayEntries,
+  profileMap,
+  closedRange,
 }: DayColumnProps) {
   const colRef = useRef<HTMLDivElement>(null)
   const justDraggedRef = useRef(false)
@@ -355,39 +395,63 @@ function DayColumn({
   const slotHeight = gridHeight / totalSlots
   const startHourMin = startHour * 60
 
-  const slotDensity = useMemo(() => {
-    const density = new Array(totalSlots).fill(0)
-    if (!dayEntries?.length) return density
+  const slotNames = useMemo(() => {
+    const names: string[][] = Array.from({ length: totalSlots }, () => [])
+    if (!dayEntries?.length || !profileMap) return names
     for (const entry of dayEntries) {
       if (!entry.is_available) continue
+      const name = profileMap[entry.user_id] ?? '?'
       const blocks = parseAvailBlocks(entry.shifts)
       if (blocks.length === 0) {
-        for (let i = 0; i < totalSlots; i++) density[i]++
+        for (let i = 0; i < totalSlots; i++) names[i].push(name)
       } else {
         for (const blk of blocks) {
           const s = Math.max(0, Math.floor((blk.start - startHourMin) / 30))
           const e = Math.min(totalSlots, Math.ceil((blk.end - startHourMin) / 30))
-          for (let i = s; i < e; i++) density[i]++
+          for (let i = s; i < e; i++) names[i].push(name)
         }
       }
     }
-    return density
-  }, [dayEntries, totalSlots, startHourMin])
+    return names
+  }, [dayEntries, totalSlots, startHourMin, profileMap])
+
+  const slotDensity = useMemo(() => slotNames.map((n) => n.length), [slotNames])
 
   const densityStrips = useMemo(() => {
-    const strips: { start: number; end: number; count: number }[] = []
+    const strips: { start: number; end: number; count: number; names: string[] }[] = []
     let rStart = 0
     let rCount = slotDensity[0]
     for (let i = 1; i <= totalSlots; i++) {
       const c = i < totalSlots ? slotDensity[i] : -1
       if (c !== rCount) {
-        if (rCount > 0) strips.push({ start: rStart, end: i, count: rCount })
+        if (rCount > 0) {
+          const allNames = new Set<string>()
+          for (let j = rStart; j < i; j++) for (const n of slotNames[j]) allNames.add(n)
+          strips.push({ start: rStart, end: i, count: rCount, names: [...allNames].sort() })
+        }
         rStart = i
         rCount = c
       }
     }
     return strips
-  }, [slotDensity, totalSlots])
+  }, [slotDensity, slotNames, totalSlots])
+
+  const closedOverlays = useMemo(() => {
+    if (!closedRange) return []
+    const overlays: { top: string; height: string }[] = []
+    const startMin = startHour * 60
+    const endMin = (startHour + totalHours) * 60
+    if (closedRange.openMin > startMin) {
+      const top = 0
+      const bottom = ((closedRange.openMin - startMin) / (endMin - startMin)) * 100
+      overlays.push({ top: `${top}%`, height: `${bottom}%` })
+    }
+    if (closedRange.closeMin < endMin) {
+      const top = ((closedRange.closeMin - startMin) / (endMin - startMin)) * 100
+      overlays.push({ top: `${top}%`, height: `${100 - top}%` })
+    }
+    return overlays
+  }, [closedRange, startHour, totalHours])
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!isAdmin || !onDragSelect || !colRef.current) return
@@ -453,18 +517,43 @@ function DayColumn({
       onPointerUp={handlePointerUp}
       data-empty="true"
     >
-      {/* Availability density background */}
+      {/* Closed-hours overlay */}
+      {closedOverlays.map((o, idx) => (
+        <div
+          key={`closed-${idx}`}
+          className="absolute left-0 right-0 pointer-events-none z-[1]"
+          style={{
+            top: o.top,
+            height: o.height,
+            background: 'repeating-linear-gradient(135deg, transparent, transparent 4px, rgba(100,116,139,0.08) 4px, rgba(100,116,139,0.08) 5px)',
+            backgroundColor: 'rgba(15, 23, 42, 0.35)',
+          }}
+          data-empty="true"
+        />
+      ))}
+
+      {/* Availability density background + inline name labels */}
       {densityStrips.map((s, idx) => {
         const top = (s.start / totalSlots) * 100
         const height = ((s.end - s.start) / totalSlots) * 100
         const opacity = Math.min(0.06 + s.count * 0.04, 0.25)
+        const slotSpan = s.end - s.start
+        const showNames = slotSpan >= 2
         return (
           <div
             key={idx}
-            className="absolute left-0 right-0 pointer-events-none"
+            className="absolute left-0 right-0 overflow-hidden"
             style={{ top: `${top}%`, height: `${height}%`, background: `rgba(34, 197, 94, ${opacity})` }}
             data-empty="true"
-          />
+          >
+            {showNames && (
+              <div className="px-1 py-[1px] pointer-events-none" data-empty="true">
+                <div className="text-[9px] leading-tight text-emerald-300/70 truncate" data-empty="true">
+                  {s.names.join(', ')}
+                </div>
+              </div>
+            )}
+          </div>
         )
       })}
 

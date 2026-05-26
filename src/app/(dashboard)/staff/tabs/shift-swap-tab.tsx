@@ -190,9 +190,9 @@ export function ShiftSwapTab({
   if (openSwaps.length === 0 && claimedSwaps.length === 0) {
     return (
       <div className="bg-gray-900 rounded-xl border border-gray-800 p-6 text-center">
-        <p className="text-gray-400 text-sm">No open shift swaps.</p>
+        <p className="text-gray-400 text-sm">No posted shifts right now.</p>
         <p className="text-gray-600 text-xs mt-1">
-          To open a shift for swap, go to the Schedule tab → click a published shift → &quot;Open for swap.&quot;
+          To post a shift for coverage, go to the Schedule tab → click a published shift → &quot;Post shift for coverage.&quot;
         </p>
       </div>
     )
@@ -203,7 +203,7 @@ export function ShiftSwapTab({
       {openSwaps.length > 0 && (
         <div>
           <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
-            Open shifts ({openSwaps.length})
+            Posted shifts ({openSwaps.length})
           </h3>
           <div className="space-y-2">
             {openSwaps.map((swap) => (
@@ -308,7 +308,7 @@ function SwapCard({
             </span>
           </div>
           <div className="text-xs text-gray-500 mt-1">
-            {originalName} wants to {swap.swap_type === 'take' ? 'give up' : 'swap'} this shift
+            {originalName} posted this shift for coverage
             {swap.reason && <span className="text-gray-400"> — &quot;{swap.reason}&quot;</span>}
           </div>
         </div>
@@ -326,7 +326,7 @@ function SwapCard({
       {swap.status === 'open' && availableStaff.length > 0 && (
         <div className="mt-2 pt-2 border-t border-gray-800">
           <p className="text-[10px] text-gray-500 mb-1">
-            Previously available for this day (may no longer be available):
+            Available this day:
           </p>
           <div className="flex flex-wrap gap-1">
             {availableStaff.map((p) => (

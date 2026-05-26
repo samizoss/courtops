@@ -28,6 +28,7 @@ import {
   type Profile,
   type ShiftRole,
   type AvailabilityEntry,
+  type AvailabilitySubmission,
   type TimeOffRequest,
 } from '@/types/database'
 import type { OrgHours } from '../staff-module'
@@ -54,6 +55,7 @@ interface Props {
   isAdmin: boolean
   orgId: string
   availabilityEntries: AvailabilityEntry[]
+  availabilitySubmissions?: AvailabilitySubmission[]
   timeOffRequests: TimeOffWithProfile[]
   orgHours?: OrgHours
   currentUser: { userId: string; orgId: string; role: string; fullName: string }
@@ -311,6 +313,7 @@ export function ScheduleTab({
   isAdmin,
   orgId,
   availabilityEntries,
+  availabilitySubmissions,
   timeOffRequests,
   orgHours,
   currentUser,
@@ -358,6 +361,22 @@ export function ScheduleTab({
 
   const { startHour, endHour } = useMemo(() => getTimelineRange(orgHours), [orgHours])
 
+  const profileMap = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const p of profiles) map[p.id] = p.full_name?.split(' ')[0] ?? '?'
+    return map
+  }, [profiles])
+
+  const submittedUserIds = useMemo(() => {
+    if (!availabilitySubmissions?.length) return new Set<string>()
+    return new Set(availabilitySubmissions.map((s) => s.user_id))
+  }, [availabilitySubmissions])
+
+  const submittedAvailabilityEntries = useMemo(
+    () => availabilityEntries.filter((e) => submittedUserIds.has(e.user_id)),
+    [availabilityEntries, submittedUserIds],
+  )
+
   const timeOffMap = useMemo(() => {
     const map: Record<string, Set<string>> = {}
     for (const r of timeOffRequests) {
@@ -374,9 +393,9 @@ export function ScheduleTab({
 
   const entryMap = useMemo(() => {
     const map: Record<string, AvailabilityEntry> = {}
-    for (const e of availabilityEntries) map[`${e.user_id}|${e.entry_date}`] = e
+    for (const e of submittedAvailabilityEntries) map[`${e.user_id}|${e.entry_date}`] = e
     return map
-  }, [availabilityEntries])
+  }, [submittedAvailabilityEntries])
 
   const shiftsByDate = useMemo(() => {
     const map: Record<string, ShiftWithProfile[]> = {}
@@ -434,7 +453,7 @@ export function ScheduleTab({
       const dur = (b - a) / 60
       if (rows[s.user_id]) rows[s.user_id].assignedHours += Math.max(0, dur)
     }
-    for (const e of availabilityEntries) {
+    for (const e of submittedAvailabilityEntries) {
       if (e.entry_date < startKey || e.entry_date > endKey) continue
       if (!e.is_available) continue
       const hrs = approximateHours(e.shifts)
@@ -444,7 +463,7 @@ export function ScheduleTab({
     return Object.values(rows)
       .filter((r) => r.assignedHours > 0 || r.availableHours > 0)
       .sort((a, b) => a.profile.full_name.localeCompare(b.profile.full_name))
-  }, [profiles, shifts, availabilityEntries, anchor, mode, buildMode])
+  }, [profiles, shifts, submittedAvailabilityEntries, anchor, mode, buildMode])
 
   const draftCountInRange = useMemo(() => {
     const range = visibleRange(anchor, mode, weekStartDay)
@@ -501,7 +520,7 @@ export function ScheduleTab({
       anchor,
       mode,
       profiles,
-      availabilityEntries,
+      availabilityEntries: submittedAvailabilityEntries,
       timeOffMap,
       shifts,
       weekStartDay,
@@ -790,7 +809,9 @@ export function ScheduleTab({
               onShiftClick={handleShiftClick}
               onEmptyClick={handleEmptyDayClick}
               onDragSelect={handleDragSelect}
-              availabilityEntries={isAdmin && buildMode ? availabilityEntries : undefined}
+              availabilityEntries={isAdmin && buildMode ? submittedAvailabilityEntries : undefined}
+              profileMap={isAdmin && buildMode ? profileMap : undefined}
+              orgHours={orgHours}
               isAdmin={isAdmin && buildMode}
             />
             {isAdmin && buildMode && (
@@ -798,13 +819,16 @@ export function ScheduleTab({
             )}
           </div>
           {isAdmin && buildMode && (
-            <div className="flex items-center gap-2 text-[10px] text-gray-500">
+            <div className="flex items-center gap-2 text-[10px] text-gray-500 flex-wrap">
               <span className="inline-block w-3 h-2 rounded-sm" style={{ background: 'rgba(34,197,94,0.15)' }} />
               Available
               <span className="inline-block w-3 h-2 rounded-sm" style={{ background: 'rgba(34,197,94,0.25)' }} />
               More available
               <span className="text-gray-600 mx-1">·</span>
-              Click + drag vertically on any day to select a time range, then pick who to assign.
+              <span className="inline-block w-3 h-2 rounded-sm" style={{ background: 'rgba(15,23,42,0.35)', border: '1px solid rgba(100,116,139,0.2)' }} />
+              Closed
+              <span className="text-gray-600 mx-1">·</span>
+              Hover green areas to see who&apos;s available. Drag to assign.
             </div>
           )}
         </div>
@@ -1077,9 +1101,8 @@ function ShiftDetailPopover({ shift, isAdmin, orgId, currentUserId, onClose, onD
   const isPublished = shift.published_at != null
   const isMyShift = shift.user_id === currentUserId
 
-  async function handleOpenForSwap(swapType: 'swap' | 'take') {
-    const label = swapType === 'take' ? 'open for anyone to take' : 'open for swap'
-    const reason = prompt(`Why are you opening this shift? (optional)`)
+  async function handlePostShift() {
+    const reason = prompt(`Why are you posting this shift? (optional)`)
     if (reason === null) return
     setOpeningSwap(true)
     try {
@@ -1093,7 +1116,7 @@ function ShiftDetailPopover({ shift, isAdmin, orgId, currentUserId, onClose, onD
         .in('status', ['open', 'claimed'])
         .limit(1)
       if (existing && existing.length > 0) {
-        toast('This shift already has an open swap request', 'error')
+        toast('This shift is already posted', 'error')
         return
       }
 
@@ -1101,16 +1124,16 @@ function ShiftDetailPopover({ shift, isAdmin, orgId, currentUserId, onClose, onD
         org_id: orgId,
         shift_id: shift.id,
         original_user_id: shift.user_id,
-        swap_type: swapType,
+        swap_type: 'take',
         status: 'open',
         reason: reason?.trim() || null,
       })
       if (error) throw error
-      toast(`Shift ${label} — share the link from the Shift Swap tab`)
+      toast('Shift posted — share the link from the Shift Swap tab')
       onClose()
       window.location.reload()
     } catch (err) {
-      toast(err instanceof Error ? err.message : 'Failed to open swap', 'error')
+      toast(err instanceof Error ? err.message : 'Failed to post shift', 'error')
       console.error(err)
     } finally {
       setOpeningSwap(false)
@@ -1262,26 +1285,16 @@ function ShiftDetailPopover({ shift, isAdmin, orgId, currentUserId, onClose, onD
           </div>
         </div>
 
-        {/* Swap actions — available to the shift owner (or admin) on published shifts */}
+        {/* Post shift — available to the shift owner (or admin) on published shifts */}
         {isPublished && (isMyShift || isAdmin) && (
           <div className="px-5 py-3 border-t border-gray-800">
-            <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-2">Shift swap</p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => handleOpenForSwap('take')}
-                disabled={openingSwap}
-                className="text-xs px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 rounded border border-blue-500/30 transition-colors disabled:opacity-50"
-              >
-                {openingSwap ? 'Opening…' : 'Open for take'}
-              </button>
-              <button
-                onClick={() => handleOpenForSwap('swap')}
-                disabled={openingSwap}
-                className="text-xs px-3 py-1.5 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 rounded border border-purple-500/30 transition-colors disabled:opacity-50"
-              >
-                {openingSwap ? 'Opening…' : 'Open for swap'}
-              </button>
-            </div>
+            <button
+              onClick={handlePostShift}
+              disabled={openingSwap}
+              className="text-xs px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 rounded border border-blue-500/30 transition-colors disabled:opacity-50"
+            >
+              {openingSwap ? 'Posting…' : 'Post shift for coverage'}
+            </button>
           </div>
         )}
 
