@@ -29,9 +29,10 @@ import {
   type ShiftRole,
   type AvailabilityEntry,
   type AvailabilitySubmission,
+  type AvailabilityWindow,
   type TimeOffRequest,
 } from '@/types/database'
-import type { OrgHours } from '../staff-module'
+import type { OrgHours, SchedulingSettings } from '../staff-module'
 
 // Compact pill colors for the month-view cells. Distinct from the timeline
 // block colors so month cells don't visually shout — month is the
@@ -56,8 +57,10 @@ interface Props {
   orgId: string
   availabilityEntries: AvailabilityEntry[]
   availabilitySubmissions?: AvailabilitySubmission[]
+  availabilityWindows?: AvailabilityWindow[]
   timeOffRequests: TimeOffWithProfile[]
   orgHours?: OrgHours
+  schedulingSettings?: SchedulingSettings
   currentUser: { userId: string; orgId: string; role: string; fullName: string }
   weekStartDay?: number
 }
@@ -132,8 +135,10 @@ interface MagicProposal {
   role: ShiftRole
 }
 
-/** Greedy magic-schedule algorithm. Reads submitted availability + capabilities
- *  + target hours; proposes draft shifts. See docs/CURRENT_STATE.md item #9.
+/** Coverage-first magic-schedule algorithm. Builds a 30-min slot grid per day,
+ *  finds gaps below min_coverage_count, fills greedily (longest gap first,
+ *  candidate furthest below target first), then balance-fills for staff still
+ *  below target.
  */
 function generateMagicProposals(args: {
   anchor: Date
@@ -143,99 +148,197 @@ function generateMagicProposals(args: {
   timeOffMap: Record<string, Set<string>>
   shifts: ShiftWithProfile[]
   weekStartDay?: number
+  orgHours?: OrgHours
+  minShiftHours?: number
+  minCoverageCount?: number
+  defaultTargetHours?: number
 }): MagicProposal[] {
-  const { anchor, mode, profiles, availabilityEntries, timeOffMap, shifts, weekStartDay = 0 } = args
+  const {
+    anchor, mode, profiles, availabilityEntries, timeOffMap, shifts,
+    weekStartDay = 0, orgHours,
+    minShiftHours = 3, minCoverageCount = 1, defaultTargetHours = 20,
+  } = args
   const range = visibleRange(anchor, mode, weekStartDay)
   const startKey = fmtDateKey(range.start)
   const endKey = fmtDateKey(range.end)
+  const SLOT = 30
+  const dayCount = Math.round((range.end.getTime() - range.start.getTime()) / 86400000) + 1
+  const rangeWeeks = Math.max(1, dayCount / 7)
 
-  // Index existing shifts (drafts + published) by user|date so we don't
-  // double-assign on a day a staffer already has something.
-  const existingByUserDate: Record<string, true> = {}
-  for (const s of shifts) {
-    existingByUserDate[`${s.user_id}|${s.shift_date}`] = true
+  function bizHours(day: Date): { openMin: number; closeMin: number } | null {
+    const dow = day.getDay()
+    if (orgHours?.open_days?.length && !orgHours.open_days.includes(dow)) return null
+    const de = orgHours?.daily_hours?.[String(dow)]
+    const oStr = de?.open ?? orgHours?.open_time
+    const cStr = de?.close ?? orgHours?.close_time
+    const o = oStr ? parseTimeMinutes(oStr) : null
+    const c = cStr ? parseTimeMinutes(cStr) : null
+    if (o != null && c != null && c > o) return { openMin: o, closeMin: c }
+    return { openMin: 420, closeMin: 1260 }
   }
 
-  // Index submitted availability by user|date for quick lookup.
   const entryByUserDate: Record<string, AvailabilityEntry> = {}
-  for (const e of availabilityEntries) {
-    entryByUserDate[`${e.user_id}|${e.entry_date}`] = e
-  }
+  for (const e of availabilityEntries) entryByUserDate[`${e.user_id}|${e.entry_date}`] = e
 
-  // Track running assigned-hours-this-range to respect target_weekly_hours
-  // (the spec says: skip assigning if it would push them over their target).
-  // Initialize from existing shifts.
-  const assignedHoursByUser: Record<string, number> = {}
-  for (const p of profiles) assignedHoursByUser[p.id] = 0
+  const assignedHours: Record<string, number> = {}
+  for (const p of profiles) assignedHours[p.id] = 0
   for (const s of shifts) {
     if (s.shift_date < startKey || s.shift_date > endKey) continue
     const a = parseTimeMinutes(s.start_time)
     const b = parseTimeMinutes(s.end_time)
     if (a == null || b == null) continue
-    assignedHoursByUser[s.user_id] = (assignedHoursByUser[s.user_id] ?? 0) + Math.max(0, b - a) / 60
+    assignedHours[s.user_id] = (assignedHours[s.user_id] ?? 0) + Math.max(0, b - a) / 60
   }
 
   const proposals: MagicProposal[] = []
+  const proposed: Record<string, { start: number; end: number }[]> = {}
 
-  // Iterate days in the range
-  const dayCount = Math.round((range.end.getTime() - range.start.getTime()) / 86400000) + 1
+  function userShifts(uid: string, dk: string): { start: number; end: number }[] {
+    const out: { start: number; end: number }[] = []
+    for (const s of shifts) {
+      if (s.shift_date !== dk || s.user_id !== uid) continue
+      const a = parseTimeMinutes(s.start_time)
+      const b = parseTimeMinutes(s.end_time)
+      if (a != null && b != null) out.push({ start: a, end: b })
+    }
+    return [...out, ...(proposed[`${uid}|${dk}`] ?? [])]
+  }
+
+  function getAvail(uid: string, dk: string, biz: { openMin: number; closeMin: number }): { start: number; end: number }[] {
+    const entry = entryByUserDate[`${uid}|${dk}`]
+    if (!entry?.is_available) return []
+    const blocks = parseShiftBlocks(entry.shifts ?? null)
+    return blocks.length > 0 ? blocks : [{ start: biz.openMin, end: biz.closeMin }]
+  }
+
+  function pickRole(p: Profile): ShiftRole {
+    return p.capabilities?.find((c) => c !== 'management') ?? p.capabilities?.[0] ?? 'front-desk'
+  }
+
+  function addProposal(uid: string, dk: string, start: number, end: number, role: ShiftRole) {
+    proposals.push({ user_id: uid, shift_date: dk, start_time: minutesToTime(start), end_time: minutesToTime(end), role })
+    const k = `${uid}|${dk}`
+    if (!proposed[k]) proposed[k] = []
+    proposed[k].push({ start, end })
+    assignedHours[uid] = (assignedHours[uid] ?? 0) + (end - start) / 60
+  }
+
   for (let i = 0; i < dayCount; i++) {
     const day = addDays(range.start, i)
     const dayKey = fmtDateKey(day)
+    const biz = bizHours(day)
+    if (!biz) continue
 
-    // Sort profiles by "furthest below target" so we spread proposed shifts.
-    const candidates = profiles
+    const nSlots = Math.floor((biz.closeMin - biz.openMin) / SLOT)
+    if (nSlots <= 0) continue
+
+    const coverage = new Array(nSlots).fill(0)
+    for (const s of shifts) {
+      if (s.shift_date !== dayKey) continue
+      const a = parseTimeMinutes(s.start_time)
+      const b = parseTimeMinutes(s.end_time)
+      if (a == null || b == null) continue
+      for (let sl = 0; sl < nSlots; sl++) {
+        const ss = biz.openMin + sl * SLOT
+        if (a < ss + SLOT && b > ss) coverage[sl]++
+      }
+    }
+
+    type Gap = { s: number; e: number }
+    const gaps: Gap[] = []
+    let gs: number | null = null
+    for (let sl = 0; sl <= nSlots; sl++) {
+      const isGap = sl < nSlots && coverage[sl] < minCoverageCount
+      if (isGap && gs === null) gs = sl
+      if (!isGap && gs !== null) { gaps.push({ s: gs, e: sl }); gs = null }
+    }
+    gaps.sort((a, b) => (b.e - b.s) - (a.e - a.s))
+
+    const eligible = profiles
       .filter((p) => p.is_operational_staff)
       .filter((p) => !timeOffMap[p.id]?.has(dayKey))
-      .filter((p) => !existingByUserDate[`${p.id}|${dayKey}`])
       .filter((p) => entryByUserDate[`${p.id}|${dayKey}`]?.is_available === true)
-      .filter((p) => (p.target_weekly_hours ?? 1) > 0) // 0 means "don't auto-schedule"
+
+    for (const gap of gaps) {
+      const gapStart = biz.openMin + gap.s * SLOT
+      const gapEnd = biz.openMin + gap.e * SLOT
+
+      const sorted = eligible
+        .filter((p) => !userShifts(p.id, dayKey).some((s) => s.start < gapEnd && s.end > gapStart))
+        .sort((a, b) => {
+          const aR = (a.target_weekly_hours ?? defaultTargetHours) * rangeWeeks - (assignedHours[a.id] ?? 0)
+          const bR = (b.target_weekly_hours ?? defaultTargetHours) * rangeWeeks - (assignedHours[b.id] ?? 0)
+          return bR - aR
+        })
+
+      for (const cand of sorted) {
+        let needed = false
+        for (let sl = gap.s; sl < gap.e; sl++) {
+          if (coverage[sl] < minCoverageCount) { needed = true; break }
+        }
+        if (!needed) break
+
+        const blocks = getAvail(cand.id, dayKey, biz)
+        let best: { start: number; end: number } | null = null
+        for (const blk of blocks) {
+          let ss = Math.max(blk.start, gapStart)
+          let se = Math.min(blk.end, gapEnd)
+          if (ss >= se) continue
+          const minMin = minShiftHours * 60
+          if (se - ss < minMin) {
+            const before = Math.min(ss - blk.start, Math.ceil((minMin - (se - ss)) / 2))
+            ss -= before
+            const after = Math.min(blk.end - se, minMin - (se - ss))
+            se += after
+            if (se - ss < minMin) ss -= Math.min(ss - blk.start, minMin - (se - ss))
+          }
+          if (!best || (se - ss) > (best.end - best.start)) best = { start: ss, end: se }
+        }
+        if (!best) continue
+        if (userShifts(cand.id, dayKey).some((s) => best!.start < s.end && best!.end > s.start)) continue
+
+        const target = (cand.target_weekly_hours ?? defaultTargetHours) * rangeWeeks
+        if ((assignedHours[cand.id] ?? 0) >= target) {
+          if (sorted.some((o) => o.id !== cand.id && (assignedHours[o.id] ?? 0) < (o.target_weekly_hours ?? defaultTargetHours) * rangeWeeks)) continue
+        }
+
+        addProposal(cand.id, dayKey, best.start, best.end, pickRole(cand))
+        for (let sl = 0; sl < nSlots; sl++) {
+          const ss = biz.openMin + sl * SLOT
+          if (best.start < ss + SLOT && best.end > ss) coverage[sl]++
+        }
+      }
+    }
+
+    const balanceCands = [...eligible]
+      .filter((p) => !userShifts(p.id, dayKey).length)
       .sort((a, b) => {
-        const aRem = (a.target_weekly_hours ?? 40) - (assignedHoursByUser[a.id] ?? 0)
-        const bRem = (b.target_weekly_hours ?? 40) - (assignedHoursByUser[b.id] ?? 0)
-        return bRem - aRem // furthest below target first
+        const aR = (a.target_weekly_hours ?? defaultTargetHours) * rangeWeeks - (assignedHours[a.id] ?? 0)
+        const bR = (b.target_weekly_hours ?? defaultTargetHours) * rangeWeeks - (assignedHours[b.id] ?? 0)
+        return bR - aR
       })
 
-    for (const p of candidates) {
-      const entry = entryByUserDate[`${p.id}|${dayKey}`]
-      const target = p.target_weekly_hours
-      const assigned = assignedHoursByUser[p.id] ?? 0
-      // Skip if adding even an hour would push them over target.
-      if (target != null && assigned >= target) continue
+    for (const cand of balanceCands) {
+      const target = (cand.target_weekly_hours ?? defaultTargetHours) * rangeWeeks
+      if ((assignedHours[cand.id] ?? 0) >= target) continue
 
-      // Try to parse the staffer's stated hours into discrete blocks.
-      const blocks = parseShiftBlocks(entry?.shifts ?? null)
-      const role: ShiftRole =
-        p.capabilities?.find((c) => c !== 'management') ??
-        p.capabilities?.[0] ??
-        'front-desk'
-
-      if (blocks.length > 0) {
-        for (const blk of blocks) {
-          const hrs = (blk.end - blk.start) / 60
-          if (target != null && assigned + hrs > target) continue
-          proposals.push({
-            user_id: p.id,
-            shift_date: dayKey,
-            start_time: minutesToTime(blk.start),
-            end_time: minutesToTime(blk.end),
-            role,
-          })
-          assignedHoursByUser[p.id] = assigned + hrs
-        }
-      } else {
-        // Available with no specific hours: default to a 9 AM – 2 PM block (5 hours).
-        const fallbackHrs = 5
-        if (target != null && assigned + fallbackHrs > target) continue
-        proposals.push({
-          user_id: p.id,
-          shift_date: dayKey,
-          start_time: '09:00',
-          end_time: '14:00',
-          role,
-        })
-        assignedHoursByUser[p.id] = assigned + fallbackHrs
+      const blocks = getAvail(cand.id, dayKey, biz)
+      let bestBlk: { start: number; end: number } | null = null
+      for (const blk of blocks) {
+        if ((blk.end - blk.start) < minShiftHours * 60) continue
+        if (!bestBlk || (blk.end - blk.start) > (bestBlk.end - bestBlk.start)) bestBlk = blk
       }
+      if (!bestBlk) continue
+
+      const remaining = target - (assignedHours[cand.id] ?? 0)
+      let se = bestBlk.end
+      if ((se - bestBlk.start) / 60 > remaining) {
+        se = bestBlk.start + remaining * 60
+        se = Math.floor(se / SLOT) * SLOT
+      }
+      if ((se - bestBlk.start) / 60 < minShiftHours) continue
+
+      addProposal(cand.id, dayKey, bestBlk.start, se, pickRole(cand))
     }
   }
 
@@ -314,8 +417,10 @@ export function ScheduleTab({
   orgId,
   availabilityEntries,
   availabilitySubmissions,
+  availabilityWindows,
   timeOffRequests,
   orgHours,
+  schedulingSettings,
   currentUser,
   weekStartDay = 0,
 }: Props) {
@@ -474,6 +579,25 @@ export function ScheduleTab({
     ).length
   }, [shifts, anchor, mode, weekStartDay])
 
+  const magicDraftCountInRange = useMemo(() => {
+    const range = visibleRange(anchor, mode, weekStartDay)
+    const sk = fmtDateKey(range.start)
+    const ek = fmtDateKey(range.end)
+    return shifts.filter(
+      (s) => s.published_at == null && s.notes === 'Magic-scheduled draft' && s.shift_date >= sk && s.shift_date <= ek
+    ).length
+  }, [shifts, anchor, mode, weekStartDay])
+
+  const windowsInRange = useMemo(() => {
+    if (!availabilityWindows?.length) return []
+    const range = visibleRange(anchor, mode, weekStartDay)
+    const sk = fmtDateKey(range.start)
+    const ek = fmtDateKey(range.end)
+    return availabilityWindows.filter((w) => w.start_date <= ek && w.end_date >= sk)
+  }, [availabilityWindows, anchor, mode, weekStartDay])
+
+  const [releaseWindow, setReleaseWindow] = useState<AvailabilityWindow | null>(null)
+
   const [magicRunning, setMagicRunning] = useState(false)
   const [publishing, setPublishing] = useState(false)
 
@@ -524,6 +648,10 @@ export function ScheduleTab({
       timeOffMap,
       shifts,
       weekStartDay,
+      orgHours,
+      minShiftHours: schedulingSettings?.min_shift_hours,
+      minCoverageCount: schedulingSettings?.min_coverage_count,
+      defaultTargetHours: schedulingSettings?.default_target_hours,
     })
     if (proposals.length === 0) {
       toast('No magic proposals — no submitted availability in this range', 'error')
@@ -556,6 +684,53 @@ export function ScheduleTab({
       console.error(err)
     } finally {
       setMagicRunning(false)
+    }
+  }
+
+  async function handleClearMagicDrafts() {
+    if (magicDraftCountInRange === 0) return
+    if (!confirm(`Remove ${magicDraftCountInRange} magic-scheduled draft${magicDraftCountInRange === 1 ? '' : 's'} in this ${mode}?`)) return
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      const r = visibleRange(anchor, mode, weekStartDay)
+      const { error } = await supabase
+        .from('shifts')
+        .delete()
+        .is('published_at', null)
+        .eq('notes', 'Magic-scheduled draft')
+        .gte('shift_date', fmtDateKey(r.start))
+        .lte('shift_date', fmtDateKey(r.end))
+        .eq('org_id', orgId)
+      if (error) throw error
+      toast(`Cleared ${magicDraftCountInRange} magic draft${magicDraftCountInRange === 1 ? '' : 's'}`)
+      router.refresh()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed', 'error')
+      console.error(err)
+    }
+  }
+
+  async function handleClearAllDrafts() {
+    if (draftCountInRange === 0) return
+    if (!confirm(`Remove ALL ${draftCountInRange} draft${draftCountInRange === 1 ? '' : 's'} in this ${mode}? This includes magic and manually-created drafts.`)) return
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      const r = visibleRange(anchor, mode, weekStartDay)
+      const { error } = await supabase
+        .from('shifts')
+        .delete()
+        .is('published_at', null)
+        .gte('shift_date', fmtDateKey(r.start))
+        .lte('shift_date', fmtDateKey(r.end))
+        .eq('org_id', orgId)
+      if (error) throw error
+      toast(`Cleared ${draftCountInRange} draft${draftCountInRange === 1 ? '' : 's'}`)
+      router.refresh()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed', 'error')
+      console.error(err)
     }
   }
 
@@ -597,6 +772,24 @@ export function ScheduleTab({
           {magicRunning ? 'Running…' : '✨ Magic schedule'}
         </button>
       )}
+      {isAdmin && buildMode && magicDraftCountInRange > 0 && (
+        <button
+          onClick={handleClearMagicDrafts}
+          className="text-xs px-3 py-1.5 rounded bg-red-600/15 hover:bg-red-600/25 text-red-300 border border-red-500/30 transition-colors"
+          title={`Remove ${magicDraftCountInRange} magic-scheduled drafts`}
+        >
+          Clear {magicDraftCountInRange} magic
+        </button>
+      )}
+      {isAdmin && buildMode && draftCountInRange > magicDraftCountInRange && (
+        <button
+          onClick={handleClearAllDrafts}
+          className="text-xs px-3 py-1.5 rounded bg-red-600/15 hover:bg-red-600/25 text-red-300 border border-red-500/30 transition-colors"
+          title={`Remove all ${draftCountInRange} drafts in this ${mode}`}
+        >
+          Clear all {draftCountInRange}
+        </button>
+      )}
       {isAdmin && buildMode && draftCountInRange > 0 && (
         <button
           onClick={handlePublishDrafts}
@@ -607,6 +800,22 @@ export function ScheduleTab({
           {publishing ? 'Publishing…' : `Publish ${draftCountInRange} draft${draftCountInRange === 1 ? '' : 's'}`}
         </button>
       )}
+      {isAdmin && buildMode && windowsInRange.map((w) => {
+        const wDrafts = shifts.filter(
+          (s) => s.published_at == null && s.shift_date >= w.start_date && s.shift_date <= w.end_date
+        ).length
+        if (wDrafts === 0) return null
+        return (
+          <button
+            key={w.id}
+            onClick={() => setReleaseWindow(w)}
+            className="text-xs px-3 py-1.5 rounded bg-green-600/20 hover:bg-green-600/30 text-green-300 border border-green-500/30 transition-colors"
+            title={`Review & release schedule for ${w.label}`}
+          >
+            Release {w.label}
+          </button>
+        )
+      })}
     </div>
   )
 
@@ -752,24 +961,29 @@ export function ScheduleTab({
                 {dayShifts.map((s) => {
                   const firstName = s.profile?.full_name?.split(' ')[0] ?? '?'
                   const isDraft = s.published_at == null
+                  const isMagicDraft = isDraft && s.notes === 'Magic-scheduled draft'
                   return (
                     <button
                       key={s.id}
                       type="button"
                       onClick={() => handleShiftClick(s)}
-                      className={`w-full text-[10px] px-1 py-0.5 rounded truncate text-left flex items-center gap-1 hover:opacity-80 transition-opacity ${monthPillColors[s.role]} ${
-                        isDraft ? 'border-2 border-dashed opacity-70' : 'border'
+                      className={`w-full text-[10px] px-1 py-0.5 rounded truncate text-left flex items-center gap-1 hover:opacity-80 transition-opacity ${
+                        isMagicDraft
+                          ? 'bg-purple-500/15 text-purple-300 border-purple-500/40 border-2 border-dashed opacity-70'
+                          : `${monthPillColors[s.role]} ${isDraft ? 'border-2 border-dashed opacity-70' : 'border'}`
                       }`}
-                      title={`${s.profile?.full_name ?? ''}\n${fmtTimeRange12h(s.start_time, s.end_time)}\n${SHIFT_ROLE_LABELS[s.role]}${isDraft ? ' (DRAFT)' : ''}${s.notes ? `\n${s.notes}` : ''}`}
+                      title={`${s.profile?.full_name ?? ''}\n${fmtTimeRange12h(s.start_time, s.end_time)}\n${SHIFT_ROLE_LABELS[s.role]}${isMagicDraft ? ' (MAGIC)' : isDraft ? ' (DRAFT)' : ''}${s.notes ? `\n${s.notes}` : ''}`}
                     >
                       <span className="font-medium truncate">{firstName}</span>
                       <span className="opacity-70 font-mono shrink-0">
                         {fmtTimeRange12hCompact(s.start_time, s.end_time)}
                       </span>
                       <span
-                        className={`ml-auto text-[8px] uppercase tracking-wide px-1 rounded border ${getRoleBadgeColor(s.role)}`}
+                        className={`ml-auto text-[8px] uppercase tracking-wide px-1 rounded border ${
+                          isMagicDraft ? 'bg-purple-500/20 text-purple-200 border-purple-500/40' : getRoleBadgeColor(s.role)
+                        }`}
                       >
-                        {isDraft ? 'DRAFT' : getRoleShortLabel(s.role)}
+                        {isMagicDraft ? 'MAGIC' : isDraft ? 'DRAFT' : getRoleShortLabel(s.role)}
                       </span>
                     </button>
                   )
@@ -922,6 +1136,22 @@ export function ScheduleTab({
           onRoleChanged={() => {
             setShiftDetail(null)
             router.refresh()
+          }}
+        />
+      )}
+
+      {releaseWindow && (
+        <ReleaseScheduleModal
+          window={releaseWindow}
+          shifts={shifts}
+          profiles={profiles}
+          orgId={orgId}
+          orgHours={orgHours}
+          schedulingSettings={schedulingSettings}
+          onClose={() => setReleaseWindow(null)}
+          onReleased={() => {
+            setReleaseWindow(null)
+            window.location.reload()
           }}
         />
       )}
@@ -1091,6 +1321,7 @@ function ShiftDetailPopover({ shift, isAdmin, orgId, currentUserId, onClose, onD
   const { toast } = useToast()
   const date = new Date(shift.shift_date + 'T12:00:00')
   const isDraft = shift.published_at == null
+  const isMagicDraft = isDraft && shift.notes === 'Magic-scheduled draft'
   const [role, setRole] = useState<ShiftRole>(shift.role)
   const [startTime, setStartTime] = useState(shift.start_time)
   const [endTime, setEndTime] = useState(shift.end_time)
@@ -1146,6 +1377,22 @@ function ShiftDetailPopover({ shift, isAdmin, orgId, currentUserId, onClose, onD
     endTime !== shift.end_time ||
     notes !== (shift.notes ?? '')
 
+  async function handleAcceptMagic() {
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      const { error } = await supabase
+        .from('shifts')
+        .update({ notes: null })
+        .eq('id', shift.id)
+      if (error) throw error
+      toast('Draft accepted — still unpublished')
+      onRoleChanged()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed', 'error')
+    }
+  }
+
   async function handleSave() {
     if (!isDirty || saving) return
     setSaving(true)
@@ -1196,7 +1443,12 @@ function ShiftDetailPopover({ shift, isAdmin, orgId, currentUserId, onClose, onD
           <div>
             <h3 className="text-lg font-semibold flex items-center gap-2">
               {shift.profile?.full_name ?? 'Shift'}
-              {isDraft && (
+              {isMagicDraft && (
+                <span className="text-[10px] uppercase font-bold tracking-wide px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40">
+                  Magic
+                </span>
+              )}
+              {isDraft && !isMagicDraft && (
                 <span className="text-[10px] uppercase font-bold tracking-wide px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-300 border border-yellow-500/40">
                   Draft
                 </span>
@@ -1315,6 +1567,14 @@ function ShiftDetailPopover({ shift, isAdmin, orgId, currentUserId, onClose, onD
                 {saving ? 'Saving…' : 'Save changes'}
               </button>
             )}
+            {isMagicDraft && (
+              <button
+                onClick={handleAcceptMagic}
+                className="px-3 py-1.5 text-sm bg-purple-600 hover:bg-purple-500 text-white rounded transition-colors"
+              >
+                Accept
+              </button>
+            )}
             {isDraft && (
               <button
                 onClick={() => onPublish(shift.id)}
@@ -1331,6 +1591,192 @@ function ShiftDetailPopover({ shift, isAdmin, orgId, currentUserId, onClose, onD
             </button>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+interface ReleaseScheduleModalProps {
+  window: AvailabilityWindow
+  shifts: ShiftWithProfile[]
+  profiles: Profile[]
+  orgId: string
+  orgHours?: OrgHours
+  schedulingSettings?: SchedulingSettings
+  onClose: () => void
+  onReleased: () => void
+}
+
+function ReleaseScheduleModal({ window: win, shifts, profiles, orgId, orgHours, schedulingSettings, onClose, onReleased }: ReleaseScheduleModalProps) {
+  const { toast } = useToast()
+  const [releasing, setReleasing] = useState(false)
+
+  const drafts = shifts.filter(
+    (s) => s.published_at == null && s.shift_date >= win.start_date && s.shift_date <= win.end_date
+  )
+  const published = shifts.filter(
+    (s) => s.published_at != null && s.shift_date >= win.start_date && s.shift_date <= win.end_date
+  )
+  const allInRange = [...drafts, ...published]
+
+  const daySummary = useMemo(() => {
+    const days: { date: string; staffCount: number; names: string[]; hours: number }[] = []
+    const d = new Date(win.start_date + 'T12:00:00')
+    const end = new Date(win.end_date + 'T12:00:00')
+    while (d <= end) {
+      const dk = fmtDateKey(d)
+      const dayShifts = allInRange.filter((s) => s.shift_date === dk)
+      const uniqueStaff = new Set(dayShifts.map((s) => s.user_id))
+      const names = dayShifts
+        .map((s) => s.profile?.full_name?.split(' ')[0] ?? '?')
+        .filter((n, i, a) => a.indexOf(n) === i)
+      let hrs = 0
+      for (const s of dayShifts) {
+        const a = parseTimeMinutes(s.start_time)
+        const b = parseTimeMinutes(s.end_time)
+        if (a != null && b != null) hrs += Math.max(0, b - a) / 60
+      }
+      days.push({ date: dk, staffCount: uniqueStaff.size, names, hours: hrs })
+      d.setDate(d.getDate() + 1)
+    }
+    return days
+  }, [allInRange, win])
+
+  const staffHours = useMemo(() => {
+    const map: Record<string, { name: string; hours: number; shiftCount: number }> = {}
+    for (const s of allInRange) {
+      if (!map[s.user_id]) map[s.user_id] = { name: s.profile?.full_name ?? '?', hours: 0, shiftCount: 0 }
+      const a = parseTimeMinutes(s.start_time)
+      const b = parseTimeMinutes(s.end_time)
+      if (a != null && b != null) map[s.user_id].hours += Math.max(0, b - a) / 60
+      map[s.user_id].shiftCount++
+    }
+    return Object.values(map).sort((a, b) => b.hours - a.hours)
+  }, [allInRange])
+
+  const minCoverage = schedulingSettings?.min_coverage_count ?? 1
+  const gapDays = daySummary.filter((d) => d.staffCount < minCoverage && d.staffCount === 0)
+
+  async function handleRelease() {
+    if (drafts.length === 0) {
+      toast('No drafts to release in this window', 'error')
+      return
+    }
+    setReleasing(true)
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      const { error } = await supabase
+        .from('shifts')
+        .update({ published_at: new Date().toISOString() })
+        .is('published_at', null)
+        .gte('shift_date', win.start_date)
+        .lte('shift_date', win.end_date)
+        .eq('org_id', orgId)
+      if (error) throw error
+      toast(`Released schedule for ${win.label} — ${drafts.length} shift${drafts.length === 1 ? '' : 's'} published`)
+      onReleased()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed to release', 'error')
+      console.error(err)
+    } finally {
+      setReleasing(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-gray-800">
+          <h3 className="text-lg font-semibold">Release schedule</h3>
+          <p className="text-xs text-gray-500">{win.label} · {win.start_date} to {win.end_date}</p>
+        </div>
+
+        <div className="px-5 py-4 space-y-4">
+          <div className="grid grid-cols-3 gap-3 text-center">
+            <div className="bg-gray-800/50 rounded-lg p-3">
+              <div className="text-2xl font-bold text-white">{drafts.length}</div>
+              <div className="text-[10px] text-gray-500 uppercase">Drafts to publish</div>
+            </div>
+            <div className="bg-gray-800/50 rounded-lg p-3">
+              <div className="text-2xl font-bold text-white">{published.length}</div>
+              <div className="text-[10px] text-gray-500 uppercase">Already published</div>
+            </div>
+            <div className="bg-gray-800/50 rounded-lg p-3">
+              <div className={`text-2xl font-bold ${gapDays.length > 0 ? 'text-red-400' : 'text-green-400'}`}>
+                {gapDays.length > 0 ? gapDays.length : '✓'}
+              </div>
+              <div className="text-[10px] text-gray-500 uppercase">{gapDays.length > 0 ? 'Uncovered days' : 'Full coverage'}</div>
+            </div>
+          </div>
+
+          {gapDays.length > 0 && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+              <p className="text-xs text-red-300">
+                {gapDays.length} day{gapDays.length === 1 ? '' : 's'} with no staff scheduled:{' '}
+                {gapDays.map((d) => {
+                  const dt = new Date(d.date + 'T12:00:00')
+                  return dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+                }).join(', ')}
+              </p>
+            </div>
+          )}
+
+          {staffHours.length > 0 && (
+            <div>
+              <h4 className="text-[10px] text-gray-500 uppercase tracking-wide mb-2">Staff hours</h4>
+              <div className="space-y-1">
+                {staffHours.map((s) => (
+                  <div key={s.name} className="flex justify-between text-xs">
+                    <span className="text-gray-300">{s.name}</span>
+                    <span className="text-gray-500 font-mono">{s.hours.toFixed(1)}h · {s.shiftCount} shift{s.shiftCount === 1 ? '' : 's'}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {daySummary.length > 0 && (
+            <div>
+              <h4 className="text-[10px] text-gray-500 uppercase tracking-wide mb-2">Daily coverage</h4>
+              <div className="grid grid-cols-7 gap-1">
+                {daySummary.map((d) => {
+                  const dt = new Date(d.date + 'T12:00:00')
+                  const dow = dt.toLocaleDateString('en-US', { weekday: 'narrow' })
+                  const day = dt.getDate()
+                  return (
+                    <div
+                      key={d.date}
+                      className={`text-center rounded p-1 ${
+                        d.staffCount === 0 ? 'bg-red-500/15 border border-red-500/30' : 'bg-gray-800/50'
+                      }`}
+                      title={d.names.join(', ') || 'No staff'}
+                    >
+                      <div className="text-[9px] text-gray-500">{dow}</div>
+                      <div className="text-[11px] text-gray-300 font-medium">{day}</div>
+                      <div className={`text-[10px] font-mono ${d.staffCount === 0 ? 'text-red-400' : 'text-green-400'}`}>
+                        {d.staffCount}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 py-3 border-t border-gray-800 flex justify-end gap-2">
+          <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-400 hover:text-white">
+            Cancel
+          </button>
+          <button
+            onClick={handleRelease}
+            disabled={releasing || drafts.length === 0}
+            className="px-4 py-1.5 text-sm bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white rounded transition-colors font-medium"
+          >
+            {releasing ? 'Releasing…' : `Release ${drafts.length} shift${drafts.length === 1 ? '' : 's'}`}
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -1486,12 +1932,10 @@ function DayAssignPopover({
         end_time: form.end_time,
         role: form.role,
         notes: form.notes || null,
-        // Manual admin assigns publish immediately. Magic-schedule paths go
-        // through bulk INSERT with published_at=null instead.
-        published_at: new Date().toISOString(),
+        published_at: null,
       })
       if (error) throw error
-      toast('Shift assigned')
+      toast('Draft shift created')
       onAssigned()
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Failed to assign', 'error')

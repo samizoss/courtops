@@ -72,6 +72,9 @@ export function GeneralSettings({ org, orgSettings }: { org: Org; orgSettings: O
   const [weekStartDay, setWeekStartDay] = useState<number>((orgSettings as Record<string, unknown>)?.week_start_day as number ?? 0)
   const [arriveBefore, setArriveBefore] = useState(orgSettings?.staff_arrive_before_min ?? 0)
   const [departAfter, setDepartAfter] = useState(orgSettings?.staff_depart_after_min ?? 0)
+  const [minShiftHours, setMinShiftHours] = useState(Number((orgSettings as Record<string, unknown>)?.min_shift_hours) || 3)
+  const [minCoverageCount, setMinCoverageCount] = useState(Number((orgSettings as Record<string, unknown>)?.min_coverage_count) || 1)
+  const [defaultTargetHours, setDefaultTargetHours] = useState(Number((orgSettings as Record<string, unknown>)?.default_target_hours) || 20)
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -142,6 +145,9 @@ export function GeneralSettings({ org, orgSettings }: { org: Org; orgSettings: O
         staff_arrive_before_min: arriveBefore,
         staff_depart_after_min: departAfter,
         week_start_day: weekStartDay,
+        min_shift_hours: minShiftHours,
+        min_coverage_count: minCoverageCount,
+        default_target_hours: defaultTargetHours,
       }
 
       if (orgSettings) {
@@ -376,6 +382,62 @@ export function GeneralSettings({ org, orgSettings }: { org: Org; orgSettings: O
             Staff shifts will span from {arriveBefore > 0 ? `${arriveBefore} min before open` : 'open'} to{' '}
             {departAfter > 0 ? `${departAfter} min after close` : 'close'}.
           </p>
+        </div>
+
+        {/* Magic Schedule Settings */}
+        <div className="border-t border-gray-800 pt-5 mt-5">
+          <h3 className="text-lg font-semibold mb-1">Magic Schedule</h3>
+          <p className="text-gray-400 text-sm mb-4">
+            Controls how the auto-scheduler fills shifts. Coverage comes first, then shift length, then balancing hours.
+          </p>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">
+                Min staff on duty
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={10}
+                step={1}
+                value={minCoverageCount}
+                onChange={(e) => { setMinCoverageCount(Number(e.target.value)); markDirty() }}
+                className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+              />
+              <p className="text-[11px] text-gray-600 mt-1">Target headcount per open hour</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">
+                Min shift length (hrs)
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={12}
+                step={0.5}
+                value={minShiftHours}
+                onChange={(e) => { setMinShiftHours(Number(e.target.value)); markDirty() }}
+                className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+              />
+              <p className="text-[11px] text-gray-600 mt-1">Preferred min — shorter OK for coverage</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">
+                Default weekly target (hrs)
+              </label>
+              <input
+                type="number"
+                min={0}
+                max={60}
+                step={1}
+                value={defaultTargetHours}
+                onChange={(e) => { setDefaultTargetHours(Number(e.target.value)); markDirty() }}
+                className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+              />
+              <p className="text-[11px] text-gray-600 mt-1">Fallback when staff has no target set</p>
+            </div>
+          </div>
         </div>
 
         {message && (

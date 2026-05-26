@@ -53,7 +53,7 @@ export default async function StaffPage() {
     supabase.from('availability_submissions').select('*').eq('org_id', userOrg.orgId),
     supabase.from('availability_window_assignees').select('*').eq('org_id', userOrg.orgId),
     supabase.from('time_clock').select('*, profile:profiles!time_clock_user_id_fkey(full_name)').gte('clock_in', weekAgo).order('clock_in', { ascending: false }).limit(50),
-    supabase.from('org_settings').select('open_time, close_time, open_days, staff_arrive_before_min, staff_depart_after_min, daily_hours, clock_notes_visibility, week_start_day').eq('org_id', userOrg.orgId).single(),
+    supabase.from('org_settings').select('open_time, close_time, open_days, staff_arrive_before_min, staff_depart_after_min, daily_hours, clock_notes_visibility, week_start_day, min_shift_hours, min_coverage_count, default_target_hours').eq('org_id', userOrg.orgId).single(),
   ])
 
   const clockNotesVisibility = (orgSettings?.clock_notes_visibility as 'all_staff' | 'admin_only' | undefined) ?? 'all_staff'
@@ -66,6 +66,14 @@ export default async function StaffPage() {
         staff_arrive_before_min: orgSettings.staff_arrive_before_min,
         staff_depart_after_min: orgSettings.staff_depart_after_min,
         daily_hours: orgSettings.daily_hours,
+      }
+    : undefined
+
+  const schedulingSettings = orgSettings
+    ? {
+        min_shift_hours: Number(orgSettings.min_shift_hours) || 3,
+        min_coverage_count: Number(orgSettings.min_coverage_count) || 1,
+        default_target_hours: Number(orgSettings.default_target_hours) || 20,
       }
     : undefined
 
@@ -84,6 +92,7 @@ export default async function StaffPage() {
       recentClocks={recentClocks ?? []}
       currentUser={userOrg}
       orgHours={orgHours}
+      schedulingSettings={schedulingSettings}
       clockNotesVisibility={clockNotesVisibility}
       weekStartDay={weekStartDay}
     />

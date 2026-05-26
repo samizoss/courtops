@@ -312,17 +312,15 @@ export function AvailabilityByDateTab({
     }
   }
 
-  async function submitWindow(windowId: string) {
+  async function submitWindowForUser(windowId: string, userId: string) {
     const win = windows.find((w) => w.id === windowId)
     if (!win) return
 
-    // Validate: scan cells inside this window for the current user.
-    // Flag any "available" cells with unparseable shifts text.
     const issues: string[] = []
     const d = new Date(win.start_date + 'T12:00:00')
     const endDate = new Date(win.end_date + 'T12:00:00')
     while (d <= endDate) {
-      const cell = getCell(currentUser.userId, d)
+      const cell = getCell(userId, d)
       if (cell.is_available && cell.shifts.trim()) {
         const err = validateShiftsText(cell.shifts)
         if (err) {
@@ -349,14 +347,15 @@ export function AvailabilityByDateTab({
         .insert({
           org_id: currentUser.orgId,
           window_id: windowId,
-          user_id: currentUser.userId,
+          user_id: userId,
           submitted_at: new Date().toISOString(),
         })
         .select('*')
         .single()
       if (error) throw error
       setSubmissions((prev) => [...prev, data as AvailabilitySubmission])
-      toast('Availability submitted')
+      const name = userId === currentUser.userId ? 'Your availability' : `Availability for ${visibleProfiles.find((p) => p.id === userId)?.full_name ?? 'staff'}`
+      toast(`${name} submitted`)
       router.refresh()
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Failed to submit', 'error')
@@ -364,6 +363,10 @@ export function AvailabilityByDateTab({
     } finally {
       setSubmittingWindowId(null)
     }
+  }
+
+  function submitWindow(windowId: string) {
+    return submitWindowForUser(windowId, currentUser.userId)
   }
 
   async function reopenSubmission(windowId: string) {
@@ -412,10 +415,10 @@ export function AvailabilityByDateTab({
         userId={currentUser.userId}
       />
 
-      {/* Submit / Edit strip — staff only, only when there's at least one open window. */}
-      {!isAdmin && openWindows.length > 0 && (
+      {/* Submit strip — my own submission (staff AND admin). */}
+      {openWindows.length > 0 && (
         <div className="flex flex-wrap gap-2 items-center bg-gray-900 border border-gray-800 rounded-lg p-3">
-          <span className="text-xs text-gray-500 uppercase tracking-wide">My submission</span>
+          <span className="text-xs text-gray-500 uppercase tracking-wide">My availability</span>
           {openWindows.map((w) => {
             const sub = submissionFor(w.id, currentUser.userId)
             const submitted = !!sub
@@ -447,8 +450,56 @@ export function AvailabilityByDateTab({
                     disabled={submitting}
                     className="text-[11px] px-3 py-1 bg-orange-600 hover:bg-orange-500 text-white rounded transition-colors disabled:opacity-50"
                   >
-                    {submitting ? 'Submitting...' : `Submit availability for ${w.label}`}
+                    {submitting ? 'Submitting...' : `Submit my availability for ${w.label}`}
                   </button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Admin: submit on behalf of staff */}
+      {isAdmin && openWindows.length > 0 && (
+        <div className="bg-gray-900 border border-gray-800 rounded-lg p-3 space-y-2">
+          <span className="text-xs text-gray-500 uppercase tracking-wide">Staff submissions</span>
+          {openWindows.map((w) => {
+            const staffList = visibleProfiles.filter((p) => p.id !== currentUser.userId)
+            const unsubmitted = staffList.filter((p) => !submissionFor(w.id, p.id))
+            const submittedStaff = staffList.filter((p) => !!submissionFor(w.id, p.id))
+            return (
+              <div key={w.id} className="space-y-1">
+                <div className="text-[11px] text-gray-300 font-medium">{w.label}</div>
+                {submittedStaff.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {submittedStaff.map((p) => (
+                      <span key={p.id} className="text-[10px] px-2 py-0.5 rounded bg-green-500/10 text-green-400 border border-green-500/20">
+                        ✓ {p.full_name.split(' ')[0]}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {unsubmitted.length > 0 && (
+                  <div className="flex flex-wrap gap-1 items-center">
+                    {unsubmitted.map((p) => {
+                      const submitting = submittingWindowId === w.id
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => submitWindowForUser(w.id, p.id)}
+                          disabled={submitting}
+                          className="text-[10px] px-2 py-0.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 transition-colors disabled:opacity-50"
+                          title={`Submit availability on behalf of ${p.full_name}`}
+                        >
+                          Submit for {p.full_name.split(' ')[0]}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+                {unsubmitted.length === 0 && staffList.length > 0 && (
+                  <span className="text-[10px] text-green-400">All staff submitted</span>
                 )}
               </div>
             )

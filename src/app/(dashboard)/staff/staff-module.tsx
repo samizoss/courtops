@@ -28,6 +28,12 @@ export interface OrgHours {
   daily_hours: Record<string, { open: string; close: string }> | null
 }
 
+export interface SchedulingSettings {
+  min_shift_hours: number
+  min_coverage_count: number
+  default_target_hours: number
+}
+
 interface Props {
   profiles: Profile[]
   activeClocks: TimeClock[]
@@ -42,11 +48,12 @@ interface Props {
   recentClocks: TimeClock[]
   currentUser: { userId: string; orgId: string; role: string; fullName: string }
   orgHours?: OrgHours
+  schedulingSettings?: SchedulingSettings
   clockNotesVisibility?: 'all_staff' | 'admin_only'
   weekStartDay?: number
 }
 
-export function StaffModule({ profiles, activeClocks, timeOffRequests, shifts, shiftSwaps, availability, availabilityEntries, availabilityWindows, availabilitySubmissions, availabilityWindowAssignees, recentClocks, currentUser, orgHours, clockNotesVisibility, weekStartDay = 0 }: Props) {
+export function StaffModule({ profiles, activeClocks, timeOffRequests, shifts, shiftSwaps, availability, availabilityEntries, availabilityWindows, availabilitySubmissions, availabilityWindowAssignees, recentClocks, currentUser, orgHours, schedulingSettings, clockNotesVisibility, weekStartDay = 0 }: Props) {
   const searchParams = useSearchParams()
   const fromUrl = searchParams.get('tab')
   const urlTab = fromUrl && tabs.some((t) => t.id === fromUrl) ? (fromUrl as TabId) : null
@@ -111,8 +118,10 @@ export function StaffModule({ profiles, activeClocks, timeOffRequests, shifts, s
           orgId={currentUser.orgId}
           availabilityEntries={operationalAvailabilityEntries}
           availabilitySubmissions={availabilitySubmissions}
+          availabilityWindows={availabilityWindows}
           timeOffRequests={operationalTimeOff}
           orgHours={orgHours}
+          schedulingSettings={schedulingSettings}
           currentUser={currentUser}
           weekStartDay={weekStartDay}
         />

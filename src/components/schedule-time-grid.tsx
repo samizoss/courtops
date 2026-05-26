@@ -593,6 +593,7 @@ function DayColumn({
         const timeRange = fmtTimeRange12hCompact(p.start_time, p.end_time)
         const showRole = p.lanes <= 2
         const isDraft = p.published_at == null
+        const isMagicDraft = isDraft && p.notes === 'Magic-scheduled draft'
         return (
           <button
             key={p.id}
@@ -601,8 +602,10 @@ function DayColumn({
               e.stopPropagation()
               onShiftClick?.(p)
             }}
-            className={`absolute rounded text-left px-1.5 py-1 overflow-hidden transition-colors z-[2] ${roleBlockColors[p.role]} ${
-              isDraft ? 'border-2 border-dashed opacity-60' : 'border'
+            className={`absolute rounded text-left px-1.5 py-1 overflow-hidden transition-colors z-[2] ${
+              isMagicDraft
+                ? 'bg-purple-600/30 border-purple-400/60 text-purple-50 hover:bg-purple-600/45 border-2 border-dashed opacity-70'
+                : `${roleBlockColors[p.role]} ${isDraft ? 'border-2 border-dashed opacity-60' : 'border'}`
             }`}
             style={{
               top: `${p.top}%`,
@@ -610,11 +613,16 @@ function DayColumn({
               left: `calc(${leftPct}% + 2px)`,
               width: `calc(${widthPct}% - 4px)`,
             }}
-            title={`${p.profile?.full_name ?? ''}\n${timeRange}\n${p.role}${isDraft ? ' (DRAFT)' : ''}${p.notes ? `\n${p.notes}` : ''}`}
+            title={`${p.profile?.full_name ?? ''}\n${timeRange}\n${p.role}${isMagicDraft ? ' (MAGIC)' : isDraft ? ' (DRAFT)' : ''}${p.notes ? `\n${p.notes}` : ''}`}
           >
             <div className="flex items-baseline gap-1 leading-tight">
               <span className="text-[11px] font-semibold truncate">{firstName}</span>
-              {isDraft && (
+              {isMagicDraft && (
+                <span className="text-[8px] uppercase tracking-wide font-bold opacity-90 shrink-0 text-purple-300">
+                  magic
+                </span>
+              )}
+              {isDraft && !isMagicDraft && (
                 <span className="text-[8px] uppercase tracking-wide font-bold opacity-90 shrink-0">
                   draft
                 </span>

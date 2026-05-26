@@ -428,6 +428,9 @@ export interface OrgSettings {
   cr_last_synced_at: string | null
   clock_notes_visibility: 'all_staff' | 'admin_only'
   week_start_day: number
+  min_shift_hours: number
+  min_coverage_count: number
+  default_target_hours: number
   created_at: string
   updated_at: string
 }
