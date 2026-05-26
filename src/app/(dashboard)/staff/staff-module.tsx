@@ -6,7 +6,6 @@ import type { Profile, TimeClock, TimeOffRequest, ScheduleShift, Availability, A
 import { ClockTab } from './tabs/clock-tab'
 import { RosterTab } from './tabs/roster-tab'
 import { ScheduleTab } from './tabs/schedule-tab'
-import { TimeOffTab } from './tabs/time-off-tab'
 import { AvailabilityTab } from './tabs/availability-tab'
 import { ShiftSwapTab } from './tabs/shift-swap-tab'
 
@@ -15,7 +14,6 @@ const tabs = [
   { id: 'roster', label: 'Roster' },
   { id: 'schedule', label: 'Schedule' },
   { id: 'swaps', label: 'Shift Swap' },
-  { id: 'timeoff', label: 'Time Off' },
   { id: 'availability', label: 'Availability' },
 ] as const
 
@@ -112,6 +110,7 @@ export function StaffModule({ profiles, activeClocks, timeOffRequests, shifts, s
           isAdmin={isAdmin}
           orgId={currentUser.orgId}
           availabilityEntries={operationalAvailabilityEntries}
+          availabilitySubmissions={availabilitySubmissions}
           timeOffRequests={operationalTimeOff}
           orgHours={orgHours}
           currentUser={currentUser}
@@ -127,9 +126,6 @@ export function StaffModule({ profiles, activeClocks, timeOffRequests, shifts, s
           currentUser={currentUser}
           isAdmin={isAdmin}
         />
-      )}
-      {tab === 'timeoff' && (
-        <TimeOffTab requests={operationalTimeOff} currentUser={currentUser} isAdmin={isAdmin} availability={operationalAvailability} />
       )}
       {tab === 'availability' && (
         <AvailabilityTab
