@@ -734,6 +734,110 @@ export function ScheduleTab({
     }
   }
 
+  function handleExportPDF() {
+    const range = visibleRange(anchor, mode, weekStartDay)
+    const startKey = fmtDateKey(range.start)
+    const endKey = fmtDateKey(range.end)
+    const exportShifts = filteredShifts
+      .filter((s) => s.shift_date >= startKey && s.shift_date <= endKey)
+      .sort((a, b) => a.shift_date.localeCompare(b.shift_date) || a.start_time.localeCompare(b.start_time))
+
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+    const dayNamesShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    const title = filter === 'mine' ? `My Schedule` : `Staff Schedule`
+    const rangeLabel = mode === 'month'
+      ? new Date(range.start.getTime() + 15 * 86400000).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+      : `${range.start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${range.end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+
+    if (mode === 'month') {
+      const weeks: string[][] = []
+      const firstDay = new Date(range.start)
+      const lastDay = new Date(range.end)
+      let cursor = new Date(firstDay)
+      let currentWeek: string[] = []
+      const startDow = cursor.getDay()
+      for (let i = 0; i < ((weekStartDay - startDow + 7) % 7); i++) currentWeek.push('<td class="empty"></td>')
+      while (cursor <= lastDay) {
+        const dk = fmtDateKey(cursor)
+        const dayShifts = exportShifts.filter((s) => s.shift_date === dk)
+        const dow = cursor.getDay()
+        const isToday = dk === fmtDateKey(new Date())
+        let cell = `<td class="${isToday ? 'today' : ''}"><div class="day-num">${monthNames[cursor.getMonth()]} ${cursor.getDate()}</div>`
+        for (const s of dayShifts) {
+          const name = s.profile?.full_name?.split(' ')[0] ?? '?'
+          cell += `<div class="shift">${name} <span class="time">${fmtTimeRange12hCompact(s.start_time, s.end_time)}</span> <span class="role">${SHIFT_ROLE_LABELS[s.role]}</span></div>`
+        }
+        cell += '</td>'
+        currentWeek.push(cell)
+        if (currentWeek.length === 7) { weeks.push(currentWeek); currentWeek = [] }
+        cursor = addDays(cursor, 1)
+      }
+      while (currentWeek.length > 0 && currentWeek.length < 7) currentWeek.push('<td class="empty"></td>')
+      if (currentWeek.length === 7) weeks.push(currentWeek)
+
+      const headerRow = Array.from({ length: 7 }, (_, i) => `<th>${dayNamesShort[(weekStartDay + i) % 7]}</th>`).join('')
+      const bodyRows = weeks.map((w) => `<tr>${w.join('')}</tr>`).join('')
+
+      const html = `<!DOCTYPE html><html><head><title>${title} — ${rangeLabel}</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111; padding: 20px; }
+  h1 { font-size: 18px; margin-bottom: 2px; }
+  .subtitle { font-size: 12px; color: #666; margin-bottom: 12px; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  th { background: #f3f4f6; font-size: 11px; padding: 6px 4px; border: 1px solid #d1d5db; text-align: center; }
+  td { border: 1px solid #d1d5db; padding: 4px; vertical-align: top; font-size: 10px; min-height: 60px; }
+  td.empty { background: #f9fafb; }
+  td.today { background: #fffbeb; }
+  .day-num { font-weight: 600; font-size: 11px; margin-bottom: 3px; color: #374151; }
+  .shift { padding: 1px 0; line-height: 1.4; }
+  .time { color: #6b7280; }
+  .role { color: #9ca3af; font-size: 9px; }
+  @media print { body { padding: 10px; } @page { margin: 0.5in; size: landscape; } }
+</style></head><body>
+<h1>${title}</h1><div class="subtitle">${rangeLabel} · ${exportShifts.length} shift${exportShifts.length === 1 ? '' : 's'}</div>
+<table><thead><tr>${headerRow}</tr></thead><tbody>${bodyRows}</tbody></table>
+</body></html>`
+
+      const w = window.open('', '_blank')
+      if (w) { w.document.write(html); w.document.close(); w.onload = () => w.print() }
+      return
+    }
+
+    // Week / day view: table with date rows
+    const rows = exportShifts.map((s) => {
+      const d = new Date(s.shift_date + 'T12:00:00')
+      return `<tr>
+        <td class="day-col">${dayNames[d.getDay()]}<br><span class="date">${monthNames[d.getMonth()]} ${d.getDate()}</span></td>
+        <td>${s.profile?.full_name ?? '?'}</td>
+        <td class="time-col">${fmtTimeRange12h(s.start_time, s.end_time)}</td>
+        <td>${SHIFT_ROLE_LABELS[s.role]}</td>
+      </tr>`
+    }).join('')
+
+    const html = `<!DOCTYPE html><html><head><title>${title} — ${rangeLabel}</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111; padding: 20px; }
+  h1 { font-size: 18px; margin-bottom: 2px; }
+  .subtitle { font-size: 12px; color: #666; margin-bottom: 12px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #f3f4f6; font-size: 11px; padding: 8px 10px; border: 1px solid #d1d5db; text-align: left; }
+  td { border: 1px solid #d1d5db; padding: 6px 10px; font-size: 12px; }
+  .day-col { font-weight: 600; white-space: nowrap; }
+  .date { font-weight: 400; color: #6b7280; font-size: 11px; }
+  .time-col { white-space: nowrap; color: #374151; }
+  @media print { body { padding: 10px; } @page { margin: 0.5in; } }
+</style></head><body>
+<h1>${title}</h1><div class="subtitle">${rangeLabel} · ${exportShifts.length} shift${exportShifts.length === 1 ? '' : 's'}</div>
+<table><thead><tr><th>Day</th><th>Staff</th><th>Time</th><th>Role</th></tr></thead><tbody>${rows}</tbody></table>
+</body></html>`
+
+    const w = window.open('', '_blank')
+    if (w) { w.document.write(html); w.document.close(); w.onload = () => w.print() }
+  }
+
   const toolbarRight = (
     <div className="flex items-center gap-1 ml-2 flex-wrap">
       {(['mine', 'all'] as FilterMode[]).map((f) => (
@@ -749,6 +853,13 @@ export function ScheduleTab({
           {f === 'mine' ? 'My schedule' : 'Total schedule'}
         </button>
       ))}
+      <button
+        onClick={handleExportPDF}
+        className="text-xs px-3 py-1.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-400 border border-gray-700 transition-colors"
+        title={`Export ${filter === 'mine' ? 'my' : 'full'} schedule as PDF (${mode} view)`}
+      >
+        Export
+      </button>
       {isAdmin && (
         <button
           onClick={() => setBuildMode((v) => !v)}
