@@ -1138,6 +1138,7 @@ export function ScheduleTab({
               profileMap={isAdmin && buildMode ? profileMap : undefined}
               orgHours={orgHours}
               isAdmin={isAdmin && buildMode}
+              currentUserId={currentUser.userId}
             />
             {isAdmin && buildMode && (
               <HoursSidebar hoursSummary={hoursSummary} mode={mode} />

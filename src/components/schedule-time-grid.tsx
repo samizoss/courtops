@@ -119,6 +119,7 @@ interface Props {
   profileMap?: ProfileMap
   orgHours?: { open_time: string | null; close_time: string | null; daily_hours: Record<string, { open: string; close: string }> | null }
   isAdmin: boolean
+  currentUserId?: string
 }
 
 function timeToHours(t: string): number | null {
@@ -196,6 +197,9 @@ function getClosedRange(
   return { openMin, closeMin }
 }
 
+const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+const SLOT_MINUTES = 15
+
 export function ScheduleTimeGrid({
   mode,
   anchor,
@@ -210,6 +214,7 @@ export function ScheduleTimeGrid({
   profileMap,
   orgHours,
   isAdmin,
+  currentUserId,
 }: Props) {
   const today = useMemo(() => startOfDay(new Date()), [])
 
@@ -276,7 +281,7 @@ export function ScheduleTimeGrid({
           return (
             <div
               key={fmtDateKey(d)}
-              className={`px-2 py-2 text-center border-l border-gray-800 ${
+              className={`px-2 py-2 text-center border-l-2 border-gray-700 ${
                 isToday_ ? 'bg-orange-500/10' : ''
               }`}
             >
@@ -284,11 +289,13 @@ export function ScheduleTimeGrid({
                 {mode === 'day' ? DAY_LABELS_FULL[d.getDay()] : DAY_LABELS_SHORT[d.getDay()]}
               </div>
               <div
-                className={`text-sm font-semibold ${
-                  isToday_ ? 'text-orange-400' : 'text-gray-200'
+                className={`text-lg font-bold leading-tight ${
+                  isToday_ ? 'text-orange-400' : 'text-white'
                 }`}
               >
-                {d.getDate()}
+                {d.getDate() === 1 || days.indexOf(d) === 0
+                  ? `${MONTH_ABBR[d.getMonth()]} ${d.getDate()}`
+                  : d.getDate()}
               </div>
               {isToday_ && (
                 <div className="text-[9px] uppercase tracking-wide text-orange-400">Today</div>
@@ -345,6 +352,7 @@ export function ScheduleTimeGrid({
               dayEntries={entriesByDate[key]}
               profileMap={profileMap}
               closedRange={getClosedRange(d, orgHours)}
+              currentUserId={currentUserId}
             />
           )
         })}
@@ -368,6 +376,7 @@ interface DayColumnProps {
   dayEntries?: AvailabilityEntry[]
   profileMap?: ProfileMap
   closedRange?: ClosedHoursRange | null
+  currentUserId?: string
 }
 
 function DayColumn({
@@ -385,13 +394,15 @@ function DayColumn({
   dayEntries,
   profileMap,
   closedRange,
+  currentUserId,
 }: DayColumnProps) {
   const colRef = useRef<HTMLDivElement>(null)
   const justDraggedRef = useRef(false)
   const dragRef = useRef<{ startSlot: number; currentSlot: number } | null>(null)
+  const capturedRef = useRef(false)
   const [drag, setDrag] = useState<{ startSlot: number; currentSlot: number } | null>(null)
 
-  const totalSlots = totalHours * 2
+  const totalSlots = totalHours * (60 / SLOT_MINUTES)
   const slotHeight = gridHeight / totalSlots
   const startHourMin = startHour * 60
 
@@ -406,8 +417,8 @@ function DayColumn({
         for (let i = 0; i < totalSlots; i++) names[i].push(name)
       } else {
         for (const blk of blocks) {
-          const s = Math.max(0, Math.floor((blk.start - startHourMin) / 30))
-          const e = Math.min(totalSlots, Math.ceil((blk.end - startHourMin) / 30))
+          const s = Math.max(0, Math.floor((blk.start - startHourMin) / SLOT_MINUTES))
+          const e = Math.min(totalSlots, Math.ceil((blk.end - startHourMin) / SLOT_MINUTES))
           for (let i = s; i < e; i++) names[i].push(name)
         }
       }
@@ -455,15 +466,17 @@ function DayColumn({
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!isAdmin || !onDragSelect || !colRef.current) return
-    if ((e.target as HTMLElement).closest('button')) return
     const rect = colRef.current.getBoundingClientRect()
     const y = e.clientY - rect.top
     const slot = Math.max(0, Math.min(totalSlots - 1, Math.floor(y / slotHeight)))
-    const state = { startSlot: slot, currentSlot: slot }
-    dragRef.current = state
-    setDrag(state)
-    colRef.current.setPointerCapture(e.pointerId)
-    e.preventDefault()
+    dragRef.current = { startSlot: slot, currentSlot: slot }
+    capturedRef.current = false
+    if (!(e.target as HTMLElement).closest('button')) {
+      colRef.current.setPointerCapture(e.pointerId)
+      capturedRef.current = true
+      setDrag({ startSlot: slot, currentSlot: slot })
+      e.preventDefault()
+    }
   }, [isAdmin, onDragSelect, totalSlots, slotHeight])
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -471,28 +484,32 @@ function DayColumn({
     const rect = colRef.current.getBoundingClientRect()
     const y = e.clientY - rect.top
     const slot = Math.max(0, Math.min(totalSlots - 1, Math.floor(y / slotHeight)))
-    if (slot !== dragRef.current.currentSlot) {
+    if (slot !== dragRef.current.startSlot && !capturedRef.current) {
+      colRef.current.setPointerCapture(e.pointerId)
+      capturedRef.current = true
+    }
+    if (slot !== dragRef.current.currentSlot || (!drag && capturedRef.current)) {
       const state = { ...dragRef.current, currentSlot: slot }
       dragRef.current = state
-      setDrag(state)
+      if (capturedRef.current) setDrag(state)
     }
-  }, [totalSlots, slotHeight])
+  }, [totalSlots, slotHeight, drag])
 
   const handlePointerUp = useCallback(() => {
     const d = dragRef.current
-    if (!d) return
+    const wasCaptured = capturedRef.current
     dragRef.current = null
+    capturedRef.current = false
     setDrag(null)
+    if (!d || !wasCaptured) return
 
     const minSlot = Math.min(d.startSlot, d.currentSlot)
     const maxSlot = Math.max(d.startSlot, d.currentSlot)
-    if (maxSlot >= minSlot) {
-      justDraggedRef.current = true
-      setTimeout(() => { justDraggedRef.current = false }, 100)
-      const startMin = startHourMin + minSlot * 30
-      const endMin = startHourMin + (maxSlot + 1) * 30
-      onDragSelect?.(date, minutesToHHMM(startMin), minutesToHHMM(endMin))
-    }
+    justDraggedRef.current = true
+    setTimeout(() => { justDraggedRef.current = false }, 100)
+    const startMin = startHourMin + minSlot * SLOT_MINUTES
+    const endMin = startHourMin + (maxSlot + 1) * SLOT_MINUTES
+    onDragSelect?.(date, minutesToHHMM(startMin), minutesToHHMM(endMin))
   }, [startHourMin, date, onDragSelect])
 
   const handleEmptyClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -508,13 +525,14 @@ function DayColumn({
   return (
     <div
       ref={colRef}
-      className={`relative border-l border-gray-800 touch-none ${
+      className={`relative border-l-2 border-gray-700 touch-none ${
         isToday ? 'bg-orange-500/[0.04]' : ''
       } ${isAdmin ? 'cursor-crosshair' : ''}`}
       onClick={handleEmptyClick}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
       data-empty="true"
     >
       {/* Closed-hours overlay */}
@@ -594,6 +612,7 @@ function DayColumn({
         const showRole = p.lanes <= 2
         const isDraft = p.published_at == null
         const isMagicDraft = isDraft && p.notes === 'Magic-scheduled draft'
+        const isMine = currentUserId != null && p.user_id === currentUserId
         return (
           <button
             key={p.id}
@@ -606,7 +625,7 @@ function DayColumn({
               isMagicDraft
                 ? 'bg-purple-600/30 border-purple-400/60 text-purple-50 hover:bg-purple-600/45 border-2 border-dashed opacity-70'
                 : `${roleBlockColors[p.role]} ${isDraft ? 'border-2 border-dashed opacity-60' : 'border'}`
-            }`}
+            } ${isMine && !isDraft ? 'ring-2 ring-orange-400/80 ring-offset-1 ring-offset-gray-900' : ''}`}
             style={{
               top: `${p.top}%`,
               height: `${p.height}%`,
@@ -652,7 +671,7 @@ function DayColumn({
           }}
         >
           <div className="text-[10px] font-semibold text-orange-400 px-1.5 py-0.5">
-            {minutesTo12h(startHourMin + dragMinSlot * 30)} – {minutesTo12h(startHourMin + (dragMaxSlot + 1) * 30)}
+            {minutesTo12h(startHourMin + dragMinSlot * SLOT_MINUTES)} – {minutesTo12h(startHourMin + (dragMaxSlot + 1) * SLOT_MINUTES)}
           </div>
         </div>
       )}

@@ -1,7 +1,47 @@
 # CourtOps — Current State
 
-> **Snapshot date:** 2026-05-19 (post Geneva meeting + shipping session)
+> **Snapshot date:** 2026-06-04 (Geneva punch list — bugs/quick fixes batch)
 > **For a fresh Claude session:** read this top-to-bottom. Document is organized newest-first: today's session log (full conversation context + decisions) → active queue → historical session logs → infrastructure reference (DB, migrations, env, gotchas) → operational notes. When in doubt about live state, trust `git log`, Supabase schema, and the Vercel production deployment over anything written here.
+
+---
+
+## 2026-06-04 — Geneva punch list: bugs/quick fixes batch
+
+### What shipped today
+
+**Migration: fix_shifts_role_check** — `shifts_role_check` DB constraint was missing `instructor` and `league-leader` roles. Geneva was getting "Failed to update shift" when assigning those roles. Applied directly to production.
+
+**Schedule time grid improvements** (all in `src/components/schedule-time-grid.tsx`):
+- **15-min drag increments** (#3): slot resolution changed from 30min → 15min. Drag-to-assign now snaps to quarter-hour. Visual hour/half-hour tick lines unchanged.
+- **Date number prominence** (#9): `text-sm font-semibold text-gray-200` → `text-lg font-bold text-white`
+- **Month abbreviation** (#10): first day of month + first visible day show "Jun 4" format; other days show number only
+- **Column dividers** (#16): `border-l border-gray-800` → `border-l-2 border-gray-700` on header + columns
+- **My-shift highlight** (#25): current user's published shifts get `ring-2 ring-orange-400/80` — visible at a glance without reading names. Passed via new `currentUserId` prop.
+- **Drag over existing shifts** (#27): removed the `closest('button')` early-return guard. Now tracks drag intent on pointerdown; captures pointer only on first movement to a different slot. Click on a shift still opens ShiftDetailPopover; drag over a shift starts drag-to-assign.
+
+### Geneva punch list status (29 items from 5/27 meeting)
+
+**DONE (9):** #1 (role constraint), #3 (15-min), #6 (PDF export), #9 (date prominence), #10 (month abbr), #16 (grid dividers), #25 (my-shift highlight), #27 (drag over shifts), #29 (loom/bookmark)
+
+**Remaining (20):**
+- Schedule workflow rework: #5, #23, #24, #28
+- Availability UX: #7, #8, #11, #12, #13, #14
+- Schedule views/display: #2, #4, #18, #19, #20
+- Magic schedule: #21, #22, #26
+- Bigger features: #15, #17
+
+### Migrations applied to production
+All previous (001–004, 017, 018, 019) + `fix_shifts_role_check`
+
+---
+
+## 2026-05-27 — Coverage-first magic schedule + PDF export
+
+### What shipped
+
+- `95dfbe1` — Coverage-first magic schedule + draft management + release flow (7 files, 680 insertions)
+- `b9f6715` — Schedule PDF export (week/month, my/full) (1 file, 111 insertions)
+- PRs #38 (drag-to-select), #39 (UX improvements) merged
 
 ---
 
