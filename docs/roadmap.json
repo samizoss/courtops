@@ -7,24 +7,40 @@
       "color": "gray",
       "items": [
         {
-          "title": "Content Calendar",
-          "description": "Social media and content planning with Court Reserve event integration."
-        },
-        {
-          "title": "Court Reserve Sync Expansion",
-          "description": "Events, leagues, and registrations pulled from Court Reserve for scheduling and content planning."
+          "title": "Bonus & 1099 Tracking",
+          "description": "Track bonus payments and 1099 contractor amounts in-system instead of via text message.",
+          "details": [
+            {"feature": "Bonus entry per staff per pay period", "status": "not-built"},
+            {"feature": "1099 contractor payment tracking", "status": "not-built"},
+            {"feature": "Payroll integration (send amounts to ATY)", "status": "not-built"}
+          ]
         },
         {
           "title": "Front Desk Schedule Overlay",
-          "description": "Today's schedule visible as an overlay on the front desk widget."
+          "description": "Today's schedule visible as an overlay on the front desk widget.",
+          "details": [
+            {"feature": "Widget overlay design", "status": "not-built"},
+            {"feature": "Today's schedule feed", "status": "not-built"}
+          ]
         },
         {
           "title": "Commission & Payout Reports",
-          "description": "Staff activity tracking with configurable commission calculations."
+          "description": "Staff activity tracking with configurable commission calculations.",
+          "details": [
+            {"feature": "Geneva to send current Excel process", "status": "not-built"},
+            {"feature": "Configurable payout rules", "status": "not-built"},
+            {"feature": "Period-based reports", "status": "not-built"}
+          ]
         },
         {
           "title": "Multi-Club Onboarding",
-          "description": "Self-service club signup, branding, and subdomain provisioning."
+          "description": "Self-service club signup, branding, and subdomain provisioning.",
+          "details": [
+            {"feature": "Subdomain routing", "status": "built", "note": "Multi-tenancy infra works"},
+            {"feature": "Self-service signup flow", "status": "not-built"},
+            {"feature": "Per-club branding", "status": "not-built"},
+            {"feature": "Provisioning automation", "status": "not-built"}
+          ]
         }
       ]
     },
@@ -35,15 +51,41 @@
       "items": [
         {
           "title": "Smarter Magic Schedule",
-          "description": "Role-specific scheduling, high-traffic day awareness, and respect for existing manual drafts."
+          "description": "Role-specific scheduling, high-traffic day awareness, and respect for existing manual drafts.",
+          "details": [
+            {"feature": "Role picker before running", "status": "not-built"},
+            {"feature": "High traffic day awareness", "status": "not-built"},
+            {"feature": "Respect existing manual drafts", "status": "partial", "note": "Counts existing shifts but may double-count drafts"},
+            {"feature": "Filter candidates by capability match", "status": "not-built"}
+          ]
         },
         {
           "title": "Schedule Release Notifications",
-          "description": "Email and in-app notifications when a schedule is released to staff."
+          "description": "Email and in-app notifications when a schedule is released to staff.",
+          "details": [
+            {"feature": "In-app notification on release", "status": "not-built"},
+            {"feature": "Email notification on release", "status": "not-built"}
+          ]
         },
         {
-          "title": "Checklist Improvements",
-          "description": "More prominent notes, checklist history view, and completion digest emails."
+          "title": "Pipeline Data Quality",
+          "description": "Perfect one pipeline (LTP leads from May onward). Fix auto-fill, add contact descriptions, duplicate detection.",
+          "details": [
+            {"feature": "Pick one pipeline to perfect (LTP)", "status": "not-built"},
+            {"feature": "Fix auto-fill on day-one contact", "status": "not-built"},
+            {"feature": "Contact description on status change", "status": "not-built"},
+            {"feature": "Potential duplicates flagging", "status": "not-built"},
+            {"feature": "Data quality metrics (numbers up/down)", "status": "not-built"}
+          ]
+        },
+        {
+          "title": "Checklist Reminders & Digest",
+          "description": "Clock-in notification with uncompleted item count. Daily ops digest email.",
+          "details": [
+            {"feature": "Clock-in checklist reminder notification", "status": "not-built"},
+            {"feature": "Daily completion digest email", "status": "not-built"},
+            {"feature": "Day-of-week / week-of-month triggered checklists", "status": "not-built"}
+          ]
         }
       ]
     },
@@ -53,16 +95,93 @@
       "color": "orange",
       "items": [
         {
+          "title": "Payroll & Time Export",
+          "description": "Phoenix CSV export for ATY, date-range hours summary, long-shift flagging.",
+          "details": [
+            {"feature": "Phoenix CSV export format", "status": "partial", "note": "Questions doc sent to ATY"},
+            {"feature": "Date-range hours summary (select 2 weeks, see per-person totals)", "status": "partial", "note": "Hours summary exists, needs date range picker"},
+            {"feature": "Long shift auto-flag (>5-6hrs)", "status": "not-built"},
+            {"feature": "Pay period presets (weekly/biweekly)", "status": "not-built"}
+          ]
+        },
+        {
+          "title": "Time Clock Improvements",
+          "description": "Full clock history, auto-expire posted shifts, admin delete.",
+          "details": [
+            {"feature": "Admin delete time entry", "status": "built", "note": "Shipped 6/9 with audit trail"},
+            {"feature": "Full clock history (not capped to recent)", "status": "not-built", "note": "Geneva can't see before June 3rd"},
+            {"feature": "Auto-expire posted shifts past date", "status": "not-built", "note": "Alicia's 6/6 swap still showing"}
+          ]
+        },
+        {
           "title": "Schedule Workflow Rework",
-          "description": "Simplified draft-to-release flow. Edit shifts in-place, partial window releases, and staff notifications on publish."
+          "description": "Simplified draft-to-release flow. Edit shifts in-place, partial window releases.",
+          "details": [
+            {"feature": "Draft-to-release flow (ReleaseScheduleModal)", "status": "built"},
+            {"feature": "Edit shift time/role/notes in-place", "status": "built"},
+            {"feature": "Partial window releases", "status": "built"},
+            {"feature": "Swap person on shift in build mode", "status": "not-built"},
+            {"feature": "Remove Publish button, only Release", "status": "not-built"}
+          ]
         },
         {
           "title": "Availability UX Improvements",
-          "description": "More prominent date picker, clearer due date display, out-of-window warnings, and availability notes."
+          "description": "More prominent date picker, clearer due date display, out-of-window warnings, and availability notes.",
+          "details": [
+            {"feature": "More prominent date picker", "status": "not-built"},
+            {"feature": "Clearer due date display", "status": "not-built"},
+            {"feature": "Out-of-window warnings", "status": "not-built"},
+            {"feature": "Due date reminders (settings)", "status": "partial", "note": "Window-open cron exists, approaching-deadline not built"},
+            {"feature": "Rename 'window' terminology", "status": "not-built"},
+            {"feature": "Availability notes field", "status": "not-built"}
+          ]
         },
         {
           "title": "Schedule View Enhancements",
-          "description": "Closed-hours display, admin/non-admin view separation, hours breakdown with role detail, and target hours ranges."
+          "description": "Closed-hours display, admin/non-admin views, hours breakdown, target hours ranges.",
+          "details": [
+            {"feature": "Closed-hours diagonal overlay", "status": "built"},
+            {"feature": "Don't show avail shading over closed hours", "status": "not-built"},
+            {"feature": "Admin published view: hours sidebar + role breakdown", "status": "not-built"},
+            {"feature": "Non-admin: own stats only", "status": "not-built"},
+            {"feature": "Target hours low/high range", "status": "not-built"}
+          ]
+        },
+        {
+          "title": "Content Calendar",
+          "description": "Content planning with Court Reserve event integration. Design refresh for social meetings.",
+          "details": [
+            {"feature": "Month-view calendar", "status": "built"},
+            {"feature": "Platform picker (IG, FB, TikTok, email)", "status": "built"},
+            {"feature": "Content type + status tracking", "status": "built"},
+            {"feature": "Staff assignment", "status": "built"},
+            {"feature": "Court Reserve event integration", "status": "not-built"},
+            {"feature": "Design refresh / mockup", "status": "partial", "note": "Sami working on mockup for social meetings"}
+          ]
+        },
+        {
+          "title": "Court Reserve Sync",
+          "description": "Member, attendance, and transaction sync live. Events, leagues, and category cleanup next.",
+          "details": [
+            {"feature": "Member sync", "status": "built"},
+            {"feature": "Membership types cache", "status": "built"},
+            {"feature": "Attendance sync", "status": "built"},
+            {"feature": "Transaction sync", "status": "built"},
+            {"feature": "Events sync", "status": "not-built"},
+            {"feature": "Leagues sync", "status": "not-built", "note": "CR may not have a leagues API"},
+            {"feature": "Event categories/tags best practices doc", "status": "not-built", "note": "Geneva cleaning up unused categories"}
+          ]
+        },
+        {
+          "title": "PDF Export Improvements",
+          "description": "Role-based color coding, multi-select which roles to export. Week view needs work.",
+          "details": [
+            {"feature": "Month view export", "status": "built"},
+            {"feature": "Week/day view export", "status": "built", "note": "Functional but 'miserable looking' per Geneva"},
+            {"feature": "Role color coding in export", "status": "not-built"},
+            {"feature": "Multi-select which roles to include", "status": "not-built"},
+            {"feature": "My/Total filter", "status": "built"}
+          ]
         }
       ]
     },
@@ -109,7 +228,7 @@
         },
         {
           "title": "Daily Checklists",
-          "description": "Configurable opening/midday/closing checklists with completion tracking.",
+          "description": "Configurable opening/midday/closing checklists with completion tracking and notes.",
           "shipped": "April 2026"
         },
         {
@@ -120,6 +239,51 @@
         {
           "title": "SOPs with AI Suggest",
           "description": "Standard operating procedures library with markdown editor, iframe embeds, and AI-powered category/tag suggestions.",
+          "shipped": "April 2026"
+        },
+        {
+          "title": "Dashboard",
+          "description": "Stats overview, who's on shift, my tasks, cadence tracking, and activity feed.",
+          "shipped": "April 2026"
+        },
+        {
+          "title": "Task Management",
+          "description": "Full task system with assignee, priority, due dates, and filter tabs.",
+          "shipped": "April 2026"
+        },
+        {
+          "title": "Notification System",
+          "description": "In-app notifications with unread badge, availability reminders, and admin alerts.",
+          "shipped": "April 2026"
+        },
+        {
+          "title": "Time Clock & Attendance",
+          "description": "Clock in/out, missed entry logging, admin edit with audit trail, hours summary.",
+          "shipped": "April 2026"
+        },
+        {
+          "title": "Time Off Requests",
+          "description": "Staff request time off, admin approves or denies.",
+          "shipped": "April 2026"
+        },
+        {
+          "title": "Staff Roster",
+          "description": "Sortable/filterable staff table with edit modal, capabilities, and hide-inactive toggle.",
+          "shipped": "April 2026"
+        },
+        {
+          "title": "Team Invites",
+          "description": "Email-based invite flow via Resend with role assignment and acceptance.",
+          "shipped": "April 2026"
+        },
+        {
+          "title": "Reports",
+          "description": "Pipeline conversion rates and lead source effectiveness.",
+          "shipped": "April 2026"
+        },
+        {
+          "title": "Settings & Integrations",
+          "description": "Org settings, business hours, Court Reserve credentials, scheduling config, and membership types.",
           "shipped": "April 2026"
         }
       ]

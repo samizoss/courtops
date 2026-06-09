@@ -95,6 +95,9 @@ export default function RoadmapPage() {
           <span className="text-sm text-gray-400 font-medium">Roadmap</span>
           <div className="ml-auto flex items-center gap-3 text-xs text-gray-500">
             <span>Updated {ago}</span>
+            <a href="/roadmap/detail" className="text-orange-400 hover:text-orange-300 underline underline-offset-2">
+              Detail view
+            </a>
             <a href="/releases" className="text-orange-400 hover:text-orange-300 underline underline-offset-2">
               Release notes
             </a>
