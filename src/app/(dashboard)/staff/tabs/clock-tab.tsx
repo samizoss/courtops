@@ -420,6 +420,41 @@ function EditClockModal({
   const [adminNote, setAdminNote] = useState(clock.admin_note ?? '')
   const [reason, setReason] = useState('')
 
+  const [deleting, setDeleting] = useState(false)
+
+  async function handleDelete() {
+    if (!confirm(`Delete this clock entry for ${clock.profile?.full_name}? This cannot be undone.`)) return
+    setDeleting(true)
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+
+      await supabase.from('time_clock_edits').insert({
+        time_clock_id: clock.id,
+        org_id: currentUser.orgId,
+        edited_by: currentUser.userId,
+        action: 'delete',
+        old_values: {
+          clock_in: clock.clock_in,
+          clock_out: clock.clock_out,
+          notes: clock.notes,
+          admin_note: clock.admin_note,
+        },
+        new_values: null,
+        reason: reason || null,
+      })
+
+      const { error } = await supabase.from('time_clock').delete().eq('id', clock.id)
+      if (error) throw error
+      toast('Clock entry deleted')
+      onSaved()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed to delete', 'error')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     if (!clockIn) return
@@ -458,7 +493,6 @@ function EditClockModal({
         .eq('id', clock.id)
       if (updateError) throw updateError
 
-      // Log to audit trail (best-effort — don't fail the save if this fails)
       await supabase.from('time_clock_edits').insert({
         time_clock_id: clock.id,
         org_id: currentUser.orgId,
@@ -554,21 +588,31 @@ function EditClockModal({
           />
         </div>
 
-        <div className="flex gap-3 justify-end">
+        <div className="flex items-center justify-between">
           <button
             type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
+            onClick={handleDelete}
+            disabled={deleting || saving}
+            className="px-3 py-2 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 disabled:opacity-50 rounded-lg transition-colors"
           >
-            Cancel
+            {deleting ? 'Deleting...' : 'Delete entry'}
           </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="px-4 py-2 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
-          >
-            {saving ? 'Saving...' : 'Save Changes'}
-          </button>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving || deleting}
+              className="px-4 py-2 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
         </div>
       </form>
     </div>
