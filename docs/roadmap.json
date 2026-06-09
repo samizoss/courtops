@@ -2,96 +2,6 @@
   "updated": "2026-06-09",
   "categories": [
     {
-      "key": "shipped",
-      "label": "Shipped",
-      "color": "green",
-      "items": [
-        {
-          "title": "Staff Scheduling",
-          "description": "Build schedules with drag-to-assign, coverage-aware magic schedule, and draft/release workflow.",
-          "shipped": "May 2026"
-        },
-        {
-          "title": "Availability Management",
-          "description": "Monthly availability windows with staff submissions, admin review, and deadline reminders.",
-          "shipped": "May 2026"
-        },
-        {
-          "title": "Shift Swap & Take",
-          "description": "Staff can post shifts for swap or take. Coworkers claim, admin approves.",
-          "shipped": "May 2026"
-        },
-        {
-          "title": "Schedule PDF Export",
-          "description": "Export week or month schedules as PDF. Supports 'My schedule' and full team views.",
-          "shipped": "May 2026"
-        },
-        {
-          "title": "15-Minute Scheduling",
-          "description": "Schedule grid supports 15-minute increments for finer shift control.",
-          "shipped": "June 2026"
-        },
-        {
-          "title": "My-Shift Highlighting",
-          "description": "Your own shifts are visually highlighted on the full team schedule.",
-          "shipped": "June 2026"
-        },
-        {
-          "title": "Daily Checklists",
-          "description": "Configurable opening/midday/closing checklists with completion tracking.",
-          "shipped": "April 2026"
-        },
-        {
-          "title": "Pipeline & Lead Management",
-          "description": "4-pipeline kanban with activity timeline, cadence tracking, and source reporting.",
-          "shipped": "April 2026"
-        },
-        {
-          "title": "SOPs with AI Suggest",
-          "description": "Standard operating procedures library with markdown editor, iframe embeds, and AI-powered category/tag suggestions.",
-          "shipped": "April 2026"
-        }
-      ]
-    },
-    {
-      "key": "in-progress",
-      "label": "In Progress",
-      "color": "orange",
-      "items": [
-        {
-          "title": "Schedule Workflow Rework",
-          "description": "Simplified draft-to-release flow. Edit shifts in-place, partial window releases, and staff notifications on publish."
-        },
-        {
-          "title": "Availability UX Improvements",
-          "description": "More prominent date picker, clearer due date display, out-of-window warnings, and availability notes."
-        },
-        {
-          "title": "Schedule View Enhancements",
-          "description": "Closed-hours display, admin/non-admin view separation, hours breakdown with role detail, and target hours ranges."
-        }
-      ]
-    },
-    {
-      "key": "up-next",
-      "label": "Up Next",
-      "color": "blue",
-      "items": [
-        {
-          "title": "Smarter Magic Schedule",
-          "description": "Role-specific scheduling, high-traffic day awareness, and respect for existing manual drafts."
-        },
-        {
-          "title": "Schedule Release Notifications",
-          "description": "Email and in-app notifications when a schedule is released to staff."
-        },
-        {
-          "title": "Checklist Improvements",
-          "description": "More prominent notes, checklist history view, and completion digest emails."
-        }
-      ]
-    },
-    {
       "key": "planned",
       "label": "Planned",
       "color": "gray",
@@ -115,6 +25,102 @@
         {
           "title": "Multi-Club Onboarding",
           "description": "Self-service club signup, branding, and subdomain provisioning."
+        }
+      ]
+    },
+    {
+      "key": "up-next",
+      "label": "Up Next",
+      "color": "blue",
+      "items": [
+        {
+          "title": "Smarter Magic Schedule",
+          "description": "Role-specific scheduling, high-traffic day awareness, and respect for existing manual drafts."
+        },
+        {
+          "title": "Schedule Release Notifications",
+          "description": "Email and in-app notifications when a schedule is released to staff."
+        },
+        {
+          "title": "Checklist Improvements",
+          "description": "More prominent notes, checklist history view, and completion digest emails."
+        }
+      ]
+    },
+    {
+      "key": "in-progress",
+      "label": "In Progress",
+      "color": "orange",
+      "items": [
+        {
+          "title": "Schedule Workflow Rework",
+          "description": "Simplified draft-to-release flow. Edit shifts in-place, partial window releases, and staff notifications on publish."
+        },
+        {
+          "title": "Availability UX Improvements",
+          "description": "More prominent date picker, clearer due date display, out-of-window warnings, and availability notes."
+        },
+        {
+          "title": "Schedule View Enhancements",
+          "description": "Closed-hours display, admin/non-admin view separation, hours breakdown with role detail, and target hours ranges."
+        }
+      ]
+    },
+    {
+      "key": "shipped",
+      "label": "Shipped",
+      "color": "green",
+      "items": [
+        {
+          "title": "15-Minute Scheduling",
+          "description": "Schedule grid supports 15-minute increments for finer shift control.",
+          "shipped": "June 2026",
+          "release": "2026-06-08"
+        },
+        {
+          "title": "My-Shift Highlighting",
+          "description": "Your own shifts are visually highlighted on the full team schedule.",
+          "shipped": "June 2026",
+          "release": "2026-06-08"
+        },
+        {
+          "title": "Staff Scheduling",
+          "description": "Build schedules with drag-to-assign, coverage-aware magic schedule, and draft/release workflow.",
+          "shipped": "May 2026",
+          "release": "2026-05-27"
+        },
+        {
+          "title": "Availability Management",
+          "description": "Monthly availability windows with staff submissions, admin review, and deadline reminders.",
+          "shipped": "May 2026",
+          "release": "2026-05-19"
+        },
+        {
+          "title": "Shift Swap & Take",
+          "description": "Staff can post shifts for swap or take. Coworkers claim, admin approves.",
+          "shipped": "May 2026",
+          "release": "2026-05-19"
+        },
+        {
+          "title": "Schedule PDF Export",
+          "description": "Export week or month schedules as PDF. Supports 'My schedule' and full team views.",
+          "shipped": "May 2026",
+          "release": "2026-05-27"
+        },
+        {
+          "title": "Daily Checklists",
+          "description": "Configurable opening/midday/closing checklists with completion tracking.",
+          "shipped": "April 2026"
+        },
+        {
+          "title": "Pipeline & Lead Management",
+          "description": "4-pipeline kanban with activity timeline, cadence tracking, and source reporting.",
+          "shipped": "April 2026"
+        },
+        {
+          "title": "SOPs with AI Suggest",
+          "description": "Standard operating procedures library with markdown editor, iframe embeds, and AI-powered category/tag suggestions.",
+          "shipped": "April 2026"
         }
       ]
     }

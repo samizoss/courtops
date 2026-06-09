@@ -1,6 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import type { Metadata } from 'next'
+import { IdeaForm } from './idea-form'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,6 +14,7 @@ interface RoadmapItem {
   title: string
   description: string
   shipped?: string
+  release?: string
 }
 
 interface RoadmapCategory {
@@ -29,32 +31,32 @@ interface RoadmapData {
 
 const colorMap = {
   green: {
-    badge: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
     dot: 'bg-emerald-400',
     card: 'border-emerald-500/20 hover:border-emerald-500/40',
     header: 'text-emerald-400',
     count: 'text-emerald-400/70',
+    badge: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
   },
   orange: {
-    badge: 'bg-orange-500/15 text-orange-400 border-orange-500/30',
     dot: 'bg-orange-400',
     card: 'border-orange-500/20 hover:border-orange-500/40',
     header: 'text-orange-400',
     count: 'text-orange-400/70',
+    badge: 'bg-orange-500/15 text-orange-400 border-orange-500/30',
   },
   blue: {
-    badge: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
     dot: 'bg-blue-400',
     card: 'border-blue-500/20 hover:border-blue-500/40',
     header: 'text-blue-400',
     count: 'text-blue-400/70',
+    badge: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
   },
   gray: {
-    badge: 'bg-gray-500/15 text-gray-400 border-gray-500/30',
     dot: 'bg-gray-400',
     card: 'border-gray-700 hover:border-gray-600',
     header: 'text-gray-400',
     count: 'text-gray-500',
+    badge: 'bg-gray-500/15 text-gray-400 border-gray-500/30',
   },
 }
 
@@ -91,7 +93,6 @@ export default function RoadmapPage() {
           <p className="text-xs text-gray-600 mt-1">Last updated {updatedLabel}</p>
         </div>
 
-        {/* Column layout on desktop, stacked on mobile */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {data.categories.map((cat) => {
             const colors = colorMap[cat.color]
@@ -113,9 +114,18 @@ export default function RoadmapPage() {
                       <h3 className="text-sm font-semibold text-white leading-snug">{item.title}</h3>
                       <p className="text-xs text-gray-400 mt-1 leading-relaxed">{item.description}</p>
                       {item.shipped && (
-                        <span className={`inline-block text-[10px] font-medium mt-2 px-2 py-0.5 rounded-full border ${colors.badge}`}>
-                          {item.shipped}
-                        </span>
+                        item.release ? (
+                          <a
+                            href={`/releases#${item.release}`}
+                            className={`inline-block text-[10px] font-medium mt-2 px-2 py-0.5 rounded-full border transition-colors ${colors.badge} hover:bg-emerald-500/25`}
+                          >
+                            {item.shipped} &rarr;
+                          </a>
+                        ) : (
+                          <span className={`inline-block text-[10px] font-medium mt-2 px-2 py-0.5 rounded-full border ${colors.badge}`}>
+                            {item.shipped}
+                          </span>
+                        )
                       )}
                     </div>
                   ))}
@@ -123,6 +133,17 @@ export default function RoadmapPage() {
               </div>
             )
           })}
+        </div>
+
+        {/* Idea submission */}
+        <div className="mt-16 max-w-xl mx-auto">
+          <div className="border border-gray-800 rounded-xl bg-gray-900/60 px-6 py-6">
+            <h2 className="text-lg font-semibold text-white">Have an idea?</h2>
+            <p className="text-sm text-gray-400 mt-1 mb-5">
+              We&apos;re always looking for ways to make CourtOps better. Tell us what you&apos;d like to see.
+            </p>
+            <IdeaForm />
+          </div>
         </div>
       </main>
 
