@@ -531,6 +531,36 @@ export function AvailabilityByDateTab({
         mode={mode}
         onAnchorChange={setAnchor}
         onModeChange={setMode}
+        topBanner={(() => {
+          // Most-urgent open window the current user hasn't submitted for —
+          // surfaced as a banner so the deadline can't be missed.
+          const pending = openWindows
+            .filter((w) => w.due_date && !submissionFor(w.id, currentUser.userId))
+            .sort((a, b) => (a.due_date! < b.due_date! ? -1 : 1))[0]
+          if (!pending) return undefined
+          const due = new Date(pending.due_date! + 'T12:00:00')
+          const daysLeft = Math.ceil((due.getTime() - Date.now()) / 86400000)
+          const tone =
+            daysLeft <= 1
+              ? 'bg-red-500/10 border-red-500/30 text-red-300'
+              : daysLeft <= 3
+              ? 'bg-orange-500/10 border-orange-500/30 text-orange-300'
+              : 'bg-amber-500/10 border-amber-500/25 text-amber-300'
+          return (
+            <div className={`px-4 py-2.5 rounded-lg border text-sm ${tone}`}>
+              <span className="font-semibold">
+                {pending.label} availability due {fmtShortDate(due)}
+              </span>
+              <span className="ml-1.5">
+                {daysLeft < 0
+                  ? '— overdue'
+                  : daysLeft === 0
+                  ? '— due today'
+                  : `— ${daysLeft} day${daysLeft === 1 ? '' : 's'} left`}
+              </span>
+            </div>
+          )
+        })()}
         renderCell={({ date }) => {
           const win = windowForDate(date, windows)
           const editable =

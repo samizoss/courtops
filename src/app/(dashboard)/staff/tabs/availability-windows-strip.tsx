@@ -603,6 +603,7 @@ function WindowPill({
   const start = new Date(w.start_date + 'T12:00:00')
   const end = new Date(w.end_date + 'T12:00:00')
   const due = w.due_date ? new Date(w.due_date + 'T12:00:00') : null
+  const daysLeft = due ? Math.ceil((due.getTime() - Date.now()) / 86400000) : null
   return (
     <span
       className={`inline-flex items-center text-[11px] px-2 py-1 rounded font-medium ${
@@ -617,12 +618,21 @@ function WindowPill({
       </span>
       {due && (
         <span
-          className={`ml-1.5 text-[10px] ${
-            w.status === 'open' ? 'text-amber-300' : 'text-gray-500'
+          className={`ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${
+            w.status !== 'open'
+              ? 'text-gray-500'
+              : daysLeft !== null && daysLeft <= 1
+              ? 'bg-red-500/15 text-red-300 border border-red-500/30'
+              : daysLeft !== null && daysLeft <= 3
+              ? 'bg-orange-500/15 text-orange-300 border border-orange-500/30'
+              : 'bg-amber-500/10 text-amber-300 border border-amber-500/25'
           }`}
           title="Submission deadline"
         >
           Due {fmtShortDate(due)}
+          {w.status === 'open' && daysLeft !== null && (
+            daysLeft < 0 ? ' — overdue' : daysLeft === 0 ? ' — today' : ` — ${daysLeft}d`
+          )}
         </span>
       )}
       {showSubmitted && totalCount > 0 && (
