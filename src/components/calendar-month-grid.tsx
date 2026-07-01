@@ -71,7 +71,7 @@ export function CalendarMonthGrid({
       <div className="flex flex-wrap items-center gap-2">
         <button
           onClick={() => onAnchorChange(stepAnchor(anchor, mode, -1))}
-          className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm rounded-lg transition-colors"
+          className="px-3.5 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm rounded-lg border border-gray-600 transition-colors"
           title={`Previous ${mode}`}
           aria-label={`Previous ${mode}`}
         >
@@ -79,20 +79,20 @@ export function CalendarMonthGrid({
         </button>
         <button
           onClick={() => onAnchorChange(new Date())}
-          className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm rounded-lg transition-colors"
+          className="px-3.5 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm rounded-lg border border-gray-600 transition-colors"
         >
           Today
         </button>
         <button
           onClick={() => onAnchorChange(stepAnchor(anchor, mode, 1))}
-          className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm rounded-lg transition-colors"
+          className="px-3.5 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm rounded-lg border border-gray-600 transition-colors"
           title={`Next ${mode}`}
           aria-label={`Next ${mode}`}
         >
           →
         </button>
 
-        <div className="text-sm text-gray-200 ml-2 font-medium">
+        <div className="text-lg font-semibold text-white ml-3 pl-3 border-l border-gray-700">
           {mode === 'month'
             ? fmtMonthYear(anchor)
             : mode === 'week'
