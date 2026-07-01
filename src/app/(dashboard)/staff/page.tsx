@@ -10,7 +10,10 @@ export default async function StaffPage() {
   if (!userOrg) return null
 
   const now = new Date()
-  const weekAgo = new Date(now.getTime() - 7 * 86400000).toISOString().split('T')[0]
+  const today = now.toISOString().split('T')[0]
+  // Recent clock history default range — older entries load on demand via the
+  // date-range picker in ClockTab.
+  const clockHistoryStart = new Date(now.getTime() - 30 * 86400000).toISOString().split('T')[0]
   // Pull availability + shifts for -1 week to +6 weeks. Calendar consumers
   // refetch on navigation to cover further horizons.
   const availabilityRangeStart = new Date(now.getTime() - 7 * 86400000).toISOString().split('T')[0]
@@ -46,13 +49,15 @@ export default async function StaffPage() {
     supabase.from('time_clock').select('*, profile:profiles!time_clock_user_id_fkey(full_name)').is('clock_out', null),
     supabase.from('time_off_requests').select('*, profile:profiles!time_off_requests_user_id_fkey(full_name), reviewer:profiles!time_off_requests_reviewed_by_fkey(full_name)').order('created_at', { ascending: false }).limit(20),
     shiftsScopedQuery,
-    supabase.from('shift_swaps').select('*').eq('org_id', userOrg.orgId).in('status', ['open', 'claimed']).order('created_at', { ascending: false }),
+    // !inner join drops swaps whose shift no longer exists; the date filter
+    // hides swaps for shifts that already happened (they were never actioned).
+    supabase.from('shift_swaps').select('*, shifts!inner(shift_date)').eq('org_id', userOrg.orgId).in('status', ['open', 'claimed']).gte('shifts.shift_date', today).order('created_at', { ascending: false }),
     supabase.from('availability').select('*, profile:profiles!availability_user_id_fkey(full_name)').order('day_of_week'),
     supabase.from('availability_entries').select('*').eq('org_id', userOrg.orgId).gte('entry_date', availabilityRangeStart).lte('entry_date', availabilityRangeEnd),
     supabase.from('availability_windows').select('*').eq('org_id', userOrg.orgId).gte('end_date', availabilityRangeStart).lte('start_date', availabilityRangeEnd).order('start_date', { ascending: false }),
     supabase.from('availability_submissions').select('*').eq('org_id', userOrg.orgId),
     supabase.from('availability_window_assignees').select('*').eq('org_id', userOrg.orgId),
-    supabase.from('time_clock').select('*, profile:profiles!time_clock_user_id_fkey(full_name)').gte('clock_in', weekAgo).order('clock_in', { ascending: false }).limit(50),
+    supabase.from('time_clock').select('*, profile:profiles!time_clock_user_id_fkey(full_name)').gte('clock_in', clockHistoryStart).order('clock_in', { ascending: false }).limit(300),
     supabase.from('org_settings').select('open_time, close_time, open_days, staff_arrive_before_min, staff_depart_after_min, daily_hours, clock_notes_visibility, week_start_day, min_shift_hours, min_coverage_count, default_target_hours').eq('org_id', userOrg.orgId).single(),
   ])
 
