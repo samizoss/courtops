@@ -1,7 +1,51 @@
 # CourtOps — Current State
 
-> **Snapshot date:** 2026-06-04 (Geneva punch list — bugs/quick fixes batch)
+> **Snapshot date:** 2026-07-01 (pre-meeting mega-session: 7 PRs, multi-agent QA sweep)
 > **For a fresh Claude session:** read this top-to-bottom. Document is organized newest-first: today's session log (full conversation context + decisions) → active queue → historical session logs → infrastructure reference (DB, migrations, env, gotchas) → operational notes. When in doubt about live state, trust `git log`, Supabase schema, and the Vercel production deployment over anything written here.
+
+---
+
+## 2026-07-01 — Pre-meeting mega-session (PRs #40–#46)
+
+Night-before-meeting session run with heavy multi-agent orchestration (Fable). Everything below is merged to master and auto-deployed.
+
+### What shipped
+
+- **PR #40** — Payroll export design docs: ATY questions doc expanded 8→13 questions (Units-vs-Hours, re-import double-pay risk, OT ownership, rounding, overnight punches, work-week boundaries, terminated employees) + spec rework. *Design only, no code.* Waiting on ATY's answers before building the Phoenix CSV export.
+- **PR #41** — Brand foundation: `docs/BRAND.md`, `courtops-mark.svg`/`courtops-wordmark.svg`, Tailwind v4 `@theme` design tokens in globals.css. No visual change.
+- **PR #42** — Full clock history: recent list widened 7d/50→30d/300 + admin From/To date-range loader (Geneva "can't see before June 3"). Stale open/claimed swaps whose shift date passed are hidden (`shifts!inner` join filter).
+- **PR #43** — Bulk "Publish N drafts" button removed; **Release is the only bulk publish path**. Per-shift Publish kept in ShiftDetailPopover as escape hatch for drafts outside any window.
+- **PR #44** — Availability due-date urgency badges (red ≤1d / orange ≤3d / amber) with days remaining on window pills + calendar banner for the most-urgent unsubmitted window + larger calendar nav/month label (shared CalendarMonthGrid).
+- **PR #45** — Public docs: `/releases` entry for 2026-07-01 + `roadmap.json` truth pass (see audit below).
+- **PR #46** — QA sweep round 1: fixed 18 adversarially-confirmed findings (see below).
+
+### Multi-agent roadmap truth audit (15 agents)
+
+Every `status` claim in roadmap.json verified against code. 11 corrections applied in PR #45. Notable: the **HoursSummary date-range picker** and the **3-days-before deadline reminder cron** were already built (roadmap undersold them); **Phoenix CSV** was overstated (design only); **CR attendance/transaction sync** store aggregates only, not records.
+
+### Multi-agent QA sweep (106 agents: 7 finders → dedup → 3 adversarial verifiers per finding)
+
+31 findings confirmed (each survived ≥2/3 skeptic votes), 2 refuted. **18 fixed in PR #46**, including 4 regressions from this session's own ships (UTC swap-filter date, half-day-off due-date math, UTC clock-history boundaries, dangling bulk-publish copy) plus pre-existing bugs: far-future windows invisible (>6wk fetch cap — windows now fetched 90d-back with no future cap, which also fixed assignee carry-forward), ?tab= deep links pinning the tab bar, time-off dates rendering a day early, HoursSummary UTC boundary + avg/day off-by-one, approve/deny/cancel swap race conditions (0-row updates reported success; approveSwap reassigned the shift before checking the claim), silent availability-delete failures, unchecked audit-log inserts, touch drag-select broken in TimeBlockPicker, pointercancel committing partial drags, "Magic-scheduled draft" note leaking to staff on published shifts, stale dragPreFill.
+
+### Known issues — QA-confirmed, deliberately deferred (priority order)
+
+1. **`time_clock_edits.time_clock_id` FK is ON DELETE CASCADE** (migration 004) — deleting a clock entry destroys its own delete-audit row (and all prior edit history for it). **Needs a migration** (SET NULL + nullable column). High priority next session. `clock-tab.tsx` handleDelete.
+2. **Release modal flags club-closed days as red "uncovered days"** — `orgHours` prop accepted but unused; daySummary iterates every calendar day. `schedule-tab.tsx` ReleaseScheduleModal.
+3. **±6-week shifts data horizon** — page.tsx loads shifts −1w..+6w; ScheduleTab never refetches on navigation (comment claims it does). Far-future navigation shows empty; Release modal undercounts for long windows but publishes blindly. Real fix = client refetch on range change.
+4. **parseLooseHHMM PM heuristic mangles morning availability** ("6-10" → 18:00–10:00 → block dropped → renders available ALL DAY in density strips). Two parser copies: `schedule-time-grid.tsx` + `schedule-tab.tsx`.
+5. **Closed-hours overlay treats fully-closed days as open** — getClosedRange ignores `open_days`; closed Sunday renders another day's hours unshaded. `schedule-time-grid.tsx:194`.
+6. **saveCell race** — success handler clears `dirty` on current state, not the saved snapshot; rapid toggle flips can silently drop the second write. `availability-by-date.tsx:307`.
+7. **Admin "Staff submissions" panel uses union of assignees across all windows** instead of per-window lists. `availability-by-date.tsx:467`.
+8. **Swap cards for shifts outside the loaded range show "Shift not found" with an ungated Cancel button** (org-wide UPDATE RLS lets anyone cancel). `shift-swap-tab.tsx:280`.
+9. **windowForDate returns arbitrary window on overlaps** — can lock staff out of an open window. `availability-by-date.tsx:137`.
+10. **X/Y submitted badge counts non-assignee submissions** (can read 5/4). `availability-windows-strip.tsx:88`.
+11. **Build-mode Drafts/role-chip counts span the whole ±7-week load, not the visible range.** `schedule-tab.tsx:952`.
+12. **Validation rejects legacy formats migration 005 documents** ("open - 9", "anytime", "5 - close") at submit time. `availability-by-date.tsx:82`.
+
+### Meeting-facing assets
+
+- `/releases` and `/roadmap` are both current as of tonight — safe to demo live.
+- Roadmap shipped column has 2 new July entries (Full Clock History, Availability Due-Date Alerts).
 
 ---
 
