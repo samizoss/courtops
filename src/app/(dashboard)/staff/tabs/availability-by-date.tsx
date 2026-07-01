@@ -280,12 +280,13 @@ export function AvailabilityByDateTab({
 
       // Empty + neither toggle = delete row.
       if (!trimmed && !snap.is_available && !snap.is_unavailable) {
-        await supabase
+        const { error } = await supabase
           .from('availability_entries')
           .delete()
           .eq('org_id', currentUser.orgId)
           .eq('user_id', userId)
           .eq('entry_date', fmtDateKey(date))
+        if (error) throw error
       } else {
         const { error } = await supabase
           .from('availability_entries')
@@ -539,7 +540,10 @@ export function AvailabilityByDateTab({
             .sort((a, b) => (a.due_date! < b.due_date! ? -1 : 1))[0]
           if (!pending) return undefined
           const due = new Date(pending.due_date! + 'T12:00:00')
-          const daysLeft = Math.ceil((due.getTime() - Date.now()) / 86400000)
+          // Calendar-day difference (due is noon-anchored; measure from local midnight).
+          const startOfToday = new Date()
+          startOfToday.setHours(0, 0, 0, 0)
+          const daysLeft = Math.floor((due.getTime() - startOfToday.getTime()) / 86400000)
           const tone =
             daysLeft <= 1
               ? 'bg-red-500/10 border-red-500/30 text-red-300'

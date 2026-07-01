@@ -512,6 +512,14 @@ function DayColumn({
     onDragSelect?.(date, minutesToHHMM(startMin), minutesToHHMM(endMin))
   }, [startHourMin, date, onDragSelect])
 
+  // A cancelled pointer (touch gesture takeover, OS edge swipe) must abort the
+  // drag without committing the partial selection like pointerup would.
+  const handlePointerCancel = useCallback(() => {
+    dragRef.current = null
+    capturedRef.current = false
+    setDrag(null)
+  }, [])
+
   const handleEmptyClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isAdmin || !onEmptyClick) return
     if (justDraggedRef.current) return
@@ -532,7 +540,7 @@ function DayColumn({
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
       data-empty="true"
     >
       {/* Closed-hours overlay */}

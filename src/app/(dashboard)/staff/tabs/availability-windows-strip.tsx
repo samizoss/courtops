@@ -603,7 +603,11 @@ function WindowPill({
   const start = new Date(w.start_date + 'T12:00:00')
   const end = new Date(w.end_date + 'T12:00:00')
   const due = w.due_date ? new Date(w.due_date + 'T12:00:00') : null
-  const daysLeft = due ? Math.ceil((due.getTime() - Date.now()) / 86400000) : null
+  // Calendar-day difference: due is noon-anchored, so measuring from local
+  // midnight and flooring gives 0 on the due date and -1 the day after.
+  const startOfToday = new Date()
+  startOfToday.setHours(0, 0, 0, 0)
+  const daysLeft = due ? Math.floor((due.getTime() - startOfToday.getTime()) / 86400000) : null
   return (
     <span
       className={`inline-flex items-center text-[11px] px-2 py-1 rounded font-medium ${

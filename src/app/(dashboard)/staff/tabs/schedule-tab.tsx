@@ -624,7 +624,7 @@ export function ScheduleTab({
       return
     }
     if (!confirm(
-      `Propose ${proposals.length} draft shift${proposals.length === 1 ? '' : 's'} based on submitted availability + capabilities + target hours? Drafts only — toggle 'Drafts' off in the view to compare against the published schedule, then publish individually or bulk when ready.`
+      `Propose ${proposals.length} draft shift${proposals.length === 1 ? '' : 's'} based on submitted availability + capabilities + target hours? Drafts only — toggle 'Drafts' off in the view to compare against the published schedule, then release the window when ready.`
     )) return
 
     setMagicRunning(true)
@@ -906,9 +906,16 @@ export function ScheduleTab({
     try {
       const { createClient } = await import('@/lib/supabase/client')
       const supabase = createClient()
+      // Publishing a magic draft clears its internal tag so staff never see
+      // "Magic-scheduled draft" on a live shift.
+      const target = shifts.find((s) => s.id === id)
+      const update: { published_at: string; notes?: null } =
+        target?.notes === 'Magic-scheduled draft'
+          ? { published_at: new Date().toISOString(), notes: null }
+          : { published_at: new Date().toISOString() }
       const { error } = await supabase
         .from('shifts')
-        .update({ published_at: new Date().toISOString() })
+        .update(update)
         .eq('id', id)
       if (error) throw error
       toast('Shift published')
@@ -927,6 +934,7 @@ export function ScheduleTab({
       if (error) throw error
       toast('Shift removed')
       setShiftDetail(null)
+      setDragPreFill(null)
       setDayPopover(null)
       router.refresh()
     } catch (err) {
@@ -1742,6 +1750,16 @@ function ReleaseScheduleModal({ window: win, shifts, profiles, orgId, orgHours, 
         .lte('shift_date', win.end_date)
         .eq('org_id', orgId)
       if (error) throw error
+      // Strip the internal magic-schedule tag from the just-published shifts
+      // so staff never see "Magic-scheduled draft" as a live shift note.
+      const { error: noteErr } = await supabase
+        .from('shifts')
+        .update({ notes: null })
+        .eq('notes', 'Magic-scheduled draft')
+        .gte('shift_date', win.start_date)
+        .lte('shift_date', win.end_date)
+        .eq('org_id', orgId)
+      if (noteErr) console.error('Failed to clear magic-draft notes', noteErr)
       toast(`Released schedule for ${win.label} — ${drafts.length} shift${drafts.length === 1 ? '' : 's'} published`)
       onReleased()
     } catch (err) {

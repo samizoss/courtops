@@ -101,15 +101,9 @@ export function ShiftSwapTab({
       const { createClient } = await import('@/lib/supabase/client')
       const supabase = createClient()
 
-      if (swap.claimed_by) {
-        const { error: shiftErr } = await supabase
-          .from('shifts')
-          .update({ user_id: swap.claimed_by })
-          .eq('id', swap.shift_id)
-        if (shiftErr) throw shiftErr
-      }
-
-      const { error: swapErr } = await supabase
+      // Flip the swap status FIRST with a row-count check — if the swap was
+      // cancelled/denied while this page was open, we must not touch the shift.
+      const { data: swapRows, error: swapErr } = await supabase
         .from('shift_swaps')
         .update({
           status: 'approved',
@@ -119,7 +113,23 @@ export function ShiftSwapTab({
         })
         .eq('id', swap.id)
         .eq('status', 'claimed')
+        .select()
       if (swapErr) throw swapErr
+      if (!swapRows || swapRows.length === 0) {
+        toast('This swap changed since you loaded the page — refresh to see the latest', 'error')
+        window.location.reload()
+        return
+      }
+
+      // Use the fresh claimed_by from the row we just won, not the stale prop.
+      const claimedBy = swapRows[0].claimed_by
+      if (claimedBy) {
+        const { error: shiftErr } = await supabase
+          .from('shifts')
+          .update({ user_id: claimedBy })
+          .eq('id', swap.shift_id)
+        if (shiftErr) throw shiftErr
+      }
 
       toast('Swap approved — shift reassigned')
       window.location.reload()
@@ -135,7 +145,7 @@ export function ShiftSwapTab({
     try {
       const { createClient } = await import('@/lib/supabase/client')
       const supabase = createClient()
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('shift_swaps')
         .update({
           status: 'denied',
@@ -146,7 +156,13 @@ export function ShiftSwapTab({
         })
         .eq('id', swapId)
         .eq('status', 'claimed')
+        .select()
       if (error) throw error
+      if (!data || data.length === 0) {
+        toast('This swap changed since you loaded the page — refresh to see the latest', 'error')
+        window.location.reload()
+        return
+      }
       toast('Swap denied')
       window.location.reload()
     } catch (err) {
@@ -160,7 +176,7 @@ export function ShiftSwapTab({
     try {
       const { createClient } = await import('@/lib/supabase/client')
       const supabase = createClient()
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('shift_swaps')
         .update({
           status: 'cancelled',
@@ -170,7 +186,13 @@ export function ShiftSwapTab({
         })
         .eq('id', swapId)
         .in('status', ['open', 'claimed'])
+        .select()
       if (error) throw error
+      if (!data || data.length === 0) {
+        toast('This swap changed since you loaded the page — refresh to see the latest', 'error')
+        window.location.reload()
+        return
+      }
       toast('Swap cancelled')
       window.location.reload()
     } catch (err) {

@@ -199,6 +199,10 @@ export function TimeBlockPicker({ value, onChange, closedSlots }: Props) {
               type="button"
               onPointerDown={(e) => {
                 e.preventDefault()
+                // Touch pointers are implicitly captured by the pressed button,
+                // which would swallow pointerenter on sibling slots and break
+                // drag-selection on phones — release so the drag can travel.
+                e.currentTarget.releasePointerCapture(e.pointerId)
                 handlePointerDown(s.index)
               }}
               onPointerEnter={() => handlePointerEnter(s.index)}

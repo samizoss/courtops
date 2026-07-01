@@ -57,8 +57,11 @@ export function StaffModule({ profiles, activeClocks, timeOffRequests, shifts, s
   const searchParams = useSearchParams()
   const fromUrl = searchParams.get('tab')
   const urlTab = fromUrl && tabs.some((t) => t.id === fromUrl) ? (fromUrl as TabId) : null
-  const [localTab, setLocalTab] = useState<TabId>('clock')
-  const tab = urlTab ?? localTab
+  // localTab starts null so a ?tab= deep link controls the initial view, but a
+  // user's tab click always wins afterwards (otherwise the URL param pins the
+  // tab forever and the tab bar appears dead).
+  const [localTab, setLocalTab] = useState<TabId | null>(null)
+  const tab = localTab ?? urlTab ?? 'clock'
   const setTab = setLocalTab
   const isAdmin = currentUser.role === 'owner' || currentUser.role === 'admin'
 
