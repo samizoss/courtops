@@ -27,9 +27,18 @@ Every `status` claim in roadmap.json verified against code. 11 corrections appli
 
 31 findings confirmed (each survived ≥2/3 skeptic votes), 2 refuted. **18 fixed in PR #46**, including 4 regressions from this session's own ships (UTC swap-filter date, half-day-off due-date math, UTC clock-history boundaries, dangling bulk-publish copy) plus pre-existing bugs: far-future windows invisible (>6wk fetch cap — windows now fetched 90d-back with no future cap, which also fixed assignee carry-forward), ?tab= deep links pinning the tab bar, time-off dates rendering a day early, HoursSummary UTC boundary + avg/day off-by-one, approve/deny/cancel swap race conditions (0-row updates reported success; approveSwap reassigned the shift before checking the claim), silent availability-delete failures, unchecked audit-log inserts, touch drag-select broken in TimeBlockPicker, pointercancel committing partial drags, "Magic-scheduled draft" note leaking to staff on published shifts, stale dragPreFill.
 
+### Late addition — Content Calendar v2 Phase 1 shipped (PR #48)
+
+After the QA round, two more merges landed:
+- **Migration 019** (applied to prod) — `time_clock_edits` FK cascade → SET NULL. Known-issue #1 below is **RESOLVED**.
+- **Migration 020** (applied to prod) — all 9 content-v2 tables (`cr_events`, `cr_event_sessions`, `campaigns`, `campaign_milestones`, `campaign_linked_events`, `content_pillars`, `content_channels`, `content_audiences`, `content_batches`) with RLS. Deviation from spec SQL: `campaign_linked_events` gains `org_id` for RLS.
+- **CR event sync** — `getEventRegistrations()` in the CR client + rolling ±31-day chunked sync in `/api/sync/courtreserve`, upserting events + sessions with registration counts. **Prod tables seeded with real Jar data: 30 events / 113 sessions from 1,931 registration rows.** Next Sync Now click refreshes it.
+- Migrations applied via Supabase Management API using `SUPABASE_ACCESS_TOKEN` from `.env.local` (`POST /v1/projects/facrogjtbtvhuxzaboln/database/query`) — works when the Supabase MCP isn't connected. PowerShell 5.1 mangles UTF-8 request bodies; use a Node script.
+- **Content v2 next**: Phase 2 (Settings → Content config pages + `src/lib/content-channels.ts` catalog), then campaign CRUD. Spec § "Recommended implementation phasing".
+
 ### Known issues — QA-confirmed, deliberately deferred (priority order)
 
-1. **`time_clock_edits.time_clock_id` FK is ON DELETE CASCADE** (migration 004) — deleting a clock entry destroys its own delete-audit row (and all prior edit history for it). **Needs a migration** (SET NULL + nullable column). High priority next session. `clock-tab.tsx` handleDelete.
+1. ~~**`time_clock_edits.time_clock_id` FK is ON DELETE CASCADE**~~ — ✅ **RESOLVED** by migration 019 (2026-07-01, applied to prod).
 2. **Release modal flags club-closed days as red "uncovered days"** — `orgHours` prop accepted but unused; daySummary iterates every calendar day. `schedule-tab.tsx` ReleaseScheduleModal.
 3. **±6-week shifts data horizon** — page.tsx loads shifts −1w..+6w; ScheduleTab never refetches on navigation (comment claims it does). Far-future navigation shows empty; Release modal undercounts for long windows but publishes blindly. Real fix = client refetch on range change.
 4. **parseLooseHHMM PM heuristic mangles morning availability** ("6-10" → 18:00–10:00 → block dropped → renders available ALL DAY in density strips). Two parser copies: `schedule-time-grid.tsx` + `schedule-tab.tsx`.
