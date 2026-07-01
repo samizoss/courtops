@@ -155,7 +155,7 @@
             {"feature": "Platform picker (IG, FB, TikTok, email)", "status": "built"},
             {"feature": "Content type + status tracking", "status": "built"},
             {"feature": "Staff assignment", "status": "built"},
-            {"feature": "Court Reserve event integration", "status": "not-built"},
+            {"feature": "Court Reserve event integration", "status": "partial", "note": "Phase 1 of 6 shipped 7/1 — CR events syncing into new campaign data model; UI phases next"},
             {"feature": "Design refresh / mockup", "status": "partial", "note": "Sami working on mockup for social meetings"}
           ]
         },
@@ -167,7 +167,7 @@
             {"feature": "Membership types cache", "status": "built"},
             {"feature": "Attendance sync", "status": "partial", "note": "Aggregates only (visit counts / last visit) — no record-level attendance table"},
             {"feature": "Transaction sync", "status": "partial", "note": "Monthly-spend average only — individual transactions not stored"},
-            {"feature": "Events sync", "status": "not-built"},
+            {"feature": "Events sync", "status": "built", "note": "Shipped 7/1 — events + sessions with registration counts, rolling ±31-day window"},
             {"feature": "Leagues sync", "status": "not-built", "note": "CR may not have a leagues API"},
             {"feature": "Event categories/tags best practices doc", "status": "not-built", "note": "Geneva cleaning up unused categories"}
           ]
