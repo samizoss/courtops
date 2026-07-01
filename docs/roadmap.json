@@ -1,5 +1,5 @@
 {
-  "updated": "2026-06-09",
+  "updated": "2026-07-01",
   "categories": [
     {
       "key": "planned",
@@ -38,7 +38,7 @@
           "details": [
             {"feature": "Subdomain routing", "status": "built", "note": "Multi-tenancy infra works"},
             {"feature": "Self-service signup flow", "status": "not-built"},
-            {"feature": "Per-club branding", "status": "not-built"},
+            {"feature": "Per-club branding", "status": "partial", "note": "Logo upload works; logo not yet shown in app chrome, no per-club theming"},
             {"feature": "Provisioning automation", "status": "not-built"}
           ]
         }
@@ -55,7 +55,7 @@
           "details": [
             {"feature": "Role picker before running", "status": "not-built"},
             {"feature": "High traffic day awareness", "status": "not-built"},
-            {"feature": "Respect existing manual drafts", "status": "partial", "note": "Counts existing shifts but may double-count drafts"},
+            {"feature": "Respect existing manual drafts", "status": "built", "note": "Audited 7/1 — drafts counted once toward coverage/hours, no double-counting found"},
             {"feature": "Filter candidates by capability match", "status": "not-built"}
           ]
         },
@@ -98,8 +98,8 @@
           "title": "Payroll & Time Export",
           "description": "Phoenix CSV export for ATY, date-range hours summary, long-shift flagging.",
           "details": [
-            {"feature": "Phoenix CSV export format", "status": "partial", "note": "Questions doc sent to ATY"},
-            {"feature": "Date-range hours summary (select 2 weeks, see per-person totals)", "status": "partial", "note": "Hours summary exists, needs date range picker"},
+            {"feature": "Phoenix CSV export format", "status": "not-built", "note": "Design spec done, questions doc sent to ATY — no code yet"},
+            {"feature": "Date-range hours summary (select 2 weeks, see per-person totals)", "status": "built", "note": "HoursSummary has From/To pickers, per-person totals + grand total"},
             {"feature": "Long shift auto-flag (>5-6hrs)", "status": "not-built"},
             {"feature": "Pay period presets (weekly/biweekly)", "status": "not-built"}
           ]
@@ -109,8 +109,8 @@
           "description": "Full clock history, auto-expire posted shifts, admin delete.",
           "details": [
             {"feature": "Admin delete time entry", "status": "built", "note": "Shipped 6/9 with audit trail"},
-            {"feature": "Full clock history (not capped to recent)", "status": "not-built", "note": "Geneva can't see before June 3rd"},
-            {"feature": "Auto-expire posted shifts past date", "status": "not-built", "note": "Alicia's 6/6 swap still showing"}
+            {"feature": "Full clock history (not capped to recent)", "status": "built", "note": "Shipped 7/1 — 30-day default + admin date-range loader for older entries"},
+            {"feature": "Auto-expire posted shifts past date", "status": "partial", "note": "Shipped 7/1 — stale swaps hidden from view; DB rows not yet swept to expired"}
           ]
         },
         {
@@ -119,21 +119,21 @@
           "details": [
             {"feature": "Draft-to-release flow (ReleaseScheduleModal)", "status": "built"},
             {"feature": "Edit shift time/role/notes in-place", "status": "built"},
-            {"feature": "Partial window releases", "status": "built"},
+            {"feature": "Partial window releases", "status": "partial", "note": "Per-window release works; no shift/date-subset selection within a window"},
             {"feature": "Swap person on shift in build mode", "status": "not-built"},
-            {"feature": "Remove Publish button, only Release", "status": "not-built"}
+            {"feature": "Remove Publish button, only Release", "status": "built", "note": "Shipped 7/1 — bulk Publish removed; per-shift publish kept as escape hatch"}
           ]
         },
         {
           "title": "Availability UX Improvements",
           "description": "More prominent date picker, clearer due date display, out-of-window warnings, and availability notes.",
           "details": [
-            {"feature": "More prominent date picker", "status": "not-built"},
-            {"feature": "Clearer due date display", "status": "not-built"},
-            {"feature": "Out-of-window warnings", "status": "not-built"},
-            {"feature": "Due date reminders (settings)", "status": "partial", "note": "Window-open cron exists, approaching-deadline not built"},
+            {"feature": "More prominent date picker", "status": "built", "note": "Shipped 7/1 — larger nav buttons + bold month label across calendar views"},
+            {"feature": "Clearer due date display", "status": "built", "note": "Shipped 7/1 — urgency-colored badges with days remaining + calendar banner until submitted"},
+            {"feature": "Out-of-window warnings", "status": "partial", "note": "Out-of-window cells are read-only with 'No window' label; no active warning toast"},
+            {"feature": "Due date reminders (settings)", "status": "partial", "note": "3-days-before cron + email/in-app live; no settings UI, days hardcoded"},
             {"feature": "Rename 'window' terminology", "status": "not-built"},
-            {"feature": "Availability notes field", "status": "not-built"}
+            {"feature": "Availability notes field", "status": "partial", "note": "DB column exists since migration 005; no UI reads/writes it"}
           ]
         },
         {
@@ -165,8 +165,8 @@
           "details": [
             {"feature": "Member sync", "status": "built"},
             {"feature": "Membership types cache", "status": "built"},
-            {"feature": "Attendance sync", "status": "built"},
-            {"feature": "Transaction sync", "status": "built"},
+            {"feature": "Attendance sync", "status": "partial", "note": "Aggregates only (visit counts / last visit) — no record-level attendance table"},
+            {"feature": "Transaction sync", "status": "partial", "note": "Monthly-spend average only — individual transactions not stored"},
             {"feature": "Events sync", "status": "not-built"},
             {"feature": "Leagues sync", "status": "not-built", "note": "CR may not have a leagues API"},
             {"feature": "Event categories/tags best practices doc", "status": "not-built", "note": "Geneva cleaning up unused categories"}
@@ -190,6 +190,18 @@
       "label": "Shipped",
       "color": "green",
       "items": [
+        {
+          "title": "Full Clock History",
+          "description": "Admins can load any date range of clock entries on demand; recent view widened to 30 days. Stale swap posts no longer clutter the swap board.",
+          "shipped": "July 2026",
+          "release": "2026-07-01"
+        },
+        {
+          "title": "Availability Due-Date Alerts",
+          "description": "Urgency-colored due badges with days remaining on window pills, plus a calendar banner that stays until you submit.",
+          "shipped": "July 2026",
+          "release": "2026-07-01"
+        },
         {
           "title": "15-Minute Scheduling",
           "description": "Schedule grid supports 15-minute increments for finer shift control.",
