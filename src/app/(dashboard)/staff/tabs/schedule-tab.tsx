@@ -599,40 +599,6 @@ export function ScheduleTab({
   const [releaseWindow, setReleaseWindow] = useState<AvailabilityWindow | null>(null)
 
   const [magicRunning, setMagicRunning] = useState(false)
-  const [publishing, setPublishing] = useState(false)
-
-  async function handlePublishDrafts() {
-    if (publishing) return
-    if (draftCountInRange === 0) {
-      toast('No drafts to publish in this view', 'error')
-      return
-    }
-    if (!confirm(`Publish ${draftCountInRange} draft shift${draftCountInRange === 1 ? '' : 's'} in this ${mode}? Staff will see them immediately.`)) return
-
-    setPublishing(true)
-    try {
-      const { createClient } = await import('@/lib/supabase/client')
-      const supabase = createClient()
-      const range = visibleRange(anchor, mode, weekStartDay)
-      const startKey = fmtDateKey(range.start)
-      const endKey = fmtDateKey(range.end)
-      const { error } = await supabase
-        .from('shifts')
-        .update({ published_at: new Date().toISOString() })
-        .is('published_at', null)
-        .gte('shift_date', startKey)
-        .lte('shift_date', endKey)
-        .eq('org_id', orgId)
-      if (error) throw error
-      toast(`Published ${draftCountInRange} shift${draftCountInRange === 1 ? '' : 's'}`)
-      router.refresh()
-    } catch (err) {
-      toast(err instanceof Error ? err.message : 'Failed to publish', 'error')
-      console.error(err)
-    } finally {
-      setPublishing(false)
-    }
-  }
 
   async function handleMagicSchedule() {
     if (magicRunning) return
@@ -878,7 +844,7 @@ export function ScheduleTab({
           onClick={handleMagicSchedule}
           disabled={magicRunning}
           className="text-xs px-3 py-1.5 rounded bg-purple-600/30 hover:bg-purple-600/50 disabled:opacity-50 text-purple-200 border border-purple-500/40 transition-colors"
-          title="Propose magic-scheduled shifts as drafts — review before publishing"
+          title="Propose magic-scheduled shifts as drafts — review, then release the window"
         >
           {magicRunning ? 'Running…' : '✨ Magic schedule'}
         </button>
@@ -899,16 +865,6 @@ export function ScheduleTab({
           title={`Remove all ${draftCountInRange} drafts in this ${mode}`}
         >
           Clear all {draftCountInRange}
-        </button>
-      )}
-      {isAdmin && buildMode && draftCountInRange > 0 && (
-        <button
-          onClick={handlePublishDrafts}
-          disabled={publishing}
-          className="text-xs px-3 py-1.5 rounded bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white transition-colors"
-          title={`Publish ${draftCountInRange} drafts in this ${mode}`}
-        >
-          {publishing ? 'Publishing…' : `Publish ${draftCountInRange} draft${draftCountInRange === 1 ? '' : 's'}`}
         </button>
       )}
       {isAdmin && buildMode && windowsInRange.map((w) => {
