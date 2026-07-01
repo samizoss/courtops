@@ -55,8 +55,16 @@ export function ClockTab({ activeClocks, recentClocks, currentUser, profiles, is
   const [showMissed, setShowMissed] = useState(false)
   const [editingClock, setEditingClock] = useState<ClockWithProfile | null>(null)
 
+  // On-demand older history — the server only ships the recent window;
+  // admins can load any date range here (Geneva: "can't see before June 3").
+  const [histFrom, setHistFrom] = useState('')
+  const [histTo, setHistTo] = useState('')
+  const [histRows, setHistRows] = useState<ClockWithProfile[] | null>(null)
+  const [histLoading, setHistLoading] = useState(false)
+
   const myClock = activeClocks.find(c => c.user_id === currentUser.userId)
   const isClockedIn = !!myClock
+  const displayClocks = histRows ?? recentClocks
 
   async function handleClockAction() {
     setLoading(true)
@@ -98,6 +106,33 @@ export function ClockTab({ activeClocks, recentClocks, currentUser, profiles, is
       toast(err instanceof Error ? err.message : 'Failed to save clock entry', 'error')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function loadHistory() {
+    if (!histFrom || !histTo) return
+    if (histFrom > histTo) {
+      toast('From date must be on or before To date', 'error')
+      return
+    }
+    setHistLoading(true)
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('time_clock')
+        .select('*, profile:profiles!time_clock_user_id_fkey(full_name)')
+        .eq('org_id', currentUser.orgId)
+        .gte('clock_in', histFrom)
+        .lte('clock_in', `${histTo}T23:59:59`)
+        .order('clock_in', { ascending: false })
+      if (error) throw error
+      setHistRows(data ?? [])
+    } catch (err) {
+      console.error('Failed to load clock history', err)
+      toast(err instanceof Error ? err.message : 'Failed to load history', 'error')
+    } finally {
+      setHistLoading(false)
     }
   }
 
@@ -183,12 +218,50 @@ export function ClockTab({ activeClocks, recentClocks, currentUser, profiles, is
 
       {/* Recent clock history */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Recent Clock History</h3>
-        {recentClocks.length === 0 ? (
-          <p className="text-gray-500 text-sm">No clock entries yet.</p>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
+            {histRows ? 'Clock History' : 'Recent Clock History'}
+          </h3>
+          {isAdmin && (
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="date"
+                value={histFrom}
+                onChange={(e) => setHistFrom(e.target.value)}
+                className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-xs text-gray-300"
+                title="History from"
+              />
+              <span className="text-xs text-gray-500">to</span>
+              <input
+                type="date"
+                value={histTo}
+                onChange={(e) => setHistTo(e.target.value)}
+                className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-xs text-gray-300"
+                title="History to"
+              />
+              <button
+                onClick={loadHistory}
+                disabled={histLoading || !histFrom || !histTo}
+                className="text-xs px-3 py-1.5 rounded bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-gray-300 transition-colors"
+              >
+                {histLoading ? 'Loading…' : 'Load'}
+              </button>
+              {histRows && (
+                <button
+                  onClick={() => { setHistRows(null); setHistFrom(''); setHistTo('') }}
+                  className="text-xs px-3 py-1.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors"
+                >
+                  Back to recent
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+        {displayClocks.length === 0 ? (
+          <p className="text-gray-500 text-sm">{histRows ? 'No clock entries in this range.' : 'No clock entries yet.'}</p>
         ) : (
           <div className="bg-gray-900 rounded-xl overflow-hidden divide-y divide-gray-800/50">
-            {recentClocks.map((clock) => {
+            {displayClocks.map((clock) => {
               const showNote = clock.notes && canSeeNote(clock)
               return (
                 <div key={clock.id} className="flex items-start gap-4 px-5 py-3">
