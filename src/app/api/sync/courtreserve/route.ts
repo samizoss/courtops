@@ -217,13 +217,105 @@ export async function POST() {
       if (!upsertErr) upserted += batch.length
     }
 
-    // 6. Update org_settings last synced
+    // 6. CR events + sessions (content calendar Phase 1). Derived entirely
+    //    from the registration report — CR has no event catalog endpoint.
+    //    Rolling ±31-day window, walked in ≤31-day chunks (API hard limit).
+    const eventsById = new Map<number, { name: string; catId: number | null; catName: string | null; isTeam: boolean }>()
+    const sessionsByDateId = new Map<number, { crEventId: number; start: string; end: string; count: number }>()
+
+    const chunks: Array<[Date, Date]> = [
+      [new Date(now.getTime() - 30 * 86400000), now],
+      [new Date(now.getTime() + 86400000), new Date(now.getTime() + 31 * 86400000)],
+    ]
+    for (const [from, to] of chunks) {
+      try {
+        const regs = await cr.getEventRegistrations(fmt(from), fmt(to))
+        for (const r of regs) {
+          if (!r.EventId || !r.EventDateId) continue
+          if (!eventsById.has(r.EventId)) {
+            eventsById.set(r.EventId, {
+              name: r.EventName || `Event ${r.EventId}`,
+              catId: r.EventCategoryId ?? null,
+              catName: r.EventCategoryName ?? null,
+              isTeam: !!r.IsTeamEvent,
+            })
+          }
+          const s = sessionsByDateId.get(r.EventDateId) ?? {
+            crEventId: r.EventId,
+            start: r.StartTime,
+            end: r.EndTime,
+            count: 0,
+          }
+          // Cancelled registrations keep the session visible but don't count.
+          if (!r.CancelledOnUtc) s.count++
+          sessionsByDateId.set(r.EventDateId, s)
+        }
+      } catch (err) {
+        console.error('CR event registration chunk failed (continuing):', err instanceof Error ? err.message : err)
+      }
+    }
+
+    let eventsSynced = 0
+    let sessionsSynced = 0
+    if (eventsById.size > 0) {
+      const eventRows = [...eventsById.entries()].map(([crEventId, e]) => ({
+        org_id: orgId,
+        cr_event_id: crEventId,
+        name: e.name,
+        cr_category_id: e.catId,
+        cr_category_name: e.catName,
+        is_team_event: e.isTeam,
+        last_synced_at: new Date().toISOString(),
+        // first_seen_at intentionally omitted so upserts keep the original value
+      }))
+      const { error: evErr } = await supabase
+        .from('cr_events')
+        .upsert(eventRows, { onConflict: 'org_id,cr_event_id' })
+      if (evErr) {
+        console.error('cr_events upsert failed (continuing):', evErr.message)
+      } else {
+        eventsSynced = eventRows.length
+
+        // Map CR EventId → our UUID for the session FK.
+        const { data: evLookup } = await supabase
+          .from('cr_events')
+          .select('id, cr_event_id')
+          .eq('org_id', orgId)
+        const evIdMap = new Map<number, string>((evLookup ?? []).map((e) => [Number(e.cr_event_id), e.id]))
+
+        const sessionRows = []
+        for (const [dateId, s] of sessionsByDateId) {
+          const eventUuid = evIdMap.get(s.crEventId)
+          const start = new Date(s.start)
+          const end = new Date(s.end)
+          if (!eventUuid || isNaN(start.getTime()) || isNaN(end.getTime())) continue
+          sessionRows.push({
+            org_id: orgId,
+            cr_event_id: eventUuid,
+            cr_event_date_id: dateId,
+            start_time: start.toISOString(),
+            end_time: end.toISOString(),
+            registration_count: s.count,
+            last_synced_at: new Date().toISOString(),
+          })
+        }
+        if (sessionRows.length > 0) {
+          const { error: sessErr } = await supabase
+            .from('cr_event_sessions')
+            .upsert(sessionRows, { onConflict: 'org_id,cr_event_date_id' })
+          if (sessErr) console.error('cr_event_sessions upsert failed (continuing):', sessErr.message)
+          else sessionsSynced = sessionRows.length
+        }
+      }
+    }
+
+    // 7. Update org_settings last synced
     await supabase
       .from('org_settings')
       .update({ cr_last_synced_at: new Date().toISOString() })
       .eq('org_id', orgId)
 
-    // 7. Complete sync log
+    // 8. Complete sync log
     if (syncId) {
       await supabase
         .from('cr_sync_log')
@@ -242,6 +334,8 @@ export async function POST() {
       success: true,
       members_synced: members.length,
       upgrade_candidates: upgradeCandidates,
+      events_synced: eventsSynced,
+      event_sessions_synced: sessionsSynced,
     })
   } catch (err) {
     // Log failure
