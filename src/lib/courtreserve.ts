@@ -84,6 +84,21 @@ export class CourtReserveAPI {
     const result = data.Data || data.data || data
     return Array.isArray(result) ? result : []
   }
+
+  /**
+   * Event registration rows for a date window. CR enforces a max 31-day
+   * window; callers must chunk. This is the ONLY event surface CR exposes —
+   * there is no event catalog endpoint, and events with zero registrations
+   * are invisible (accepted V1 limitation, see content-calendar design spec).
+   */
+  async getEventRegistrations(fromDate: string, toDate: string): Promise<CREventRegistration[]> {
+    const data = await this.request('/eventregistrationreport/listactive', {
+      eventDateFrom: fromDate,
+      eventDateTo: toDate,
+    })
+    const result = data.Data || data.data || data
+    return Array.isArray(result) ? result : []
+  }
 }
 
 // --- Types ---
@@ -131,6 +146,21 @@ export interface CRTransaction {
   OrganizationMemberId: string
   Total?: number
   Subtotal?: number
+  [key: string]: unknown
+}
+
+// Registration row shape verified against The Jar's prod data 2026-06-09
+// (all fields present in all 203 sample rows — see content-calendar spec).
+export interface CREventRegistration {
+  EventId: number
+  EventName: string
+  IsTeamEvent?: boolean
+  EventCategoryId?: number
+  EventCategoryName?: string
+  EventDateId: number
+  StartTime: string
+  EndTime: string
+  CancelledOnUtc?: string | null
   [key: string]: unknown
 }
 
