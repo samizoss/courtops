@@ -152,8 +152,8 @@ export function TimeOffTab({ requests, currentUser, isAdmin, availability }: Pro
                       <span className={`text-[10px] px-1.5 py-0.5 rounded ${statusBadge[req.status]}`}>{req.status}</span>
                     </div>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      {new Date(req.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                      {req.start_date !== req.end_date && ` — ${new Date(req.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
+                      {new Date(req.start_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      {req.start_date !== req.end_date && ` — ${new Date(req.end_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
                     </p>
                     {req.reason && <p className="text-xs text-gray-400 mt-1">{req.reason}</p>}
                     {req.reviewer && <p className="text-[10px] text-gray-600 mt-1">Reviewed by {req.reviewer.full_name}</p>}

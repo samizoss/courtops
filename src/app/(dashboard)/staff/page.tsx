@@ -10,10 +10,17 @@ export default async function StaffPage() {
   if (!userOrg) return null
 
   const now = new Date()
-  const today = now.toISOString().split('T')[0]
+  // Shift dates are club-local but the server runs in UTC, so cut stale swaps
+  // at "UTC yesterday" — a swap for tonight's shift never disappears early; the
+  // worst case is a past swap lingering one extra day.
+  const swapCutoff = new Date(now.getTime() - 86400000).toISOString().split('T')[0]
   // Recent clock history default range — older entries load on demand via the
   // date-range picker in ClockTab.
   const clockHistoryStart = new Date(now.getTime() - 30 * 86400000).toISOString().split('T')[0]
+  // Windows are few per org — fetch everything from the last 90 days onward so
+  // far-future windows are visible immediately and assignee carry-forward can
+  // see the previous window even after it ends.
+  const windowHistoryStart = new Date(now.getTime() - 90 * 86400000).toISOString().split('T')[0]
   // Pull availability + shifts for -1 week to +6 weeks. Calendar consumers
   // refetch on navigation to cover further horizons.
   const availabilityRangeStart = new Date(now.getTime() - 7 * 86400000).toISOString().split('T')[0]
@@ -51,10 +58,10 @@ export default async function StaffPage() {
     shiftsScopedQuery,
     // !inner join drops swaps whose shift no longer exists; the date filter
     // hides swaps for shifts that already happened (they were never actioned).
-    supabase.from('shift_swaps').select('*, shifts!inner(shift_date)').eq('org_id', userOrg.orgId).in('status', ['open', 'claimed']).gte('shifts.shift_date', today).order('created_at', { ascending: false }),
+    supabase.from('shift_swaps').select('*, shifts!inner(shift_date)').eq('org_id', userOrg.orgId).in('status', ['open', 'claimed']).gte('shifts.shift_date', swapCutoff).order('created_at', { ascending: false }),
     supabase.from('availability').select('*, profile:profiles!availability_user_id_fkey(full_name)').order('day_of_week'),
     supabase.from('availability_entries').select('*').eq('org_id', userOrg.orgId).gte('entry_date', availabilityRangeStart).lte('entry_date', availabilityRangeEnd),
-    supabase.from('availability_windows').select('*').eq('org_id', userOrg.orgId).gte('end_date', availabilityRangeStart).lte('start_date', availabilityRangeEnd).order('start_date', { ascending: false }),
+    supabase.from('availability_windows').select('*').eq('org_id', userOrg.orgId).gte('end_date', windowHistoryStart).order('start_date', { ascending: false }),
     supabase.from('availability_submissions').select('*').eq('org_id', userOrg.orgId),
     supabase.from('availability_window_assignees').select('*').eq('org_id', userOrg.orgId),
     supabase.from('time_clock').select('*, profile:profiles!time_clock_user_id_fkey(full_name)').gte('clock_in', clockHistoryStart).order('clock_in', { ascending: false }).limit(300),

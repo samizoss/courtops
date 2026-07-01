@@ -40,6 +40,12 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
+// Local-timezone YYYY-MM-DD (toISOString would give the UTC date).
+function localDateKey(d: Date): string {
+  const pad = (n: number) => n.toString().padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
 // Converts ISO string to the value format expected by datetime-local input.
 function toDatetimeLocal(iso: string): string {
   const d = new Date(iso)
@@ -123,8 +129,11 @@ export function ClockTab({ activeClocks, recentClocks, currentUser, profiles, is
         .from('time_clock')
         .select('*, profile:profiles!time_clock_user_id_fkey(full_name)')
         .eq('org_id', currentUser.orgId)
-        .gte('clock_in', histFrom)
-        .lte('clock_in', `${histTo}T23:59:59`)
+        // Convert local day boundaries to real instants — clock_in is
+        // timestamptz, so bare date strings would be compared as UTC and
+        // drop evening entries at the range edges.
+        .gte('clock_in', new Date(`${histFrom}T00:00:00`).toISOString())
+        .lte('clock_in', new Date(`${histTo}T23:59:59.999`).toISOString())
         .order('clock_in', { ascending: false })
       if (error) throw error
       setHistRows(data ?? [])
@@ -502,7 +511,8 @@ function EditClockModal({
       const { createClient } = await import('@/lib/supabase/client')
       const supabase = createClient()
 
-      await supabase.from('time_clock_edits').insert({
+      // Audit first — if the audit row can't be written, don't delete.
+      const { error: auditErr } = await supabase.from('time_clock_edits').insert({
         time_clock_id: clock.id,
         org_id: currentUser.orgId,
         edited_by: currentUser.userId,
@@ -516,6 +526,7 @@ function EditClockModal({
         new_values: null,
         reason: reason || null,
       })
+      if (auditErr) throw auditErr
 
       const { error } = await supabase.from('time_clock').delete().eq('id', clock.id)
       if (error) throw error
@@ -566,7 +577,7 @@ function EditClockModal({
         .eq('id', clock.id)
       if (updateError) throw updateError
 
-      await supabase.from('time_clock_edits').insert({
+      const { error: auditErr } = await supabase.from('time_clock_edits').insert({
         time_clock_id: clock.id,
         org_id: currentUser.orgId,
         edited_by: currentUser.userId,
@@ -575,6 +586,14 @@ function EditClockModal({
         new_values: newValues,
         reason: reason || null,
       })
+      // The time edit already applied — surface a warning rather than a
+      // misleading hard failure if only the audit write failed.
+      if (auditErr) {
+        console.error('Audit log insert failed', auditErr)
+        toast('Times saved, but the audit-history entry failed to record', 'error')
+        onSaved()
+        return
+      }
 
       toast('Clock record updated')
       onSaved()
@@ -697,12 +716,10 @@ function HoursSummary({ orgId, profiles }: { orgId: string; profiles: Profile[] 
   const [loading, setLoading] = useState(false)
   const [summary, setSummary] = useState<{ user_id: string; total_minutes: number }[] | null>(null)
 
-  // Default to current pay period (last 14 days)
-  const [startDate, setStartDate] = useState(() => {
-    const d = new Date(Date.now() - 13 * 86400000)
-    return d.toISOString().split('T')[0]
-  })
-  const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0])
+  // Default to current pay period (last 14 days), in local dates — the UTC
+  // date would prefill tomorrow when opened in the evening.
+  const [startDate, setStartDate] = useState(() => localDateKey(new Date(Date.now() - 13 * 86400000)))
+  const [endDate, setEndDate] = useState(() => localDateKey(new Date()))
 
   async function loadSummary() {
     setLoading(true)
@@ -714,8 +731,10 @@ function HoursSummary({ orgId, profiles }: { orgId: string; profiles: Profile[] 
         .from('time_clock')
         .select('user_id, clock_in, clock_out, total_minutes')
         .eq('org_id', orgId)
-        .gte('clock_in', `${startDate}T00:00:00`)
-        .lte('clock_in', `${endDate}T23:59:59`)
+        // Local day boundaries as real instants (clock_in is timestamptz —
+        // bare strings would be read as UTC and misattribute evening shifts).
+        .gte('clock_in', new Date(`${startDate}T00:00:00`).toISOString())
+        .lte('clock_in', new Date(`${endDate}T23:59:59.999`).toISOString())
         .not('clock_out', 'is', null)
 
       if (error) throw error
@@ -791,7 +810,8 @@ function HoursSummary({ orgId, profiles }: { orgId: string; profiles: Profile[] 
                   {summary.map((row) => {
                     const h = Math.floor(row.total_minutes / 60)
                     const m = row.total_minutes % 60
-                    const days = Math.max(1, Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000))
+                    // +1: the range is inclusive of both endpoints (Jun 1–Jun 14 = 14 days).
+                    const days = Math.max(1, Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000) + 1)
                     const avgPerDay = (row.total_minutes / days / 60).toFixed(1)
                     return (
                       <tr key={row.user_id} className="border-b border-gray-800/50">
