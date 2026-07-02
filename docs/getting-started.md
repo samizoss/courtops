@@ -122,6 +122,8 @@ The Staff module has five tabs: **Clock In/Out**, **Roster**, **Schedule**, **Ti
 
 **For managers:**
 - **Hours Summary** section (admin only) — pick a date range and click **Load Hours** to see total hours per employee. Useful for payroll.
+- **Recent Clock History** shows the last 30 days by default. To see older entries, use the **From / To date pickers** in the section header and click **Load** — any date range works. **Back to recent** returns to the default view.
+- Admins can **Edit** or **Delete** any clock entry — both are recorded in the audit history (who changed what, when, and why).
 
 ### Roster
 
@@ -156,6 +158,12 @@ This is where scheduling happens.
 - Click **Edit** on any shift to change the time or role
 - Click **Remove** to delete (you'll be asked to confirm)
 
+**Drafts and releasing (admin):**
+- Shifts you build in **Build mode** (including everything ✨ Magic Schedule proposes) start as **drafts** — staff can't see them yet
+- When the schedule is ready, click **Release {window}**. You'll get a review screen first: how many drafts will go live, per-day coverage, and any uncovered days flagged in red
+- Releasing is the one way to make a window's drafts live — review, then release
+- Your own published shifts are highlighted with an **orange ring** so you can spot them at a glance
+
 ### Time Off
 
 **For staff:**
@@ -181,6 +189,10 @@ This is where scheduling happens.
 - Time ranges are shown (e.g., "8a-5p") instead of just Y/N
 - Staff who haven't set their availability show a yellow **?**
 - "Not set" next to their name means they need a nudge
+
+**Due dates:**
+- Every availability window can have a submission deadline. It shows as a color-coded badge on the window pill — amber normally, **orange when 3 days remain, red when it's due within a day** — with the days remaining spelled out
+- If you haven't submitted yet, a banner above the calendar reminds you of your most urgent deadline. It disappears once you submit
 
 ---
 
@@ -246,7 +258,14 @@ Your dashboard adapts to your role:
 
 ### Integrations (Settings > Integrations)
 - **Court Reserve** — enter API credentials, sync members and attendance data
+- **Synced Court Reserve Events** — read-only preview of your CR events and upcoming sessions with registration counts, refreshed on each sync. These will anchor content campaigns. (Note: CR only exposes events that have at least one registration.)
 - **Google Sheets** — import leads from marketing campaign spreadsheets
+
+### Content (Settings > Content)
+Configuration for content planning — set these up once and the planning tools use them everywhere:
+- **Channels** — enable the places you publish (Instagram, Facebook Page, Facebook Groups, CourtReserve email/text/push, in-clubhouse flyers and displays, TikTok). For each channel, prune the formats you actually use. Facebook Groups support multiple instances (e.g. a members-only group and a public one).
+- **Pillars** — your content themes (The Jar starts with Community, Programming, Education, Tech, Differentiator). Add descriptions and colors; reorder or archive as your strategy evolves.
+- **Audiences** — who content targets (Members, Daily players, Beginners, LTP grads, etc.). Content can target multiple audiences.
 
 ---
 
@@ -275,4 +294,4 @@ The schedule grid correctly filters approved time off. Make sure the time-off re
 
 ---
 
-*Last updated: April 2, 2026*
+*Last updated: July 1, 2026*

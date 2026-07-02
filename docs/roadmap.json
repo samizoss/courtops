@@ -155,7 +155,8 @@
             {"feature": "Platform picker (IG, FB, TikTok, email)", "status": "built"},
             {"feature": "Content type + status tracking", "status": "built"},
             {"feature": "Staff assignment", "status": "built"},
-            {"feature": "Court Reserve event integration", "status": "partial", "note": "Phase 1 of 6 shipped 7/1 — CR events syncing into new campaign data model; UI phases next"},
+            {"feature": "Court Reserve event integration", "status": "partial", "note": "Phases 1-2 of 6 shipped 7/1 — CR events syncing + Settings preview; campaign UI next"},
+            {"feature": "Content settings: channels / pillars / audiences", "status": "built", "note": "Shipped 7/1 — Settings > Content, The Jar seeded with 5 pillars + 8 audiences"},
             {"feature": "Design refresh / mockup", "status": "partial", "note": "Sami working on mockup for social meetings"}
           ]
         },
@@ -190,6 +191,12 @@
       "label": "Shipped",
       "color": "green",
       "items": [
+        {
+          "title": "Content Planning Foundation",
+          "description": "Court Reserve events sync into CourtOps, and Settings → Content configures channels, pillars, and audiences for the campaign system.",
+          "shipped": "July 2026",
+          "release": "2026-07-01"
+        },
         {
           "title": "Full Clock History",
           "description": "Admins can load any date range of clock entries on demand; recent view widened to 30 days. Stale swap posts no longer clutter the swap board.",
