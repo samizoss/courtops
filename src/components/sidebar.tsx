@@ -25,7 +25,10 @@ const nav = [
   { href: '/sops', label: 'SOPs', icon: '◉', roles: ['owner', 'admin', 'staff', 'viewer'] },
   { href: '/pipeline', label: 'Pipeline', icon: '◎', roles: ['owner'] },
   { href: '/tasks', label: 'Tasks', icon: '▤', roles: ['owner'] },
-  { href: '/content', label: 'Content', icon: '📅', roles: ['owner'] },
+  // Content opened to admin + staff 2026-07-01: content planning is a staff-role
+  // job (Maddie). If the entry is clutter for front-desk staff, scope it to a
+  // capability later — the pages + RLS already allow staff by design.
+  { href: '/content', label: 'Content', icon: '📅', roles: ['owner', 'admin', 'staff'] },
   { href: '/messaging', label: 'Messages', icon: '💬', roles: ['owner'] },
   { href: '/reports', label: 'Reports', icon: '📊', roles: ['owner', 'admin', 'viewer'] },
   { href: '/settings', label: 'Settings', icon: '⚙', roles: ['owner', 'admin', 'viewer'] },
