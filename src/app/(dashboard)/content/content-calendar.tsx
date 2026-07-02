@@ -66,7 +66,11 @@ export function ContentCalendarView({
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
   })
 
-  const monthStart = new Date(viewMonth + '-01')
+  // viewMonth is 'YYYY-MM'. Parse via local components — new Date('YYYY-MM-01')
+  // is UTC midnight, i.e. the previous local day in US timezones, which made
+  // the month header wrong and the forward button a no-op.
+  const [viewYear, viewMonthNum] = viewMonth.split('-').map(Number)
+  const monthStart = new Date(viewYear, viewMonthNum - 1, 1)
   const monthName = monthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 
   // Group content by date
@@ -82,51 +86,55 @@ export function ContentCalendarView({
   const days: (number | null)[] = Array(firstDayOfWeek).fill(null)
   for (let i = 1; i <= daysInMonth; i++) days.push(i)
 
-  function prevMonth() {
-    const d = new Date(viewMonth + '-01')
-    d.setMonth(d.getMonth() - 1)
+  function shiftMonth(delta: number) {
+    const d = new Date(viewYear, viewMonthNum - 1 + delta, 1)
     setViewMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
   }
-
-  function nextMonth() {
-    const d = new Date(viewMonth + '-01')
-    d.setMonth(d.getMonth() + 1)
-    setViewMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
-  }
+  const prevMonth = () => shiftMonth(-1)
+  const nextMonth = () => shiftMonth(1)
 
   async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
+    // Read the form BEFORE any await — e.currentTarget is null once the
+    // handler yields, which made this throw mid-save and left the button
+    // spinning forever with nothing persisted.
+    const form = new FormData(e.currentTarget)
     setLoading(true)
     setError('')
 
-    const { createClient } = await import('@/lib/supabase/client')
-    const supabase = createClient()
-    const form = new FormData(e.currentTarget)
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
 
-    const { data, error: err } = await supabase
-      .from('content_calendar')
-      .insert({
-        org_id: orgId,
-        title: form.get('title') as string,
-        description: (form.get('description') as string) || null,
-        platform: form.get('platform') as ContentPlatform,
-        content_type: form.get('content_type') as ContentType,
-        scheduled_date: form.get('scheduled_date') as string,
-        scheduled_time: (form.get('scheduled_time') as string) || null,
-        status: 'planned',
-        assigned_to: (form.get('assigned_to') as string) || null,
-        notes: (form.get('notes') as string) || null,
-      })
-      .select('*, assigned_profile:profiles!content_calendar_assigned_to_fkey(full_name)')
-      .single()
+      const { data, error: err } = await supabase
+        .from('content_calendar')
+        .insert({
+          org_id: orgId,
+          title: form.get('title') as string,
+          description: (form.get('description') as string) || null,
+          platform: form.get('platform') as ContentPlatform,
+          content_type: form.get('content_type') as ContentType,
+          scheduled_date: form.get('scheduled_date') as string,
+          scheduled_time: (form.get('scheduled_time') as string) || null,
+          status: 'planned',
+          assigned_to: (form.get('assigned_to') as string) || null,
+          notes: (form.get('notes') as string) || null,
+        })
+        .select('*, assigned_profile:profiles!content_calendar_assigned_to_fkey(full_name)')
+        .single()
 
-    if (err) {
-      setError(err.message)
-    } else if (data) {
-      setContent((prev) => [...prev, data].sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date)))
-      setShowForm(false)
+      if (err) {
+        setError(err.message)
+      } else if (data) {
+        setContent((prev) => [...prev, data].sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date)))
+        setShowForm(false)
+      }
+    } catch (err) {
+      console.error('Content save failed:', err)
+      setError(err instanceof Error ? err.message : 'Failed to save')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   async function handleStatusChange(id: string, newStatus: ContentStatus) {
