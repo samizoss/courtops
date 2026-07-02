@@ -107,6 +107,8 @@ export default async function StaffPage() {
       schedulingSettings={schedulingSettings}
       clockNotesVisibility={clockNotesVisibility}
       weekStartDay={weekStartDay}
+      shiftsLoadedStart={availabilityRangeStart}
+      shiftsLoadedEnd={availabilityRangeEnd}
     />
   )
 }
