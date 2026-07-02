@@ -261,6 +261,13 @@ Your dashboard adapts to your role:
 - **Synced Court Reserve Events** — read-only preview of your CR events and upcoming sessions with registration counts, refreshed on each sync. These will anchor content campaigns. (Note: CR only exposes events that have at least one registration.)
 - **Google Sheets** — import leads from marketing campaign spreadsheets
 
+### Campaigns (Content > Campaigns)
+Campaigns group everything about one push — a league season, a membership drive, a summer camp — in one place:
+- **Create a campaign** with a name, color, goal, and date range (e.g. "Summer Kids Camp")
+- **Add milestones** — the dates that matter: registration opens, early-bird ends, first session
+- **Link Court Reserve events** — pick from your synced CR events; their sessions and registration counts appear automatically and stay current with each sync
+- Content planning around campaigns (the fan-out form and unified calendar) is coming next
+
 ### Content (Settings > Content)
 Configuration for content planning — set these up once and the planning tools use them everywhere:
 - **Channels** — enable the places you publish (Instagram, Facebook Page, Facebook Groups, CourtReserve email/text/push, in-clubhouse flyers and displays, TikTok). For each channel, prune the formats you actually use. Facebook Groups support multiple instances (e.g. a members-only group and a public one).

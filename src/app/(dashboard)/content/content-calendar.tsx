@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import type { ContentPlatform, ContentType, ContentStatus } from '@/types/database'
 
 interface ContentEntry {
@@ -152,12 +153,20 @@ export function ContentCalendarView({
           <h2 className="text-2xl font-bold">Content Calendar</h2>
           <p className="text-gray-400 text-sm mt-1">Plan and track content across platforms</p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          + New Content
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/calendar/campaigns"
+            className="px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 text-sm font-medium rounded-lg transition-colors"
+          >
+            Campaigns
+          </Link>
+          <button
+            onClick={() => setShowForm(true)}
+            className="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            + New Content
+          </button>
+        </div>
       </div>
 
       {error && <p className="text-red-400 text-sm mb-4">{error}</p>}

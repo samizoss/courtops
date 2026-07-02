@@ -155,8 +155,9 @@
             {"feature": "Platform picker (IG, FB, TikTok, email)", "status": "built"},
             {"feature": "Content type + status tracking", "status": "built"},
             {"feature": "Staff assignment", "status": "built"},
-            {"feature": "Court Reserve event integration", "status": "partial", "note": "Phases 1-2 of 6 shipped 7/1 — CR events syncing + Settings preview; campaign UI next"},
+            {"feature": "Court Reserve event integration", "status": "partial", "note": "Phases 1-3 of 6 shipped 7/1 — events sync, Settings config, campaigns; planning flow + unified calendar next"},
             {"feature": "Content settings: channels / pillars / audiences", "status": "built", "note": "Shipped 7/1 — Settings > Content, The Jar seeded with 5 pillars + 8 audiences"},
+            {"feature": "Campaigns with milestones + linked CR events", "status": "built", "note": "Shipped 7/1 — create/edit campaigns, milestones, CR event linking with auto session lists"},
             {"feature": "Design refresh / mockup", "status": "partial", "note": "Sami working on mockup for social meetings"}
           ]
         },
@@ -193,7 +194,7 @@
       "items": [
         {
           "title": "Content Planning Foundation",
-          "description": "Court Reserve events sync into CourtOps, and Settings → Content configures channels, pillars, and audiences for the campaign system.",
+          "description": "Court Reserve events sync into CourtOps, Settings → Content configures channels/pillars/audiences, and Campaigns group milestones + CR events into planning containers.",
           "shipped": "July 2026",
           "release": "2026-07-01"
         },
