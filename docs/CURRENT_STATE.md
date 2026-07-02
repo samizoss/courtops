@@ -44,7 +44,7 @@ After the QA round, two more merges landed:
 
 1. ~~**`time_clock_edits.time_clock_id` FK is ON DELETE CASCADE**~~ — ✅ **RESOLVED** by migration 019 (2026-07-01, applied to prod).
 2. **Release modal flags club-closed days as red "uncovered days"** — `orgHours` prop accepted but unused; daySummary iterates every calendar day. `schedule-tab.tsx` ReleaseScheduleModal.
-3. **±6-week shifts data horizon** — page.tsx loads shifts −1w..+6w; ScheduleTab never refetches on navigation (comment claims it does). Far-future navigation shows empty; Release modal undercounts for long windows but publishes blindly. Real fix = client refetch on range change.
+3. ~~**±6-week shifts data horizon**~~ — ✅ **RESOLVED 2026-07-02** (Geneva-would-have-hit-it: Julio's pre-June-25 shifts invisible). ScheduleTab now client-fetches a padded window whenever navigation leaves the loaded bounds, merged by id, reset on router.refresh(). Reviewer-verified (races, reset interaction, query parity). Residual nuance: the Release modal still computes from loaded shifts — fine for windows ≤ the navigated range, revisit if a window ever spans further than anyone has navigated.
 4. **parseLooseHHMM PM heuristic mangles morning availability** ("6-10" → 18:00–10:00 → block dropped → renders available ALL DAY in density strips). Two parser copies: `schedule-time-grid.tsx` + `schedule-tab.tsx`.
 5. **Closed-hours overlay treats fully-closed days as open** — getClosedRange ignores `open_days`; closed Sunday renders another day's hours unshaded. `schedule-time-grid.tsx:194`.
 6. **saveCell race** — success handler clears `dirty` on current state, not the saved snapshot; rapid toggle flips can silently drop the second write. `availability-by-date.tsx:307`.

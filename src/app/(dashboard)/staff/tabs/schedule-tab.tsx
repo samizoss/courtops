@@ -63,6 +63,10 @@ interface Props {
   schedulingSettings?: SchedulingSettings
   currentUser: { userId: string; orgId: string; role: string; fullName: string }
   weekStartDay?: number
+  /** Date-key bounds of the `shifts` prop as loaded server-side. Navigating
+   *  outside these bounds triggers a client-side fetch for the wider range. */
+  shiftsLoadedStart: string
+  shiftsLoadedEnd: string
 }
 
 type FilterMode = 'mine' | 'all'
@@ -411,7 +415,7 @@ function getTimelineRange(orgHours?: OrgHours): { startHour: number; endHour: nu
 }
 
 export function ScheduleTab({
-  shifts,
+  shifts: initialShifts,
   profiles,
   isAdmin,
   orgId,
@@ -423,12 +427,92 @@ export function ScheduleTab({
   schedulingSettings,
   currentUser,
   weekStartDay = 0,
+  shiftsLoadedStart,
+  shiftsLoadedEnd,
 }: Props) {
   const router = useRouter()
   const { toast } = useToast()
   const [mode, setMode] = useState<ViewMode>('week')
   const [anchor, setAnchor] = useState<Date>(() => startOfDay(new Date()))
   const [filter, setFilter] = useState<FilterMode>(isAdmin ? 'all' : 'mine')
+
+  // Shifts loaded so far, plus the date-key bounds they cover. Starts from
+  // the server-fetched window (-1w/+6w); navigating outside it fetches more
+  // client-side rather than showing an empty schedule (the schedule data
+  // horizon — see CURRENT_STATE.md known issues).
+  const [shifts, setShifts] = useState<ShiftWithProfile[]>(initialShifts)
+  const [loadedStart, setLoadedStart] = useState(shiftsLoadedStart)
+  const [loadedEnd, setLoadedEnd] = useState(shiftsLoadedEnd)
+  const [loadingMoreShifts, setLoadingMoreShifts] = useState(false)
+
+  // The server props reflect the canonical default window after every
+  // router.refresh() (e.g. post-edit). Reset to them here rather than
+  // merging by id, so a shift deleted outside the visible range can't
+  // linger as a ghost in local state; the range-effect below will re-fetch
+  // any out-of-window data the user is currently viewing.
+  useEffect(() => {
+    setShifts(initialShifts)
+    setLoadedStart(shiftsLoadedStart)
+    setLoadedEnd(shiftsLoadedEnd)
+  }, [initialShifts, shiftsLoadedStart, shiftsLoadedEnd])
+
+  const operationalIds = useMemo(() => new Set(profiles.map((p) => p.id)), [profiles])
+
+  useEffect(() => {
+    const range = visibleRange(anchor, mode, weekStartDay)
+    const rangeStartKey = fmtDateKey(range.start)
+    const rangeEndKey = fmtDateKey(range.end)
+    if (rangeStartKey >= loadedStart && rangeEndKey <= loadedEnd) return
+
+    let cancelled = false
+    async function loadMoreShifts() {
+      setLoadingMoreShifts(true)
+      try {
+        const { createClient } = await import('@/lib/supabase/client')
+        const supabase = createClient()
+
+        // Pad beyond just the visible range so scrolling a few days doesn't
+        // trigger a fetch on every click.
+        const padStart = new Date(range.start.getTime() - 14 * 86400000)
+        const padEnd = new Date(range.end.getTime() + 14 * 86400000)
+        const newStart = rangeStartKey < loadedStart ? fmtDateKey(padStart) : loadedStart
+        const newEnd = rangeEndKey > loadedEnd ? fmtDateKey(padEnd) : loadedEnd
+
+        let query = supabase
+          .from('shifts')
+          .select('*, profile:profiles!shifts_user_id_fkey(full_name)')
+          .eq('org_id', orgId)
+          .gte('shift_date', newStart)
+          .lte('shift_date', newEnd)
+          .order('shift_date')
+          .order('start_time')
+        if (!isAdmin) query = query.not('published_at', 'is', null)
+
+        const { data, error } = await query
+        if (error) throw error
+        if (cancelled) return
+
+        const rows = ((data ?? []) as ShiftWithProfile[]).filter((s) => operationalIds.has(s.user_id))
+        setShifts((prev) => {
+          const byId = new Map(prev.map((s) => [s.id, s]))
+          for (const row of rows) byId.set(row.id, row)
+          return Array.from(byId.values())
+        })
+        setLoadedStart(newStart)
+        setLoadedEnd(newEnd)
+      } catch (err) {
+        console.error('Failed to load shifts for this range:', err)
+        toast('Failed to load the schedule for this range', 'error')
+      } finally {
+        if (!cancelled) setLoadingMoreShifts(false)
+      }
+    }
+    loadMoreShifts()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anchor, mode, weekStartDay, loadedStart, loadedEnd, orgId, isAdmin])
 
   // Build mode: admin-only toggle that separates "viewing the published
   // schedule" from "building/editing draft shifts". Magic schedule, Publish,
@@ -806,6 +890,11 @@ export function ScheduleTab({
 
   const toolbarRight = (
     <div className="flex items-center gap-1 ml-2 flex-wrap">
+      {loadingMoreShifts && (
+        <span className="text-[10px] text-gray-500 italic px-1" aria-live="polite">
+          Loading schedule…
+        </span>
+      )}
       {(['mine', 'all'] as FilterMode[]).map((f) => (
         <button
           key={f}
