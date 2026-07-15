@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<title>The Jar Pickleball Club — {{MONTH}} Newsletter</title>
+<!--[if mso]>
+<noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript>
+<![endif]-->
+<!--[if !mso]><!-->
+<link href="https://fonts.googleapis.com/css2?family=Days+One&family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
+<!--<![endif]-->
+<style>
+  body { margin:0; padding:0; background:#fffffb; -webkit-text-size-adjust:100%; }
+  table { border-collapse:collapse; }
+  img { border:0; display:block; }
+  .h1 { font-family:'Days One', Montserrat, Impact, 'Arial Black', sans-serif; text-transform:uppercase; }
+  .body-text { font-family:'Montserrat', Calibri, Arial, sans-serif; }
+  @media only screen and (max-width:660px) {
+    .container { width:100% !important; }
+    .stack { display:block !important; width:100% !important; }
+    .px { padding-left:20px !important; padding-right:20px !important; }
+    .hero-h { font-size:30px !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- SLOT: PREHEADER — 40-100 chars, teases the hero offer. Shows next to subject line in inbox. -->
+<div style="display:none;font-size:1px;color:#fffffb;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">
+{{PREHEADER}}
+</div>
+
+<center>
+<table role="presentation" width="100%" bgcolor="#fffffb" cellpadding="0" cellspacing="0">
+<tr><td align="center" style="padding:20px 10px;">
+<table role="presentation" class="container" width="640" cellpadding="0" cellspacing="0" style="width:640px;max-width:640px;">
+
+<!-- ============ HEADER / MASTHEAD ============ -->
+<tr>
+  <td align="center" style="padding:16px 0 8px 0;">
+    <img src="https://tgcstorage.blob.core.windows.net/court-reserve-13403/c4a7193c-7c56-4fa9-bd30-51bacb88bd4d.jpg" alt="The Jar Pickleball Club" width="150" style="width:150px;height:auto;margin:0 auto;">
+    <p class="body-text" style="color:#004a8d;font-size:15px;font-weight:600;letter-spacing:2px;text-transform:uppercase;margin:10px 0 0 0;font-family:'Montserrat',Calibri,Arial,sans-serif;">
+      {{MONTH}} {{YEAR}} NEWSLETTER
+    </p>
+  </td>
+</tr>
+<tr><td style="border-top:3px solid #004a8d;font-size:1px;line-height:1px;">&nbsp;</td></tr>
+
+<!-- SLOT: HERO_IMAGE — replace in Court Reserve editor. Suggestion goes in the placeholder text.
+     Photo guide: action shot or social moment tied to the hero topic. Well-lit, high contrast, real players. -->
+<tr>
+  <td bgcolor="#004a8d" align="center" style="padding:0;">
+    <img src="https://placehold.co/640x300/26256e/65bee5?text={{HERO_IMAGE_SUGGESTION}}" alt="{{HERO_IMAGE_ALT}}" width="640" style="width:100%;max-width:640px;height:auto;">
+  </td>
+</tr>
+<!-- ============ HERO — the month's #1 push. One headline, one button. ============ -->
+<!-- SLOT: HERO — headline (Days One caps, keep under 6 words), 1-2 sentence value line, button label + Court Reserve deep link -->
+<tr>
+  <td bgcolor="#004a8d" align="center" class="px" style="padding:40px 36px;">
+    <h1 class="h1 hero-h" style="color:#ffffff;font-size:34px;line-height:1.2;margin:0 0 12px 0;font-family:'Days One',Montserrat,Impact,'Arial Black',sans-serif;text-transform:uppercase;">
+      {{HERO_HEADLINE}}
+    </h1>
+    <p class="body-text" style="color:#ffffff;font-size:16px;line-height:1.5;margin:0 0 24px 0;font-family:'Montserrat',Calibri,Arial,sans-serif;">
+      {{HERO_VALUE_LINE}}
+    </p>
+    <!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" href="{{HERO_URL}}" style="height:48px;v-text-anchor:middle;width:230px;" arcsize="50%" fillcolor="#b42033" stroke="f"><center style="color:#ffffff;font-family:Impact,Arial Black,sans-serif;font-size:15px;">{{HERO_CTA}}</center></v:roundrect><![endif]-->
+    <!--[if !mso]><!-->
+    <a href="{{HERO_URL}}" class="h1" style="display:inline-block;background:#b42033;border-radius:999px;padding:15px 36px;color:#ffffff;font-size:15px;text-decoration:none;font-family:'Days One',Montserrat,Impact,sans-serif;text-transform:uppercase;">{{HERO_CTA}}</a>
+    <!--<![endif]-->
+  </td>
+</tr>
+
+<!-- ============ AT A GLANCE — previews with dates, not bare topics ============ -->
+<!-- SLOT: GLANCE_ITEMS — 3-5 bullets, each with a date or deadline ("Fall league reg opens 8/4 @ noon") -->
+<tr>
+  <td bgcolor="#ffffff" class="px" style="padding:28px 36px;">
+    <h2 class="h1" style="color:#b42033;font-size:22px;margin:0 0 12px 0;font-family:'Days One',Montserrat,Impact,sans-serif;text-transform:uppercase;">This Month at a Glance</h2>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      <tr><td class="body-text" style="color:#231f20;font-size:15px;line-height:1.8;font-family:'Montserrat',Calibri,Arial,sans-serif;">
+        {{GLANCE_ITEMS}}
+      </td></tr>
+    </table>
+  </td>
+</tr>
+<tr><td style="border-top:3px solid #004a8d;font-size:1px;line-height:1px;">&nbsp;</td></tr>
+
+<!-- ============ LEAGUE LINEUP — each league gets its own register button ============ -->
+<tr>
+  <td bgcolor="#ffffff" class="px" style="padding:32px 36px 12px 36px;">
+    <h2 class="h1" style="color:#004a8d;font-size:26px;margin:0 0 6px 0;font-family:'Days One',Montserrat,Impact,sans-serif;text-transform:uppercase;">League Lineup</h2>
+    <p class="body-text" style="color:#231f20;font-size:14px;margin:0 0 20px 0;font-family:'Montserrat',Calibri,Arial,sans-serif;"><em>{{LEAGUE_INTRO}}</em></p>
+
+    <!-- SLOT: LEAGUE_ROWS — repeat this block per league -->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:14px;border-left:4px solid #b42033;">
+      <tr>
+        <td style="padding:10px 14px;">
+          <p class="body-text" style="color:#231f20;font-size:16px;font-weight:700;margin:0;font-family:'Montserrat',Calibri,Arial,sans-serif;">{{LEAGUE_NAME}}</p>
+          <p class="body-text" style="color:#555555;font-size:13px;margin:2px 0 0 0;font-family:'Montserrat',Calibri,Arial,sans-serif;">{{LEAGUE_DETAIL}}</p>
+        </td>
+        <td align="right" style="padding:10px 14px;" width="130">
+          <a href="{{LEAGUE_URL}}" class="body-text" style="display:inline-block;background:#004a8d;border-radius:999px;padding:9px 18px;color:#ffffff;font-size:12px;font-weight:700;text-decoration:none;font-family:'Montserrat',Calibri,Arial,sans-serif;text-transform:uppercase;">Register</a>
+        </td>
+      </tr>
+    </table>
+    <!-- /LEAGUE_ROWS -->
+
+    <!-- SLOT: LEAGUE_REG_DATES — member vs daily player registration windows -->
+    <p class="body-text" style="color:#231f20;font-size:14px;line-height:1.6;margin:12px 0 24px 0;font-family:'Montserrat',Calibri,Arial,sans-serif;">
+      {{LEAGUE_REG_DATES}}
+    </p>
+  </td>
+</tr>
+
+<!-- ============ UPCOMING EVENTS — date blocks, scannable ============ -->
+<tr>
+  <td bgcolor="#fffffb" class="px" style="padding:32px 36px;">
+    <h2 class="h1" style="color:#004a8d;font-size:26px;margin:0 0 20px 0;font-family:'Days One',Montserrat,Impact,sans-serif;text-transform:uppercase;">Upcoming Events</h2>
+
+    <!-- SLOT: EVENT_ROWS — repeat per event -->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:16px;">
+      <tr>
+        <td width="64" valign="top" bgcolor="#004a8d" align="center" style="border-radius:8px;padding:10px 0;">
+          <span class="h1" style="color:#ffffff;font-size:20px;font-family:'Days One',Montserrat,Impact,sans-serif;display:block;">{{EVENT_DAY}}</span>
+          <span class="body-text" style="color:#65bee5;font-size:11px;font-family:'Montserrat',Calibri,sans-serif;text-transform:uppercase;display:block;">{{EVENT_MON}}</span>
+        </td>
+        <td width="14"></td>
+        <td valign="top">
+          <p class="body-text" style="color:#231f20;font-size:16px;font-weight:700;margin:0;font-family:'Montserrat',Calibri,Arial,sans-serif;">{{EVENT_NAME}}</p>
+          <p class="body-text" style="color:#555555;font-size:14px;line-height:1.5;margin:4px 0 0 0;font-family:'Montserrat',Calibri,Arial,sans-serif;">{{EVENT_DETAIL}} <a href="{{EVENT_URL}}" style="color:#004a8d;font-weight:700;">Sign up →</a></p>
+        </td>
+      </tr>
+    </table>
+    <!-- /EVENT_ROWS -->
+  </td>
+</tr>
+
+<!-- ============ CLASSES & CLINICS ============ -->
+<!-- SLOT: CLINIC_CONTENT — LTP sessions, Liveball times, clinic schedule + booking links -->
+<tr>
+  <td bgcolor="#ffffff" class="px" style="padding:32px 36px;">
+    <h2 class="h1" style="color:#004a8d;font-size:26px;margin:0 0 12px 0;font-family:'Days One',Montserrat,Impact,sans-serif;text-transform:uppercase;">Classes &amp; Clinics</h2>
+    <div class="body-text" style="color:#231f20;font-size:15px;line-height:1.7;font-family:'Montserrat',Calibri,Arial,sans-serif;">
+      {{CLINIC_CONTENT}}
+    </div>
+  </td>
+</tr>
+
+<!-- ============ CLUB ANNOUNCEMENTS ============ -->
+<!-- SLOT: ANNOUNCEMENT_BLOCKS — repeat h3 + paragraph per announcement; sale/urgency items get a button -->
+<tr>
+  <td bgcolor="#004a8d" class="px" style="padding:32px 36px;">
+    <h2 class="h1" style="color:#ffffff;font-size:26px;margin:0 0 16px 0;font-family:'Days One',Montserrat,Impact,sans-serif;text-transform:uppercase;">Club Announcements</h2>
+    <div class="body-text" style="color:#ffffff;font-size:15px;line-height:1.7;font-family:'Montserrat',Calibri,Arial,sans-serif;">
+      {{ANNOUNCEMENT_BLOCKS}}
+    </div>
+  </td>
+</tr>
+
+<!-- ============ COMMUNITY — spotlight + staff shout-out, then coach's corner ============ -->
+<!-- SLOT: COMMUNITY_IMAGE — replace in Court Reserve editor. Social moment: laughing, high-fives, league night crowd. -->
+<tr>
+  <td bgcolor="#fffffb" align="center" class="px" style="padding:0 36px;">
+    <img src="https://placehold.co/568x240/e0e0e0/555555?text={{COMMUNITY_IMAGE_SUGGESTION}}" alt="{{COMMUNITY_IMAGE_ALT}}" width="568" style="width:100%;max-width:568px;height:auto;border-radius:12px;">
+  </td>
+</tr>
+
+<tr>
+  <td bgcolor="#fffffb" class="px" style="padding:32px 36px 8px 36px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td class="stack" width="48%" valign="top" bgcolor="#ffffff" style="border:1px solid #e0e0e0;border-radius:12px;padding:20px;">
+          <h3 class="h1" style="color:#b42033;font-size:17px;margin:0 0 8px 0;font-family:'Days One',Montserrat,Impact,sans-serif;text-transform:uppercase;">Member Spotlight</h3>
+          <p class="body-text" style="color:#231f20;font-size:15px;font-weight:700;margin:0 0 6px 0;font-family:'Montserrat',Calibri,Arial,sans-serif;">{{SPOTLIGHT_NAME}}</p>
+          <p class="body-text" style="color:#555555;font-size:13px;line-height:1.6;margin:0;font-family:'Montserrat',Calibri,Arial,sans-serif;">{{SPOTLIGHT_TEXT}}</p>
+        </td>
+        <td class="stack" width="4%">&nbsp;</td>
+        <td class="stack" width="48%" valign="top" bgcolor="#ffffff" style="border:1px solid #e0e0e0;border-radius:12px;padding:20px;">
+          <h3 class="h1" style="color:#b42033;font-size:17px;margin:0 0 8px 0;font-family:'Days One',Montserrat,Impact,sans-serif;text-transform:uppercase;">Staff Shout-Out</h3>
+          <p class="body-text" style="color:#231f20;font-size:15px;font-weight:700;margin:0 0 6px 0;font-family:'Montserrat',Calibri,Arial,sans-serif;">{{STAFF_NAME}}</p>
+          <p class="body-text" style="color:#555555;font-size:13px;line-height:1.6;margin:0;font-family:'Montserrat',Calibri,Arial,sans-serif;">{{STAFF_TEXT}}</p>
+        </td>
+      </tr>
+    </table>
+  </td>
+</tr>
+<tr>
+  <td bgcolor="#fffffb" class="px" style="padding:20px 36px 32px 36px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#26256e" style="border-radius:12px;">
+      <tr><td style="padding:24px 28px;">
+        <h3 class="h1" style="color:#65bee5;font-size:17px;margin:0 0 10px 0;font-family:'Days One',Montserrat,Impact,sans-serif;text-transform:uppercase;">Coach's Corner</h3>
+        <p class="body-text" style="color:#ffffff;font-size:16px;line-height:1.6;margin:0 0 8px 0;font-family:'Montserrat',Calibri,Arial,sans-serif;"><strong>&ldquo;{{COACH_QUOTE}}&rdquo;</strong></p>
+        <p class="body-text" style="color:#65bee5;font-size:13px;text-align:right;margin:0;font-family:'Montserrat',Calibri,Arial,sans-serif;">&mdash; {{COACH_NAME}}</p>
+      </td></tr>
+    </table>
+  </td>
+</tr>
+
+<!-- ============ LOOKING AHEAD ============ -->
+<!-- SLOT: AHEAD_ITEMS — 2-4 next-month teasers with dates -->
+<tr>
+  <td bgcolor="#ffffff" class="px" style="padding:28px 36px;">
+    <h2 class="h1" style="color:#b42033;font-size:22px;margin:0 0 10px 0;font-family:'Days One',Montserrat,Impact,sans-serif;text-transform:uppercase;">Looking Ahead</h2>
+    <div class="body-text" style="color:#231f20;font-size:15px;line-height:1.8;font-family:'Montserrat',Calibri,Arial,sans-serif;">
+      {{AHEAD_ITEMS}}
+    </div>
+  </td>
+</tr>
+
+<!-- ============ SIGN-OFF ============ -->
+<tr>
+  <td bgcolor="#fffffb" class="px" style="padding:24px 36px;">
+    <p class="body-text" style="color:#231f20;font-size:15px;line-height:1.7;margin:0 0 8px 0;font-family:'Montserrat',Calibri,Arial,sans-serif;">
+      {{SIGNOFF_TEXT}}
+    </p>
+    <p class="h1" style="color:#004a8d;font-size:16px;text-align:right;margin:0;font-family:'Days One',Montserrat,Impact,sans-serif;text-transform:uppercase;">&mdash; The Jar Crew</p>
+  </td>
+</tr>
+
+<!-- ============ FOOTER ============ -->
+<tr>
+  <td bgcolor="#231f20" align="center" class="px" style="padding:28px 36px;">
+    <p class="body-text" style="color:#ffffff;font-size:13px;font-style:italic;margin:0 0 10px 0;font-family:'Montserrat',Calibri,Arial,sans-serif;">Where Fun Meets Fierce Competition</p>
+    <p class="body-text" style="color:#ffffff;font-size:12px;line-height:1.7;margin:0 0 14px 0;font-family:'Montserrat',Calibri,Arial,sans-serif;">
+      The Jar Pickleball Club &bull; 3701 S. Western Ave., Sioux Falls, SD<br>
+      Sun 8am&ndash;8pm | Mon/Wed 7am&ndash;9pm | Tue/Thu 5am&ndash;9pm | Fri/Sat 7am&ndash;10pm &nbsp;|&nbsp;
+      <a href="mailto:contactpbj@thepbjar.com" style="color:#65bee5;text-decoration:none;">contactpbj@thepbjar.com</a>
+    </p>
+    <table role="presentation" cellpadding="0" cellspacing="0" align="center">
+      <tr>
+        <td style="padding:0 6px;"><a href="https://thepbjar.com"><img src="https://app.courtreserve.com/Content/Images/email/globe_white.png" alt="Website" width="28"></a></td>
+        <td style="padding:0 6px;"><a href="https://www.instagram.com/thejarpickleballclub/"><img src="https://app.courtreserve.com/Content/Images/email/instagram_white.png" alt="Instagram" width="28"></a></td>
+        <td style="padding:0 6px;"><a href="https://www.facebook.com/thejarpickleballclub/"><img src="https://app.courtreserve.com/Content/Images/email/facebook_white.png" alt="Facebook" width="28"></a></td>
+        <td style="padding:0 6px;"><a href="https://www.facebook.com/share/g/1DGYNhVqYR/"><img src="https://app.courtreserve.com/Content/Images/email/facebook_white.png" alt="Facebook Group" width="28"></a></td>
+      </tr>
+    </table>
+  </td>
+</tr>
+
+</table>
+</td></tr>
+</table>
+</center>
+</body>
+</html>
