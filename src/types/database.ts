@@ -474,6 +474,26 @@ export interface CrSyncLog {
   status: string
 }
 
+export interface WeeklyDigestEvent {
+  dayIndex: number // 0=Mon..6=Sun
+  startTime: string
+  endTime: string
+  startIso: string
+  name: string
+}
+
+export interface WeeklyDigestRun {
+  id: string
+  org_id: string
+  week_start: string
+  week_end: string
+  status: 'success' | 'error'
+  error: string | null
+  events: WeeklyDigestEvent[]
+  triggered_by: 'manual' | 'cron'
+  generated_at: string
+}
+
 export interface OrgMessagingConfig {
   id: string
   org_id: string
