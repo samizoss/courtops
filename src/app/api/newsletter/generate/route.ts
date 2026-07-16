@@ -9,6 +9,7 @@ import {
   expandBlock,
   applyUtm,
   qaGate,
+  sanitizeModelHtml,
   type SlotValue,
 } from '@/lib/newsletter'
 
@@ -104,10 +105,18 @@ const MONTH_NAMES = [
   'july', 'august', 'september', 'october', 'november', 'december',
 ]
 
+// Bad URLs must fail fast at request validation (400) rather than surviving the paid Anthropic
+// call only to be caught by qaGate afterward (422). qaGate's own https-only rule stays as the
+// last line of defense against anything that slips past this.
+const HttpsUrlSchema = z
+  .string()
+  .url({ message: 'must be a valid URL' })
+  .refine((v) => /^https:\/\//i.test(v), { message: 'must be an https:// URL' })
+
 const LeagueSchema = z.object({
   name: z.string(),
   detail: z.string(),
-  url: z.string(),
+  url: HttpsUrlSchema,
 })
 
 const EventSchema = z.object({
@@ -115,7 +124,7 @@ const EventSchema = z.object({
   mon: z.string(),
   name: z.string(),
   detail: z.string(),
-  url: z.string(),
+  url: HttpsUrlSchema,
 })
 
 const GenerateRequestSchema = z.object({
@@ -127,7 +136,7 @@ const GenerateRequestSchema = z.object({
   year: z.number().int(),
   notes: z.string(),
   heroTopic: z.string().min(1, 'Hero topic is required'),
-  heroUrl: z.string().min(1, 'Hero registration URL is required'),
+  heroUrl: HttpsUrlSchema,
   leagues: z.array(LeagueSchema).default([]),
   events: z.array(EventSchema).default([]),
   memberRegOpen: z.string().default(''),
@@ -271,7 +280,8 @@ export async function POST(request: Request) {
     if ((URL_ENCODED_SLOT_KEYS as readonly string[]).includes(key)) {
       slots[key] = { value: encodeURIComponent(value), html: true }
     } else if ((HTML_SLOT_KEYS as readonly string[]).includes(key)) {
-      slots[key] = { value, html: true }
+      // Model output injected raw — defang script/event-handler/javascript-uri vectors first.
+      slots[key] = { value: sanitizeModelHtml(value), html: true }
     } else {
       slots[key] = value
     }

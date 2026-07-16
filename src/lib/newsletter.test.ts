@@ -6,6 +6,7 @@ import {
   applyUtm,
   qaGate,
   loadNewsletterTemplate,
+  sanitizeModelHtml,
 } from './newsletter'
 
 describe('loadNewsletterTemplate', () => {
@@ -85,6 +86,50 @@ describe('expandBlock', () => {
   })
 })
 
+describe('sanitizeModelHtml', () => {
+  it('strips <script>...</script> blocks entirely', () => {
+    const html = '<p>Hi</p><script>alert("pwned")</script><p>Bye</p>'
+    const out = sanitizeModelHtml(html)
+    expect(out).not.toContain('<script')
+    expect(out).not.toContain('alert')
+    expect(out).toBe('<p>Hi</p><p>Bye</p>')
+  })
+
+  it('strips stray/unclosed script tags', () => {
+    const html = '<p>Hi</p><script src="https://evil.example/x.js">'
+    const out = sanitizeModelHtml(html)
+    expect(out).not.toContain('<script')
+  })
+
+  it('strips onclick and other event-handler attributes (double, single, unquoted)', () => {
+    const html =
+      '<div onclick="alert(1)">A</div><div onmouseover=\'alert(2)\'>B</div><div onload=alert(3)>C</div>'
+    const out = sanitizeModelHtml(html)
+    expect(out).not.toContain('onclick')
+    expect(out).not.toContain('onmouseover')
+    expect(out).not.toContain('onload')
+    expect(out).not.toContain('alert')
+  })
+
+  it('neutralizes javascript: hrefs', () => {
+    const html = '<a href="javascript:alert(1)">Click</a>'
+    const out = sanitizeModelHtml(html)
+    expect(out).not.toContain('javascript:')
+  })
+
+  it('neutralizes data:text/html sources', () => {
+    const html = '<img src="data:text/html;base64,PHNjcmlwdD4=">'
+    const out = sanitizeModelHtml(html)
+    expect(out).not.toContain('data:text/html')
+  })
+
+  it('leaves benign inline-style HTML completely unchanged', () => {
+    const html =
+      '<p style="color:#26256e;font-weight:600;">Open Play <strong>this Saturday</strong> at 9am.</p><br><h3 style="margin:0;">Announcement</h3>'
+    expect(sanitizeModelHtml(html)).toBe(html)
+  })
+})
+
 describe('applyUtm', () => {
   it('appends utm params to a thepbjar.com link with no existing query string', () => {
     const html = '<a href="https://thepbjar.com/register">Go</a>'
@@ -111,6 +156,14 @@ describe('applyUtm', () => {
     const html =
       '<a href="https://thepbjar.com/register?utm_source=newsletter&utm_medium=email&utm_campaign=2026-07">Go</a>'
     expect(applyUtm(html, '2026-08')).toBe(html)
+  })
+
+  it('appends utm params to a single-quoted href, preserving single quotes', () => {
+    const html = "<a href='https://thepbjar.com/register'>Go</a>"
+    const out = applyUtm(html, '2026-08')
+    expect(out).toBe(
+      "<a href='https://thepbjar.com/register?utm_source=newsletter&utm_medium=email&utm_campaign=2026-08'>Go</a>"
+    )
   })
 })
 
@@ -140,6 +193,24 @@ describe('qaGate', () => {
       '<a href="https://thepbjar.com">Go</a><a href="mailto:contactpbj@thepbjar.com">Email</a>'
     )
     expect(result.errors).toHaveLength(0)
+  })
+
+  it('checks single-quoted hrefs the same as double-quoted', () => {
+    const clean = qaGate("<a href='https://thepbjar.com'>Go</a>")
+    expect(clean.errors).toHaveLength(0)
+
+    const bad = qaGate("<a href='http://thepbjar.com'>Go</a>")
+    expect(bad.errors.some((e) => e.includes('Insecure or malformed link'))).toBe(true)
+  })
+
+  it('errors on an unquoted href attribute', () => {
+    const result = qaGate('<a href=https://thepbjar.com>Go</a>')
+    expect(result.errors.some((e) => /unquoted/i.test(e))).toBe(true)
+  })
+
+  it('errors on any remaining literal "{{" even when not shaped like a {{TOKEN}}', () => {
+    const result = qaGate('<p>oops {{ leftover mustache</p>')
+    expect(result.errors.some((e) => e.includes("{{"))).toBe(true)
   })
 
   it('warns (does not error) on placehold.co placeholder images', () => {

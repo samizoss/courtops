@@ -408,7 +408,12 @@ export function NewsletterBuilder() {
           {html ? (
             <>
               <div className="bg-white rounded-xl overflow-hidden border border-gray-800">
-                <iframe srcDoc={html} className="w-full h-[80vh] bg-white" title="Newsletter preview" />
+                <iframe
+                  srcDoc={html}
+                  sandbox=""
+                  className="w-full h-[80vh] bg-white"
+                  title="Newsletter preview"
+                />
               </div>
 
               {warnings.length > 0 && (
