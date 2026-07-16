@@ -1,5 +1,8 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import type { CREventRegistration } from '@/lib/courtreserve'
 import { JAR_BRAND } from '@/lib/jar-brand'
+import { escapeHtml, injectSlots, expandBlock } from '@/lib/template-engine'
 
 const TZ = JAR_BRAND.club.timezone // America/Chicago
 
@@ -70,3 +73,23 @@ export function formatDateRange(startDate: string, endDate: string): string {
 }
 
 export const DAY_LABELS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const
+
+export function renderDigestEmail(events: DigestEvent[], window: { start: string; end: string }): string {
+  const template = fs.readFileSync(path.join(process.cwd(), 'templates', 'weekly-digest.html'), 'utf8')
+  const byDay = DAY_LABELS.map((_, i) => events.filter((e) => e.dayIndex === i))
+  const maxPerDay = Math.max(0, ...byDay.map((d) => d.length))
+  const fontSize = maxPerDay > 5 ? 13 : 15 // >5 events: shrink one step, never truncate
+  const rows = DAY_LABELS.map((label, i) => ({
+    DAY_LABEL: label,
+    ROW_FONT_SIZE: String(fontSize),
+    DAY_EVENTS: {
+      value: byDay[i]
+        .map((e) => `${escapeHtml(formatTimeRange(e.startTime, e.endTime))} | <strong>${escapeHtml(e.name)}</strong>`)
+        .join('<br>'),
+      html: true as const,
+    },
+  }))
+  let html = expandBlock(template, 'DAY_ROWS', rows)
+  html = injectSlots(html, { DATE_RANGE: formatDateRange(window.start, window.end) })
+  return html
+}

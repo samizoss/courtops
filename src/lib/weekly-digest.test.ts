@@ -4,7 +4,9 @@ import {
   normalizeEvents,
   formatTimeRange,
   formatDateRange,
+  renderDigestEmail,
   DAY_LABELS,
+  type DigestEvent,
 } from './weekly-digest'
 import type { CREventRegistration } from '@/lib/courtreserve'
 
@@ -172,5 +174,77 @@ describe('DAY_LABELS', () => {
       'saturday',
       'sunday',
     ])
+  })
+})
+
+describe('renderDigestEmail', () => {
+  const window = { start: '2026-07-20', end: '2026-07-26' }
+
+  function ev(overrides: Partial<DigestEvent>): DigestEvent {
+    return {
+      dayIndex: 0,
+      startTime: '2026-07-20T12:00:00.000Z',
+      endTime: '2026-07-20T15:00:00.000Z',
+      startIso: '2026-07-20T12:00:00.000Z',
+      name: 'Open Play',
+      ...overrides,
+    }
+  }
+
+  it('always renders all 7 day rows, even with zero events', () => {
+    const html = renderDigestEmail([], window)
+    for (const label of DAY_LABELS) {
+      expect(html).toContain(`>${label}<`)
+    }
+  })
+
+  it('renders an empty right cell for a day with no events', () => {
+    const events = [ev({ dayIndex: 0 })] // only Monday has an event
+    const html = renderDigestEmail(events, window)
+    // Sunday (dayIndex 6) row should have an empty <p> for DAY_EVENTS
+    const sundayRowMatch = html.match(/>sunday<[\s\S]*?<p[^>]*>([\s\S]*?)<\/p>/)
+    expect(sundayRowMatch).not.toBeNull()
+    expect(sundayRowMatch![1].trim()).toBe('')
+  })
+
+  it('shrinks font size to 13 when any day has more than 5 events', () => {
+    const events = Array.from({ length: 6 }, (_, i) =>
+      ev({ dayIndex: 2, name: `Event ${i}`, startTime: `2026-07-22T${12 + i}:00:00.000Z`, endTime: `2026-07-22T${13 + i}:00:00.000Z` })
+    )
+    const html = renderDigestEmail(events, window)
+    expect(html).toContain('font-size:13px')
+    expect(html).not.toContain('font-size:15px')
+  })
+
+  it('uses font size 15 when no day exceeds 5 events', () => {
+    const events = [ev({ dayIndex: 0 }), ev({ dayIndex: 1 })]
+    const html = renderDigestEmail(events, window)
+    expect(html).toContain('font-size:15px')
+  })
+
+  it('never truncates events, even when a day has more than 5', () => {
+    const events = Array.from({ length: 8 }, (_, i) =>
+      ev({ dayIndex: 3, name: `Session ${i}`, startTime: `2026-07-23T${12 + i}:00:00.000Z`, endTime: `2026-07-23T${13 + i}:00:00.000Z` })
+    )
+    const html = renderDigestEmail(events, window)
+    for (let i = 0; i < 8; i++) {
+      expect(html).toContain(`Session ${i}`)
+    }
+  })
+
+  it('contains the formatted date range', () => {
+    const html = renderDigestEmail([], window)
+    expect(html).toContain('7/20 – 7/26')
+  })
+
+  it('leaves no unfilled {{ }} tokens', () => {
+    const html = renderDigestEmail([ev({})], window)
+    expect(html).not.toContain('{{')
+  })
+
+  it('keeps event names verbatim and bold, time regular', () => {
+    const html = renderDigestEmail([ev({ name: 'HIP Class (3.5+)' })], window)
+    expect(html).toContain('<strong>HIP Class (3.5+)</strong>')
+    expect(html).toContain('7:00 - 10:00 AM')
   })
 })
