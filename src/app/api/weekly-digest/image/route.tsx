@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { ImageResponse } from 'next/og'
 import { NextResponse } from 'next/server'
 import { getUserOrg } from '@/lib/get-user-org'
@@ -10,10 +12,21 @@ export const runtime = 'nodejs'
 const WIDTH = 1080
 const HEIGHT = 1350
 
-// Module scope — fetched once per lambda instance, cached across invocations.
-const daysOneRegular = fetch(new URL('./fonts/DaysOne-Regular.ttf', import.meta.url)).then((r) => r.arrayBuffer())
-const montserratRegular = fetch(new URL('./fonts/Montserrat-Regular.ttf', import.meta.url)).then((r) => r.arrayBuffer())
-const montserratBold = fetch(new URL('./fonts/Montserrat-Bold.ttf', import.meta.url)).then((r) => r.arrayBuffer())
+// Module scope — read once per lambda instance, cached across invocations.
+//
+// Deviation from the original plan (`fetch(new URL('./fonts/*.ttf',
+// import.meta.url))`): under this repo's Turbopack + Node.js route-handler
+// runtime, that pattern throws `TypeError: fetch failed` / `Error: not
+// implemented... yet` — Node's fetch (undici) does not support `file://`
+// URLs the way Edge runtime's fetch does. fs.readFileSync is the same
+// pattern already used by `templates/weekly-digest.html` elsewhere in this
+// feature, so this keeps one consistent asset-loading approach. Traced into
+// the Vercel bundle via `outputFileTracingIncludes` in next.config.ts (same
+// fix `templates/` needed).
+const FONTS_DIR = path.join(process.cwd(), 'src', 'app', 'api', 'weekly-digest', 'image', 'fonts')
+const daysOneRegular = fs.readFileSync(path.join(FONTS_DIR, 'DaysOne-Regular.ttf'))
+const montserratRegular = fs.readFileSync(path.join(FONTS_DIR, 'Montserrat-Regular.ttf'))
+const montserratBold = fs.readFileSync(path.join(FONTS_DIR, 'Montserrat-Bold.ttf'))
 
 export async function GET(request: Request) {
   const org = await getUserOrg()
@@ -50,7 +63,9 @@ export async function GET(request: Request) {
   const eventFontSize = maxPerDay > 5 ? 19 : 24
   const dateRange = formatDateRange(run.week_start, run.week_end)
 
-  const [daysOne, mont, montBold] = await Promise.all([daysOneRegular, montserratRegular, montserratBold])
+  const daysOne = daysOneRegular
+  const mont = montserratRegular
+  const montBold = montserratBold
 
   const image = new ImageResponse(
     (
@@ -100,7 +115,6 @@ export async function GET(request: Request) {
             flexDirection: 'column',
             alignItems: 'center',
             paddingTop: 64,
-            zIndex: 1,
           }}
         >
           <div
@@ -151,7 +165,8 @@ export async function GET(request: Request) {
           </div>
         </div>
 
-        {/* Day rows */}
+        {/* Day rows — each row sizes to its own content (never forced into an
+            equal 1/7 slice) so a busy day can never overlap its neighbor. */}
         <div
           style={{
             display: 'flex',
@@ -160,7 +175,6 @@ export async function GET(request: Request) {
             marginTop: 48,
             paddingLeft: 56,
             paddingRight: 56,
-            zIndex: 1,
           }}
         >
           {DAY_LABELS.map((label, i) => (
@@ -172,7 +186,6 @@ export async function GET(request: Request) {
                 borderTop: '2px solid #ffffff',
                 paddingTop: 14,
                 paddingBottom: 14,
-                flex: 1,
               }}
             >
               <div
@@ -217,7 +230,6 @@ export async function GET(request: Request) {
             justifyContent: 'center',
             paddingBottom: 40,
             paddingTop: 16,
-            zIndex: 1,
           }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
