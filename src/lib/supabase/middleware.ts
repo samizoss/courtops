@@ -90,7 +90,15 @@ export async function updateSession(request: NextRequest) {
     !request.nextUrl.pathname.startsWith('/reset-password') &&
     !request.nextUrl.pathname.startsWith('/releases') &&
     !request.nextUrl.pathname.startsWith('/roadmap') &&
-    !request.nextUrl.pathname.startsWith('/api/roadmap')
+    !request.nextUrl.pathname.startsWith('/api/roadmap') &&
+    // /api/weekly-digest/run is hit by Vercel Cron (Bearer CRON_SECRET, no
+    // session cookie) — without this bypass, middleware redirects the cron's
+    // request to /login before the route's own auth check ever runs. The
+    // route itself still enforces auth (Bearer CRON_SECRET for GET, admin
+    // session via getUserOrg() for POST); this only stops middleware from
+    // pre-empting that with an HTML redirect. See PR for the same latent gap
+    // affecting /api/cron/availability-reminders (out of scope here).
+    !request.nextUrl.pathname.startsWith('/api/weekly-digest')
   ) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'

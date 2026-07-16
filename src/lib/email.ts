@@ -269,6 +269,165 @@ export async function sendAvailabilityReminderEmail(params: AvailabilityReminder
   return data
 }
 
+export interface WeeklyDigestReadyEmailParams {
+  to: string
+  staffName: string
+  orgName: string
+  dateRange: string
+  link: string
+}
+
+export async function sendWeeklyDigestReadyEmail(params: WeeklyDigestReadyEmailParams) {
+  const { to, staffName, orgName, dateRange, link } = params
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>This week's digest is ready — ${escapeHtml(orgName)}</title></head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f5f5f5;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:40px 20px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+          <tr>
+            <td style="padding:32px 40px 24px;border-bottom:1px solid #eee;">
+              <h1 style="margin:0;font-size:24px;color:#111;font-weight:700;letter-spacing:-0.02em;">
+                Court<span style="color:#ea580c;">Ops</span>
+              </h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:32px 40px;">
+              <h2 style="margin:0 0 16px;font-size:20px;color:#111;font-weight:600;">
+                This Week @ The Jar is ready to review
+              </h2>
+              <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#444;">
+                Hi ${escapeHtml(staffName.split(' ')[0])}, the weekly digest for <strong>${escapeHtml(dateRange)}</strong> was generated automatically for ${escapeHtml(orgName)}.
+              </p>
+              <p style="margin:0 0 28px;font-size:15px;line-height:1.6;color:#444;">
+                It has <strong>not</strong> been sent or posted anywhere &mdash; review the email preview and social graphic, then copy/paste or download when ready.
+              </p>
+              <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 28px;">
+                <tr>
+                  <td style="background:#ea580c;border-radius:8px;">
+                    <a href="${escapeHtml(link)}" style="display:inline-block;padding:12px 28px;color:#fff;text-decoration:none;font-weight:600;font-size:15px;">
+                      Review Digest
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:0;font-size:13px;color:#888;">
+                Or copy and paste this link into your browser:
+              </p>
+              <p style="margin:0 0 0;font-size:13px;color:#666;word-break:break-all;">
+                <a href="${escapeHtml(link)}" style="color:#ea580c;text-decoration:underline;">${escapeHtml(link)}</a>
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px 40px;background:#fafafa;border-top:1px solid #eee;text-align:center;">
+              <p style="margin:0;font-size:12px;color:#999;">
+                CourtOps — Operations platform for court sport clubs
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `.trim()
+
+  const client = getClient()
+  const { data, error } = await client.emails.send({
+    from: FROM_ADDRESS,
+    to,
+    subject: `This week's digest is ready to review`,
+    html,
+  })
+  if (error) throw new Error(error.message)
+  return data
+}
+
+export interface WeeklyDigestFailedEmailParams {
+  to: string
+  staffName: string
+  orgName: string
+  error: string
+  link: string
+}
+
+export async function sendWeeklyDigestFailedEmail(params: WeeklyDigestFailedEmailParams) {
+  const { to, staffName, orgName, error: errorMessage, link } = params
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Weekly digest failed — ${escapeHtml(orgName)}</title></head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f5f5f5;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:40px 20px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+          <tr>
+            <td style="padding:32px 40px 24px;border-bottom:1px solid #eee;">
+              <h1 style="margin:0;font-size:24px;color:#111;font-weight:700;letter-spacing:-0.02em;">
+                Court<span style="color:#ea580c;">Ops</span>
+              </h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:32px 40px;">
+              <h2 style="margin:0 0 16px;font-size:20px;color:#b91c1c;font-weight:600;">
+                Weekly digest failed
+              </h2>
+              <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#444;">
+                Hi ${escapeHtml(staffName.split(' ')[0])}, this week's automatic digest generation for ${escapeHtml(orgName)} failed.
+              </p>
+              <p style="margin:0 0 28px;font-size:14px;line-height:1.6;color:#b91c1c;font-family:monospace;background:#fef2f2;padding:12px;border-radius:6px;">
+                ${escapeHtml(errorMessage)}
+              </p>
+              <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 28px;">
+                <tr>
+                  <td style="background:#ea580c;border-radius:8px;">
+                    <a href="${escapeHtml(link)}" style="display:inline-block;padding:12px 28px;color:#fff;text-decoration:none;font-weight:600;font-size:15px;">
+                      View in CourtOps
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:0;font-size:13px;color:#888;">
+                The most recent successful digest (if any) is still shown on the page.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px 40px;background:#fafafa;border-top:1px solid #eee;text-align:center;">
+              <p style="margin:0;font-size:12px;color:#999;">
+                CourtOps — Operations platform for court sport clubs
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `.trim()
+
+  const client = getClient()
+  const { data, error } = await client.emails.send({
+    from: FROM_ADDRESS,
+    to,
+    subject: 'Weekly digest failed',
+    html,
+  })
+  if (error) throw new Error(error.message)
+  return data
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
