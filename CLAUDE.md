@@ -190,7 +190,8 @@ Scoped to Production + Preview unless noted. See [`docs/CURRENT_STATE.md`](docs/
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key |
 | `NEXT_PUBLIC_ROOT_DOMAIN` | `courtops.app` — middleware subdomain detection |
 | `RESEND_API_KEY` | Invite email delivery |
-| `ANTHROPIC_API_KEY` | Claude Haiku 4.5 for SOP AI suggest |
+| `ANTHROPIC_API_KEY` | Claude Haiku 4.5 for SOP AI suggest; also Claude Sonnet for Newsletter Builder |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service-role writes for weekly digest runs (`weekly_digest_runs` is SELECT-only under normal RLS). Server-only — never expose to the client. Production only for now; see `docs/CURRENT_STATE.md`. |
 
 Not yet set (intentional): `TWILIO_*`, `WIDGET_API_SECRET`.
 

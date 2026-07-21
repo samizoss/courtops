@@ -1,5 +1,5 @@
 {
-  "updated": "2026-07-01",
+  "updated": "2026-07-21",
   "categories": [
     {
       "key": "planned",
@@ -192,6 +192,18 @@
       "label": "Shipped",
       "color": "green",
       "items": [
+        {
+          "title": "Monthly Newsletter Builder",
+          "description": "Paste monthly notes + structured facts (hero, leagues, events, reg-open dates, coach quote, spotlights) and generate the Court Reserve email newsletter. AI writes copy only into a frozen template; a QA gate blocks copying until every slot is filled and every link is secure.",
+          "shipped": "July 2026",
+          "release": "2026-07-21"
+        },
+        {
+          "title": "Weekly Digest (\"This Week @ The Jar\")",
+          "description": "Zero-AI, deterministic weekly roundup pulled live from Court Reserve. Friday auto-generate + admin review email, plus a manual Generate now button. Produces Copy-HTML email content and a downloadable 1080x1350 social graphic. Falls back to the last successful run on failure.",
+          "shipped": "July 2026",
+          "release": "2026-07-21"
+        },
         {
           "title": "Content Planning Foundation",
           "description": "Court Reserve events sync into CourtOps, Settings → Content configures channels/pillars/audiences, and Campaigns group milestones + CR events into planning containers.",

@@ -1,7 +1,37 @@
 # CourtOps — Current State
 
-> **Snapshot date:** 2026-07-01 (pre-meeting mega-session: 7 PRs, multi-agent QA sweep)
+> **Snapshot date:** 2026-07-21 (Newsletter Builder + Weekly Digest: 3 PRs, multi-agent parallel build)
 > **For a fresh Claude session:** read this top-to-bottom. Document is organized newest-first: today's session log (full conversation context + decisions) → active queue → historical session logs → infrastructure reference (DB, migrations, env, gotchas) → operational notes. When in doubt about live state, trust `git log`, Supabase schema, and the Vercel production deployment over anything written here.
+
+---
+
+## 2026-07-21 — Newsletter Builder + Weekly Digest (PRs #60–#62)
+
+Two independent features built in parallel worktrees by two implementation agents, each with an adversarial review pass and a fix pass before merge. Everything below is merged to master and auto-deployed.
+
+### What shipped
+
+- **PR #60** — Foundation: `src/lib/jar-brand.ts` (brand tokens + club facts used by both features), `templates/newsletter-skeleton.html` (frozen email-safe template), vitest test setup, and an `outputFileTracingIncludes` fix so bundled assets (fonts) survive the Vercel build.
+- **PR #61 — Monthly Newsletter Builder** (`/newsletter`, admin-only). Geneva pastes her monthly notes plus structured fact fields (hero topic/URL, league rows, event rows, reg-open dates, coach quote, spotlight/staff names). Claude (`claude-sonnet-4-6`, structured outputs) writes copy-only slot JSON — never HTML or layout — and code injects it into the frozen template. A QA gate blocks **Copy HTML** on any unfilled slot, `MISSING:` fact, or insecure (`http://`) link; UTM auto-tagging is applied to links; model-authored HTML is sanitized before injection; the preview renders in a sandboxed (`sandbox=""`) iframe. 30 unit tests (`src/lib/newsletter.test.ts`).
+- **PR #62 — Weekly "This Week @ The Jar" digest** (`/weekly-digest`, admin-only). Zero AI, fully deterministic. Pulls the next Mon–Sun window of events from Court Reserve live, de-dupes, and renders (a) a blue "week at a glance" email HTML (Copy HTML paste flow, same pattern as the newsletter) and (b) a downloadable 1080×1350 social PNG (`next/og`, tiered font scaling so a busy week's events never truncate a day row). A Friday 9am cron (`0 14 * * 5` UTC, `vercel.json`) auto-generates the digest and emails admins a review link — **it never auto-sends**; there's also a manual "Generate now" button on the page. Failures write an error row to `weekly_digest_runs` and send an alert email; the page falls back to the last successful run instead of showing blank. New table `weekly_digest_runs` — **migration 023, applied to production**. New env var `SUPABASE_SERVICE_ROLE_KEY` — **set in Vercel Production only** (see Known issues below for why). 32 unit tests (`src/lib/weekly-digest.test.ts`).
+- Build process: 2 implementation agents in parallel git worktrees, one adversarial review pass per branch, then a fix pass per branch. Review findings folded in before merge: iframe sandboxing + HTML sanitization + QA-gate hardening on #61; per-org failure isolation + PNG overflow tiers + manual-generate failure alerts on #62.
+
+### Infra notes
+
+- **Migration 023** (`weekly_digest_runs`) applied to production. The table ships with a SELECT-only RLS policy by design — no session (admin or otherwise) has INSERT rights, so the run route always writes through a dedicated service-role Supabase client (`src/lib/supabase/service.ts`), not the user's session client.
+- **`SUPABASE_SERVICE_ROLE_KEY`** was added to Vercel **Production only**, not Preview — the Vercel CLI's non-interactive `env add` hit a bug adding secrets to Preview in this session. Practical effect: **preview deploys of the digest run route will 500** until someone adds the key to Preview by hand in the Vercel dashboard. Not a blocker for production use; flagging so a preview-deploy 500 on `/api/weekly-digest/run` doesn't look like a regression.
+- Verified locally against production Supabase data (dry-run mode, `?dryRun=1`, skips email sends but still writes the run row): a clean run produced real Jar events for the correct Mon–Sun window; a deliberately-broken `org_settings.cr_api_pass` produced a correctly-written error row, and restoring it recovered cleanly on the next run.
+
+### Known issues / follow-ups
+
+1. **Pre-existing suspicion, unverified**: `/api/cron/availability-reminders` may be getting redirected to `/login` by middleware before its own Bearer-token check ever runs — the same class of bug the digest PR had to route around. PR #62 added a bypass for `/api/weekly-digest/*` only (see the comment at `src/lib/supabase/middleware.ts` around the allowlist), and explicitly did **not** touch the availability-reminders cron path (out of scope for that branch). Needs verification against actual Vercel cron logs — if `availability-reminders` has been silently redirecting instead of running, that cron may not have fired correctly for a while.
+2. **`escapeHtml` has two slightly different implementations** — `src/lib/email.ts` does 5 replacements (adds `'` → `&#39;`), `src/lib/template-engine.ts` does 4 (no single-quote escaping). Harmless today (no untrusted single-quoted attribute contexts), but the drift should be normalized to one shared helper someday.
+3. **Duplicate type shapes**: `WeeklyDigestEvent` (`src/types/database.ts`) and `DigestEvent` (`src/lib/weekly-digest.ts`) describe the same `{ dayIndex, startTime, endTime, startIso, name }` shape under two names. Should be consolidated to one exported type.
+4. **Newsletter's live Anthropic path is only verified in production** (post-deploy), not locally — there's no `ANTHROPIC_API_KEY` available at local build time in this session, so the structured-output call to `claude-sonnet-4-6` was exercised against real credentials for the first time on the production deploy, not before.
+
+### Doc-debt discovered this pass
+
+- `docs/getting-started.md` is **not** what actually renders at the sidebar's "Guide" link — that page (`src/app/(dashboard)/getting-started/page.tsx`) is a separate hand-written JSX component that duplicates (and had drifted from) the markdown's content. Both were updated today with matching Newsletter Builder / Weekly Digest sections; going forward, treat the `.tsx` page as the source of truth for what admins actually see and remember to mirror changes into the `.md` (or vice versa) — they are not wired together.
 
 ---
 
@@ -821,7 +851,8 @@ Scoped to Production + Preview unless noted:
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key |
 | `NEXT_PUBLIC_ROOT_DOMAIN` | `courtops.app` — middleware uses this for subdomain detection |
 | `RESEND_API_KEY` | Resend API key for invite emails (from `hello@courtops.app`) |
-| `ANTHROPIC_API_KEY` | Claude Haiku 4.5 for SOP AI suggest |
+| `ANTHROPIC_API_KEY` | Claude Haiku 4.5 for SOP AI suggest; also used for Newsletter Builder (`claude-sonnet-4-6`) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service-role writes to `weekly_digest_runs` (SELECT-only RLS for normal sessions). **Production only** — not yet set on Preview (Vercel CLI non-interactive bug hit while adding it 2026-07-21); preview deploys of `/api/weekly-digest/run` will 500 until it's added there by hand. Server-only, never expose to the client. |
 
 Not yet configured (intentional):
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `WIDGET_API_SECRET` — Twilio / widget messaging not yet live
