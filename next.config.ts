@@ -9,6 +9,10 @@ const nextConfig: NextConfig = {
     "/api/newsletter/generate": ["./templates/**"],
     "/api/weekly-digest/run": ["./templates/**"],
     "/weekly-digest": ["./templates/**"],
+    // fs.readFileSync'd at module scope in the image route (see route.tsx
+    // comment) — without this the .ttf files 500 on Vercel the same way
+    // templates/ would without its own entry above.
+    "/api/weekly-digest/image": ["./src/app/api/weekly-digest/image/fonts/**"],
   },
 };
 
