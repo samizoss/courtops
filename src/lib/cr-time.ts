@@ -10,10 +10,12 @@
  * mislabels the wall clock as UTC, storing instants 5-6h early.
  *
  * This module converts a CR wall-clock string + IANA timezone into the real
- * UTC instant, DST-correct, with no dependencies (Intl only).
- *
- * NOTE: deliberately a separate file from weekly-digest.ts — that file is
- * owned by a parallel branch (fix/digest-v11).
+ * UTC instant, DST-correct, with no dependencies (Intl only). It also hosts
+ * the shared *display-path* helpers (parseWallClock/formatTimeRange), which
+ * never touch Date/timezones at all — they read digits straight off the CR
+ * string. weekly-digest.ts and newsletter-prefill.ts both consume these;
+ * they live here (not in weekly-digest.ts) because that file imports
+ * node:fs and can't be pulled into client components.
  */
 
 /** Naive `YYYY-MM-DD[THH:mm[:ss[.fff]]]` — CR's format. Space separator tolerated. */
@@ -115,4 +117,46 @@ export function crWallClockToInstant(raw: string, timeZone: string): Date {
 
   // Earliest valid instant; for skipped wall times (none valid), earliest candidate.
   return new Date(valid.length > 0 ? valid[0] : candidates[0])
+}
+
+/**
+ * Court Reserve `StartTime`/`EndTime` are *naive org-local wall-clock*
+ * strings — "2026-07-27T18:00:00", no zone suffix (verified against prod
+ * weekly_digest_runs.events, 2026-07-21). For DISPLAY they must NEVER go
+ * through `new Date(raw)`: JS parses zone-less date-times in the server's
+ * local timezone, so on Vercel (UTC) every time shifted 5-6h when
+ * re-formatted in org-local time ("LTP-Monday 6pm" rendered as 1:00 PM).
+ * This parser reads the digits straight off the string — no Date, no
+ * timezone math anywhere in the display path. (Storage-path conversion to a
+ * real instant is `crWallClockToInstant` above.)
+ */
+export interface WallClock { y: number; mo: number; d: number; h: number; min: number }
+
+export function parseWallClock(raw: string): WallClock | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{1,2}):(\d{2})/.exec(raw)
+  if (!m) return null
+  const wc = { y: +m[1], mo: +m[2], d: +m[3], h: +m[4], min: +m[5] }
+  if (wc.mo < 1 || wc.mo > 12 || wc.d < 1 || wc.d > 31 || wc.h > 23 || wc.min > 59) return null
+  return wc
+}
+
+export const pad2 = (n: number) => String(n).padStart(2, '0')
+
+function fmtWallTime(wc: WallClock, withMeridiem: boolean): string {
+  const h12 = wc.h % 12 === 0 ? 12 : wc.h % 12
+  const base = `${h12}:${pad2(wc.min)}`
+  return withMeridiem ? `${base} ${wc.h < 12 ? 'AM' : 'PM'}` : base
+}
+
+/**
+ * Formats two raw CR wall-clock strings as e.g. "7:00 - 10:00 AM" (meridiem
+ * collapsed when both sides match). Backward compatible with digest runs
+ * stored before the wall-clock fix: those rows hold the same raw naive
+ * strings. Unparsable input renders as '' rather than "Invalid Date".
+ */
+export function formatTimeRange(startRaw: string, endRaw: string): string {
+  const s = parseWallClock(startRaw); const e = parseWallClock(endRaw)
+  if (!s || !e) return ''
+  const same = (s.h < 12) === (e.h < 12)
+  return `${fmtWallTime(s, !same)} - ${fmtWallTime(e, true)}`
 }

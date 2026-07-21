@@ -1,8 +1,15 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { CREventRegistration } from '@/lib/courtreserve'
+import { parseWallClock, formatTimeRange, pad2 } from '@/lib/cr-time'
 import { JAR_BRAND } from '@/lib/jar-brand'
 import { escapeHtml, injectSlots, expandBlock } from '@/lib/template-engine'
+
+// Re-exported for existing consumers (image route, tests). The wall-clock
+// display helpers moved to cr-time.ts (2026-07-21) so client-safe modules
+// (newsletter-prefill.ts) can share them — this file imports node:fs and
+// must stay server-only.
+export { formatTimeRange }
 
 const TZ = JAR_BRAND.club.timezone // America/Chicago
 
@@ -43,27 +50,10 @@ export interface DigestEvent {
   eventId?: number | null
 }
 
-/**
- * Court Reserve `StartTime`/`EndTime` are *naive Chicago wall-clock* strings —
- * "2026-07-27T18:00:00", no zone suffix (verified against prod
- * weekly_digest_runs.events, 2026-07-21). They must NEVER go through
- * `new Date(raw)`: JS parses zone-less date-times in the server's local
- * timezone, so on Vercel (UTC) every time shifted 5-6h when re-formatted in
- * America/Chicago ("LTP-Monday 6pm" rendered as 1:00 PM). This parser reads
- * the digits straight off the string — no Date, no timezone math anywhere in
- * the display path.
- */
-interface WallClock { y: number; mo: number; d: number; h: number; min: number }
-
-function parseWallClock(raw: string): WallClock | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{1,2}):(\d{2})/.exec(raw)
-  if (!m) return null
-  const wc = { y: +m[1], mo: +m[2], d: +m[3], h: +m[4], min: +m[5] }
-  if (wc.mo < 1 || wc.mo > 12 || wc.d < 1 || wc.d > 31 || wc.h > 23 || wc.min > 59) return null
-  return wc
-}
-
-const pad2 = (n: number) => String(n).padStart(2, '0')
+// CR StartTime/EndTime are naive org-local wall-clock strings and must never
+// go through `new Date(raw)` in the display path — see parseWallClock in
+// src/lib/cr-time.ts (moved there 2026-07-21 for sharing; full rationale in
+// its doc comment).
 
 export function normalizeEvents(rows: CREventRegistration[], window: { start: string; end: string }): DigestEvent[] {
   const seen = new Map<string, DigestEvent>()
@@ -89,25 +79,6 @@ export function normalizeEvents(rows: CREventRegistration[], window: { start: st
     })
   }
   return [...seen.values()].sort((a, b) => a.dayIndex - b.dayIndex || a.startIso.localeCompare(b.startIso))
-}
-
-function fmtWallTime(wc: WallClock, withMeridiem: boolean): string {
-  const h12 = wc.h % 12 === 0 ? 12 : wc.h % 12
-  const base = `${h12}:${pad2(wc.min)}`
-  return withMeridiem ? `${base} ${wc.h < 12 ? 'AM' : 'PM'}` : base
-}
-
-/**
- * Formats two raw CR wall-clock strings as e.g. "7:00 - 10:00 AM" (meridiem
- * collapsed when both sides match). Backward compatible with runs stored
- * before the wall-clock fix: those rows hold the same raw naive strings.
- * Unparsable input renders as '' rather than "Invalid Date".
- */
-export function formatTimeRange(startRaw: string, endRaw: string): string {
-  const s = parseWallClock(startRaw); const e = parseWallClock(endRaw)
-  if (!s || !e) return ''
-  const same = (s.h < 12) === (e.h < 12)
-  return `${fmtWallTime(s, !same)} - ${fmtWallTime(e, true)}`
 }
 
 export function formatDateRange(startDate: string, endDate: string): string {

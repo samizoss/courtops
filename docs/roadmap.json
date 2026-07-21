@@ -194,7 +194,7 @@
       "items": [
         {
           "title": "Monthly Newsletter Builder",
-          "description": "Paste monthly notes + structured facts (hero, leagues, events, reg-open dates, coach quote, spotlights) and generate the Court Reserve email newsletter. AI writes copy only into a frozen template; a QA gate blocks copying until every slot is filled and every link is secure.",
+          "description": "Paste monthly notes + structured facts (hero, leagues, events, reg-open dates, coach quote, spotlights) and generate the Court Reserve email newsletter. Events and leagues can be pre-filled straight from Court Reserve with include/exclude checkboxes. AI writes copy only into a frozen template; a QA gate blocks copying until every slot is filled and every link is secure.",
           "shipped": "July 2026",
           "release": "2026-07-21"
         },
