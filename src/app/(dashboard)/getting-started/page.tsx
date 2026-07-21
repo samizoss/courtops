@@ -377,25 +377,31 @@ export default async function GettingStartedPage() {
 
           <ol className="list-decimal list-inside text-gray-300 space-y-2 ml-2">
             <li>
+              <span className="font-medium text-white">Pick the newsletter month</span> at the top of the form. Everything below — the Court Reserve preload, the generated copy, the link tracking — binds to this month. Changing it clears the Court Reserve checklist and flags any already-applied Court Reserve rows as stale so you know to reload (rows you typed or edited yourself are never touched).
+            </li>
+            <li>
+              <span className="font-medium text-white">Load from Court Reserve</span> (directly under the month picker): click <span className="font-medium text-white">Load [month] events from Court Reserve</span>. It lists that month&apos;s Court Reserve events with include/exclude checkboxes — one-off events start checked, weekly recurring series start unchecked — and <span className="font-medium text-white">Apply to newsletter</span> fills in the event and league rows (dates, times, and sign-up links) for you; every row stays fully editable afterward, and re-applying never overwrites rows you added or edited yourself. Events with zero Court Reserve registrations don&apos;t appear (CR API limitation).
+            </li>
+            <li>
               <span className="font-medium text-white">Paste your notes for this month</span> into the notes box — any messy format is fine (bullets, half-sentences, copy-pasted texts). This gives the AI context, but it isn&apos;t what gets published word-for-word.
             </li>
             <li>
-              <span className="font-medium text-white">Fill in the structured facts</span> below it: hero topic + Court Reserve link, league rows, event rows, member/daily-player registration-open dates, a coach&apos;s quote, and the member/staff spotlight names. These are the facts that actually appear in the newsletter.
+              <span className="font-medium text-white">Toggle sections on or off.</span> Every section except the hero, &quot;This Month at a Glance,&quot; and the sign-off has an on/off switch — turn off anything you don&apos;t have content for this month (no member spotlight? Switch it off) and it simply won&apos;t appear in the email. Leagues, Events, Clinics, Announcements, and Looking Ahead start on; the community photo, Member Spotlight, Staff Shout-Out, and Coach&apos;s Corner start off. The checklist never blocks you over a section that&apos;s switched off.
+            </li>
+            <li>
+              <span className="font-medium text-white">Fill in the facts for the sections that are on</span>: hero topic + Court Reserve link, league rows (plus an optional one-line &quot;League registration info&quot; that appears in the email word-for-word — leave it blank to drop the line), event rows, a coach&apos;s quote, and the member/staff spotlight names.
             </li>
             <li>
               Click <span className="font-medium text-white">Generate</span>. AI writes the newsletter copy in your voice and drops it into the fixed CourtOps newsletter template — it never changes the layout or design, only the words.
             </li>
             <li>
-              <span className="font-medium text-white">Fix anything the checklist flags.</span> If a slot is empty, a fact wasn&apos;t filled in, or a link isn&apos;t secure, <span className="font-medium text-white">Copy HTML</span> is blocked and the specific problems are listed. Fill in what&apos;s missing and click <span className="font-medium text-white">Generate</span> again (it becomes <span className="font-medium text-white">Regenerate copy</span> once you&apos;ve generated once).
+              <span className="font-medium text-white">Fix anything the checklist flags.</span> If a slot is empty, a fact wasn&apos;t filled in, or a link isn&apos;t secure, <span className="font-medium text-white">Copy HTML</span> is blocked and the specific problems are listed. Fill in what&apos;s missing and click <span className="font-medium text-white">Generate</span> again (it becomes <span className="font-medium text-white">Regenerate copy</span> once you&apos;ve generated once — your section toggles are kept).
             </li>
             <li>Once it&apos;s clean, review the preview on the right side of the page.</li>
             <li>
               Click <span className="font-medium text-white">Copy HTML</span>, then paste it into a new Court Reserve email campaign.
             </li>
           </ol>
-          <p className="text-gray-300 mt-4">
-            <span className="font-medium text-white">Shortcut — Load from Court Reserve:</span> instead of typing event and league rows by hand, click <span className="font-medium text-white">Load events</span> in the <em>Load from Court Reserve</em> panel. It lists that month&apos;s Court Reserve events with include/exclude checkboxes — one-off events start checked, weekly recurring series start unchecked — and <span className="font-medium text-white">Apply to newsletter</span> fills in the event and league rows (dates, times, and sign-up links) for you; every row stays fully editable afterward, and re-applying never overwrites rows you added or edited yourself. Events with zero Court Reserve registrations don&apos;t appear (CR API limitation).
-          </p>
           <p className="text-gray-400 text-sm mt-3 italic">Links in the newsletter are automatically tagged for click tracking — you don&apos;t need to add anything yourself.</p>
         </section>
 

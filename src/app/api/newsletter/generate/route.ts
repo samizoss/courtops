@@ -4,20 +4,22 @@ import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import { NextResponse } from 'next/server'
 import { getUserOrg } from '@/lib/get-user-org'
 import {
-  loadNewsletterTemplate,
-  injectSlots,
-  expandBlock,
-  applyUtm,
-  qaGate,
-  sanitizeModelHtml,
-  type SlotValue,
-} from '@/lib/newsletter'
+  SECTION_KEYS,
+  SECTION_LABELS,
+  ALL_SECTIONS_ON,
+  MONTH_NAMES,
+  buildSlotSchema,
+  assembleNewsletter,
+  type SectionToggles,
+} from '@/lib/newsletter-sections'
 
 export const dynamic = 'force-dynamic'
 
-// System prompt — verbatim from docs/superpowers/specs/2026-07-15-newsletter-weekly-digest-design.md
+// System prompt — rules verbatim from docs/superpowers/specs/2026-07-15-newsletter-weekly-digest-design.md
 // § "Feature 1 — Monthly Newsletter Builder — System prompt (keep every rule)". The model writes
 // copy only; code writes all HTML. Never edit these rules without updating the spec first.
+// v1.2 appends ONE dynamic line below (the list of sections toggled OFF this month) so the
+// model doesn't reference them in hero/glance/ahead copy — the rules themselves are unchanged.
 const SYSTEM_PROMPT = `You write email copy for The Jar Pickleball Club's monthly newsletter.
 Voice: authentic, slightly corny, not over-polished. Direct. Short
 sentences. No fluff. Welcoming to all skill levels. Hook → Value → CTA
@@ -36,74 +38,11 @@ HARD RULES:
 - HERO_HEADLINE: max 6 words. All slot copy is plain text (no HTML)
   except slots marked html:true in the schema.`
 
-// The model's copy contract — plain-text slots as z.string(); the model returns ONLY copy,
-// never markup. HTML-allowed slots (GLANCE_ITEMS, CLINIC_CONTENT, ANNOUNCEMENT_BLOCKS,
-// AHEAD_ITEMS) may use inline-styled <br>/<h3>/<p> per the spec, still no <script>/<table>/etc.
-const SlotSchema = z.object({
-  PREHEADER: z.string().describe('40-100 chars, teases the hero offer. Plain text.'),
-  HERO_HEADLINE: z.string().describe('Max 6 words, plain text'),
-  HERO_VALUE_LINE: z.string().describe('1-2 sentences, plain text'),
-  HERO_CTA: z.string().describe('Max 4 words, plain text, button label'),
-  HERO_IMAGE_SUGGESTION: z
-    .string()
-    .describe('Short photo direction for the hero image, plain text, URL-encodable'),
-  HERO_IMAGE_ALT: z.string().describe('Alt text for the hero image, plain text'),
-  GLANCE_ITEMS: z
-    .string()
-    .describe(
-      'HTML allowed: 3-5 lines separated by <br>, each "• item — date"; inline styles only'
-    ),
-  LEAGUE_INTRO: z.string().describe('One line, plain text intro to the league lineup section'),
-  LEAGUE_REG_DATES: z
-    .string()
-    .describe('Plain text: member + daily player registration windows'),
-  CLINIC_CONTENT: z
-    .string()
-    .describe(
-      'HTML allowed: LTP sessions, Liveball times, clinic schedule + booking links; inline styles only'
-    ),
-  ANNOUNCEMENT_BLOCKS: z
-    .string()
-    .describe('HTML allowed: h3+p pairs per announcement; inline styles only'),
-  COMMUNITY_IMAGE_SUGGESTION: z
-    .string()
-    .describe('Short photo direction for the community image, plain text, URL-encodable'),
-  COMMUNITY_IMAGE_ALT: z.string().describe('Alt text for the community image, plain text'),
-  SPOTLIGHT_NAME: z
-    .string()
-    .describe('The member spotlight name, plain text — echo the provided name exactly'),
-  SPOTLIGHT_TEXT: z.string().describe('3-4 sentences, plain text'),
-  STAFF_NAME: z
-    .string()
-    .describe('The staff shout-out name, plain text — echo the provided name exactly'),
-  STAFF_TEXT: z.string().describe('2-3 sentences, plain text'),
-  COACH_QUOTE: z
-    .string()
-    .describe("The coach's quote, plain text — echo the provided quote exactly"),
-  COACH_NAME: z
-    .string()
-    .describe('The coach attribution name, plain text — echo the provided name exactly'),
-  AHEAD_ITEMS: z.string().describe('HTML allowed: 2-4 next-month teasers with dates'),
-  SIGNOFF_TEXT: z.string().describe('1-2 sentences, plain text'),
-})
-
-// Slots whose model copy is allowed to carry inline-styled HTML (injected raw).
-const HTML_SLOT_KEYS = [
-  'GLANCE_ITEMS',
-  'CLINIC_CONTENT',
-  'ANNOUNCEMENT_BLOCKS',
-  'AHEAD_ITEMS',
-] as const
-
-// These two slots land inside a placehold.co `?text=` query string in the template — they must
-// be URL-encoded (not HTML-escaped) or a stray "&" in the model's copy would start a bogus query
-// param once the browser decodes the HTML entity.
-const URL_ENCODED_SLOT_KEYS = ['HERO_IMAGE_SUGGESTION', 'COMMUNITY_IMAGE_SUGGESTION'] as const
-
-const MONTH_NAMES = [
-  'january', 'february', 'march', 'april', 'may', 'june',
-  'july', 'august', 'september', 'october', 'november', 'december',
-]
+function buildSystemPrompt(sections: SectionToggles): string {
+  const offLabels = SECTION_KEYS.filter((k) => !sections[k]).map((k) => SECTION_LABELS[k])
+  if (offLabels.length === 0) return SYSTEM_PROMPT
+  return `${SYSTEM_PROMPT}\n- These sections are OFF this month and will not appear in the email — never reference them anywhere in your copy: ${offLabels.join(', ')}.`
+}
 
 // Bad URLs must fail fast at request validation (400) rather than surviving the paid Anthropic
 // call only to be caught by qaGate afterward (422). qaGate's own https-only rule stays as the
@@ -127,7 +66,22 @@ const EventSchema = z.object({
   url: HttpsUrlSchema,
 })
 
-const GenerateRequestSchema = z.object({
+// Bare shape (no default) so it can be reused as-is in the second validation pass below,
+// where `sections` has already been resolved and is never undefined. The lenient first
+// pass applies `.default(ALL_SECTIONS_ON)` itself for older clients that omit `sections`.
+const SectionsShape = z.object(
+  Object.fromEntries(SECTION_KEYS.map((k) => [k, z.boolean()])) as Record<
+    (typeof SECTION_KEYS)[number],
+    z.ZodBoolean
+  >
+)
+
+// Row-level shape (LeagueSchema/EventSchema) is validated in a SECOND pass, after
+// `sections` is known — see GenerateRequestSchema below. A half-filled row in a
+// section the admin has toggled OFF is invisible in the builder UI; it must never
+// 400 the request. `leagues`/`events` are left as `unknown[]` here on purpose so
+// this first pass never inspects row shape.
+const RawGenerateRequestSchema = z.object({
   month: z
     .string()
     .refine((v) => MONTH_NAMES.includes(v.trim().toLowerCase()), {
@@ -137,15 +91,51 @@ const GenerateRequestSchema = z.object({
   notes: z.string(),
   heroTopic: z.string().min(1, 'Hero topic is required'),
   heroUrl: HttpsUrlSchema,
-  leagues: z.array(LeagueSchema).default([]),
-  events: z.array(EventSchema).default([]),
-  memberRegOpen: z.string().default(''),
-  dailyPlayerRegOpen: z.string().default(''),
+  leagues: z.array(z.unknown()).default([]),
+  events: z.array(z.unknown()).default([]),
+  /** Optional one-liner injected VERBATIM into the league section; empty removes the line. */
+  leagueRegInfo: z.string().default(''),
   coachQuote: z.string().default(''),
   coachName: z.string().default(''),
   spotlightName: z.string().default(''),
   staffName: z.string().default(''),
+  // Older clients (or curl) that omit sections get the pre-v1.2 behavior: everything on.
+  sections: SectionsShape.default(ALL_SECTIONS_ON),
 })
+
+// Second pass: everything else was already validated above (re-declared here, not
+// re-invented, so `.pipe()` gives the final type its real shape instead of falling
+// back to a passthrough index signature) — only `leagues`/`events` get row-shape
+// validation, and only after the OFF-section arrays were dropped by the transform.
+// `sections` is always defined by this point (the first pass already applied its
+// default), so this reuses the bare SectionsShape rather than the `.default()`-wrapped
+// version to keep the piped input/output types aligned.
+const ValidatedGenerateRequestSchema = z.object({
+  month: z.string(),
+  year: z.number().int(),
+  notes: z.string(),
+  heroTopic: z.string(),
+  heroUrl: HttpsUrlSchema,
+  leagues: z.array(LeagueSchema),
+  events: z.array(EventSchema),
+  leagueRegInfo: z.string(),
+  coachQuote: z.string(),
+  coachName: z.string(),
+  spotlightName: z.string(),
+  staffName: z.string(),
+  sections: SectionsShape,
+})
+
+// Two-step validation: parse `sections` first (defaults/shape unchanged above), then
+// drop `leagues`/`events` entirely when their section is OFF, THEN validate row shape.
+// This mirrors the generate route's own excise-before-inject ordering (see
+// `assembleNewsletter`) at the request-validation layer, so a half-filled row hidden
+// behind an OFF toggle can never 400 the request.
+export const GenerateRequestSchema = RawGenerateRequestSchema.transform((body) => ({
+  ...body,
+  leagues: body.sections.LEAGUES ? body.leagues : [],
+  events: body.sections.EVENTS ? body.events : [],
+})).pipe(ValidatedGenerateRequestSchema)
 
 type GenerateRequest = z.infer<typeof GenerateRequestSchema>
 
@@ -155,27 +145,38 @@ type GenerateRequest = z.infer<typeof GenerateRequestSchema>
 let lastCall = 0
 const COOLDOWN_MS = 15_000
 
+// Facts for OFF sections are omitted entirely — the model isn't asked for that copy
+// (its slots aren't in the dynamic schema) so feeding it those facts only invites
+// stray references. Member/daily reg windows are gone for good (v1.2): the optional
+// league reg line is injected verbatim by code and never shown to the model.
 function buildFactsBlock(body: GenerateRequest): string {
-  const leagueLines = body.leagues.length
-    ? body.leagues.map((l) => `- ${l.name} — ${l.detail} (${l.url})`).join('\n')
-    : '(none provided)'
-  const eventLines = body.events.length
-    ? body.events.map((e) => `- ${e.mon} ${e.day}: ${e.name} — ${e.detail} (${e.url})`).join('\n')
-    : '(none provided)'
-
-  return [
+  const s = body.sections
+  const lines: string[] = [
     `Month: ${body.month} ${body.year}`,
     `Hero topic: ${body.heroTopic}`,
     `Hero registration URL: ${body.heroUrl}`,
-    `Leagues:\n${leagueLines}`,
-    `Upcoming events:\n${eventLines}`,
-    `Member registration opens: ${body.memberRegOpen || '(not provided)'}`,
-    `Daily player registration opens: ${body.dailyPlayerRegOpen || '(not provided)'}`,
-    `Coach quote: ${body.coachQuote || '(not provided)'}`,
-    `Coach name: ${body.coachName || '(not provided)'}`,
-    `Member spotlight name: ${body.spotlightName || '(not provided)'}`,
-    `Staff shout-out name: ${body.staffName || '(not provided)'}`,
-  ].join('\n\n')
+  ]
+
+  if (s.LEAGUES) {
+    const leagueLines = body.leagues.length
+      ? body.leagues.map((l) => `- ${l.name} — ${l.detail} (${l.url})`).join('\n')
+      : '(none provided)'
+    lines.push(`Leagues:\n${leagueLines}`)
+  }
+  if (s.EVENTS) {
+    const eventLines = body.events.length
+      ? body.events.map((e) => `- ${e.mon} ${e.day}: ${e.name} — ${e.detail} (${e.url})`).join('\n')
+      : '(none provided)'
+    lines.push(`Upcoming events:\n${eventLines}`)
+  }
+  if (s.COACH_QUOTE) {
+    lines.push(`Coach quote: ${body.coachQuote || '(not provided)'}`)
+    lines.push(`Coach name: ${body.coachName || '(not provided)'}`)
+  }
+  if (s.SPOTLIGHT) lines.push(`Member spotlight name: ${body.spotlightName || '(not provided)'}`)
+  if (s.STAFF) lines.push(`Staff shout-out name: ${body.staffName || '(not provided)'}`)
+
+  return lines.join('\n\n')
 }
 
 export async function POST(request: Request) {
@@ -213,11 +214,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: msg }, { status: 400 })
   }
 
-  const monthIndex = MONTH_NAMES.indexOf(body.month.trim().toLowerCase())
   const userMessage = `${buildFactsBlock(body)}\n\n---\nAdmin's freeform notes for this month:\n${body.notes || '(no additional notes provided)'}`
 
+  // Dynamic contract: only the slots belonging to ON sections (hero/glance/sign-off always).
+  const SlotSchema = buildSlotSchema(body.sections)
+
   const client = new Anthropic()
-  let parsed: z.infer<typeof SlotSchema>
+  let parsed: Record<string, string>
 
   lastCall = Date.now()
 
@@ -225,7 +228,7 @@ export async function POST(request: Request) {
     const response = await client.messages.parse({
       model: 'claude-sonnet-4-6',
       max_tokens: 4096,
-      system: SYSTEM_PROMPT,
+      system: buildSystemPrompt(body.sections),
       messages: [{ role: 'user', content: userMessage }],
       output_config: {
         format: zodOutputFormat(SlotSchema),
@@ -239,60 +242,28 @@ export async function POST(request: Request) {
       )
     }
 
-    parsed = response.parsed_output
+    parsed = response.parsed_output as Record<string, string>
   } catch (err: unknown) {
     console.error('Newsletter generate failed:', err)
     const msg = err instanceof Error ? err.message : 'Newsletter generation failed'
     return NextResponse.json({ error: msg }, { status: 502 })
   }
 
-  // Assemble server-side. The model only ever produced copy above — code writes all HTML.
-  let html = loadNewsletterTemplate()
-
-  html = expandBlock(
-    html,
-    'LEAGUE_ROWS',
-    body.leagues.map((l) => ({
-      LEAGUE_NAME: l.name,
-      LEAGUE_DETAIL: l.detail,
-      LEAGUE_URL: l.url,
-    }))
-  )
-  html = expandBlock(
-    html,
-    'EVENT_ROWS',
-    body.events.map((e) => ({
-      EVENT_DAY: e.day,
-      EVENT_MON: e.mon,
-      EVENT_NAME: e.name,
-      EVENT_DETAIL: e.detail,
-      EVENT_URL: e.url,
-    }))
+  // Assemble server-side (excise OFF sections → expand blocks → inject slots → UTM → QA gate).
+  // The model only ever produced copy above — code writes all HTML.
+  const { html, qa } = assembleNewsletter(
+    {
+      month: body.month,
+      year: body.year,
+      heroUrl: body.heroUrl,
+      leagues: body.leagues,
+      events: body.events,
+      leagueRegInfo: body.leagueRegInfo,
+      sections: body.sections,
+    },
+    parsed
   )
 
-  const slots: Record<string, SlotValue> = {
-    MONTH: body.month.toUpperCase(),
-    YEAR: String(body.year),
-    HERO_URL: body.heroUrl,
-  }
-
-  for (const [key, value] of Object.entries(parsed)) {
-    if ((URL_ENCODED_SLOT_KEYS as readonly string[]).includes(key)) {
-      slots[key] = { value: encodeURIComponent(value), html: true }
-    } else if ((HTML_SLOT_KEYS as readonly string[]).includes(key)) {
-      // Model output injected raw — defang script/event-handler/javascript-uri vectors first.
-      slots[key] = { value: sanitizeModelHtml(value), html: true }
-    } else {
-      slots[key] = value
-    }
-  }
-
-  html = injectSlots(html, slots)
-
-  const campaign = `${body.year}-${String(monthIndex + 1).padStart(2, '0')}`
-  html = applyUtm(html, campaign)
-
-  const qa = qaGate(html)
   if (qa.errors.length > 0) {
     // Never ship partially-injected or QA-failing HTML — the Copy button never sees this.
     return NextResponse.json({ errors: qa.errors }, { status: 422 })

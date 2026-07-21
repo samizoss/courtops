@@ -86,6 +86,7 @@
 </tr>
 <tr><td style="border-top:3px solid #004a8d;font-size:1px;line-height:1px;">&nbsp;</td></tr>
 
+<!-- SECTION: LEAGUES -->
 <!-- ============ LEAGUE LINEUP — each league gets its own register button ============ -->
 <tr>
   <td bgcolor="#ffffff" class="px" style="padding:32px 36px 12px 36px;">
@@ -106,13 +107,17 @@
     </table>
     <!-- /LEAGUE_ROWS -->
 
-    <!-- SLOT: LEAGUE_REG_DATES — member vs daily player registration windows -->
+    <!-- SECTION: LEAGUE_REG -->
+    <!-- SLOT: LEAGUE_REG_DATES — optional admin-entered registration line, injected verbatim by code (never model-written) -->
     <p class="body-text" style="color:#231f20;font-size:14px;line-height:1.6;margin:12px 0 24px 0;font-family:'Montserrat',Calibri,Arial,sans-serif;">
       {{LEAGUE_REG_DATES}}
     </p>
+    <!-- /SECTION: LEAGUE_REG -->
   </td>
 </tr>
+<!-- /SECTION: LEAGUES -->
 
+<!-- SECTION: EVENTS -->
 <!-- ============ UPCOMING EVENTS — date blocks, scannable ============ -->
 <tr>
   <td bgcolor="#fffffb" class="px" style="padding:32px 36px;">
@@ -135,7 +140,9 @@
     <!-- /EVENT_ROWS -->
   </td>
 </tr>
+<!-- /SECTION: EVENTS -->
 
+<!-- SECTION: CLINICS -->
 <!-- ============ CLASSES & CLINICS ============ -->
 <!-- SLOT: CLINIC_CONTENT — LTP sessions, Liveball times, clinic schedule + booking links -->
 <tr>
@@ -146,7 +153,9 @@
     </div>
   </td>
 </tr>
+<!-- /SECTION: CLINICS -->
 
+<!-- SECTION: ANNOUNCEMENTS -->
 <!-- ============ CLUB ANNOUNCEMENTS ============ -->
 <!-- SLOT: ANNOUNCEMENT_BLOCKS — repeat h3 + paragraph per announcement; sale/urgency items get a button -->
 <tr>
@@ -157,34 +166,44 @@
     </div>
   </td>
 </tr>
+<!-- /SECTION: ANNOUNCEMENTS -->
 
 <!-- ============ COMMUNITY — spotlight + staff shout-out, then coach's corner ============ -->
+<!-- SECTION: COMMUNITY_IMAGE -->
 <!-- SLOT: COMMUNITY_IMAGE — replace in Court Reserve editor. Social moment: laughing, high-fives, league night crowd. -->
 <tr>
   <td bgcolor="#fffffb" align="center" class="px" style="padding:0 36px;">
     <img src="https://placehold.co/568x240/e0e0e0/555555?text={{COMMUNITY_IMAGE_SUGGESTION}}" alt="{{COMMUNITY_IMAGE_ALT}}" width="568" style="width:100%;max-width:568px;height:auto;border-radius:12px;">
   </td>
 </tr>
+<!-- /SECTION: COMMUNITY_IMAGE -->
 
+<!-- SECTION: COMMUNITY_CARDS — wrapper row; the server excises it automatically when BOTH nested cards are off -->
 <tr>
   <td bgcolor="#fffffb" class="px" style="padding:32px 36px 8px 36px;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
       <tr>
+        <!-- SECTION: SPOTLIGHT -->
         <td class="stack" width="48%" valign="top" bgcolor="#ffffff" style="border:1px solid #e0e0e0;border-radius:12px;padding:20px;">
           <h3 class="h1" style="color:#b42033;font-size:17px;margin:0 0 8px 0;font-family:'Days One',Montserrat,Impact,sans-serif;text-transform:uppercase;">Member Spotlight</h3>
           <p class="body-text" style="color:#231f20;font-size:15px;font-weight:700;margin:0 0 6px 0;font-family:'Montserrat',Calibri,Arial,sans-serif;">{{SPOTLIGHT_NAME}}</p>
           <p class="body-text" style="color:#555555;font-size:13px;line-height:1.6;margin:0;font-family:'Montserrat',Calibri,Arial,sans-serif;">{{SPOTLIGHT_TEXT}}</p>
         </td>
+        <!-- /SECTION: SPOTLIGHT -->
         <td class="stack" width="4%">&nbsp;</td>
+        <!-- SECTION: STAFF -->
         <td class="stack" width="48%" valign="top" bgcolor="#ffffff" style="border:1px solid #e0e0e0;border-radius:12px;padding:20px;">
           <h3 class="h1" style="color:#b42033;font-size:17px;margin:0 0 8px 0;font-family:'Days One',Montserrat,Impact,sans-serif;text-transform:uppercase;">Staff Shout-Out</h3>
           <p class="body-text" style="color:#231f20;font-size:15px;font-weight:700;margin:0 0 6px 0;font-family:'Montserrat',Calibri,Arial,sans-serif;">{{STAFF_NAME}}</p>
           <p class="body-text" style="color:#555555;font-size:13px;line-height:1.6;margin:0;font-family:'Montserrat',Calibri,Arial,sans-serif;">{{STAFF_TEXT}}</p>
         </td>
+        <!-- /SECTION: STAFF -->
       </tr>
     </table>
   </td>
 </tr>
+<!-- /SECTION: COMMUNITY_CARDS -->
+<!-- SECTION: COACH_QUOTE -->
 <tr>
   <td bgcolor="#fffffb" class="px" style="padding:20px 36px 32px 36px;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#26256e" style="border-radius:12px;">
@@ -196,7 +215,9 @@
     </table>
   </td>
 </tr>
+<!-- /SECTION: COACH_QUOTE -->
 
+<!-- SECTION: AHEAD -->
 <!-- ============ LOOKING AHEAD ============ -->
 <!-- SLOT: AHEAD_ITEMS — 2-4 next-month teasers with dates -->
 <tr>
@@ -207,6 +228,7 @@
     </div>
   </td>
 </tr>
+<!-- /SECTION: AHEAD -->
 
 <!-- ============ SIGN-OFF ============ -->
 <tr>

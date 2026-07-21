@@ -7,6 +7,7 @@ import {
   qaGate,
   loadNewsletterTemplate,
   sanitizeModelHtml,
+  removeSections,
 } from './newsletter'
 
 describe('loadNewsletterTemplate', () => {
@@ -83,6 +84,103 @@ describe('expandBlock', () => {
     expect(() => expandBlock(template, 'NOT_A_BLOCK', [])).toThrow(
       /NOT_A_BLOCK/
     )
+  })
+})
+
+describe('removeSections', () => {
+  const template = [
+    '<p>core-top</p>',
+    '<!-- SECTION: CLINICS -->',
+    '<tr><td>{{CLINIC_CONTENT}}</td></tr>',
+    '<!-- /SECTION: CLINICS -->',
+    '<!-- SECTION: LEAGUES -->',
+    '<p>{{LEAGUE_INTRO}}</p>',
+    '<!-- SECTION: LEAGUE_REG -->',
+    '<p>{{LEAGUE_REG_DATES}}</p>',
+    '<!-- /SECTION: LEAGUE_REG -->',
+    '<!-- /SECTION: LEAGUES -->',
+    '<p>core-bottom</p>',
+  ].join('\n')
+
+  it('excises a single OFF section including its tokens', () => {
+    const out = removeSections(template, ['CLINICS'])
+    expect(out).not.toContain('{{CLINIC_CONTENT}}')
+    expect(out).toContain('{{LEAGUE_INTRO}}')
+    expect(out).toContain('core-top')
+    expect(out).toContain('core-bottom')
+  })
+
+  it('excises multiple OFF sections in one call', () => {
+    const out = removeSections(template, ['CLINICS', 'LEAGUES'])
+    expect(out).not.toContain('{{CLINIC_CONTENT}}')
+    expect(out).not.toContain('{{LEAGUE_INTRO}}')
+    expect(out).not.toContain('{{LEAGUE_REG_DATES}}')
+    expect(out).toContain('core-top')
+    expect(out).toContain('core-bottom')
+  })
+
+  it('strips ALL section markers from the output, on or off', () => {
+    const out = removeSections(template, ['CLINICS'])
+    expect(out).not.toContain('SECTION:')
+    const none = removeSections(template, [])
+    expect(none).not.toContain('SECTION:')
+    expect(none).toContain('{{CLINIC_CONTENT}}')
+  })
+
+  it('excises a nested section (LEAGUE_REG) while keeping its parent', () => {
+    const out = removeSections(template, ['LEAGUE_REG'])
+    expect(out).not.toContain('{{LEAGUE_REG_DATES}}')
+    expect(out).toContain('{{LEAGUE_INTRO}}')
+  })
+
+  it('removing a parent swallows the nested section without error, in either order', () => {
+    for (const order of [['LEAGUES', 'LEAGUE_REG'], ['LEAGUE_REG', 'LEAGUES']]) {
+      const out = removeSections(template, order)
+      expect(out).not.toContain('{{LEAGUE_INTRO}}')
+      expect(out).not.toContain('{{LEAGUE_REG_DATES}}')
+      expect(out).toContain('core-top')
+    }
+  })
+
+  it('throws on a section name that does not exist in the template', () => {
+    expect(() => removeSections(template, ['NOT_A_SECTION'])).toThrow(/NOT_A_SECTION/)
+  })
+
+  it('throws on a malformed section name rather than building a bad regex', () => {
+    expect(() => removeSections(template, ['a.*b'])).toThrow()
+  })
+
+  it('works against the real frozen template for every toggleable section', () => {
+    const real = loadNewsletterTemplate()
+    const all = [
+      'LEAGUES', 'EVENTS', 'CLINICS', 'ANNOUNCEMENTS', 'COMMUNITY_IMAGE',
+      'COMMUNITY_CARDS', 'SPOTLIGHT', 'STAFF', 'COACH_QUOTE', 'AHEAD',
+    ]
+    const out = removeSections(real, all)
+    // Core sections always survive:
+    expect(out).toContain('{{HERO_HEADLINE}}')
+    expect(out).toContain('{{GLANCE_ITEMS}}')
+    expect(out).toContain('{{SIGNOFF_TEXT}}')
+    expect(out).toContain('Where Fun Meets Fierce Competition')
+    // Toggleable content is gone:
+    expect(out).not.toContain('League Lineup')
+    expect(out).not.toContain('Upcoming Events')
+    expect(out).not.toContain('Classes &amp; Clinics')
+    expect(out).not.toContain('Club Announcements')
+    expect(out).not.toContain('Member Spotlight')
+    expect(out).not.toContain('Staff Shout-Out')
+    expect(out).not.toContain("Coach's Corner")
+    expect(out).not.toContain('Looking Ahead')
+    expect(out).not.toContain('{{COMMUNITY_IMAGE_SUGGESTION}}')
+    expect(out).not.toContain('SECTION:')
+  })
+
+  it('keeps every section when nothing is off, with markers stripped (real template)', () => {
+    const out = removeSections(loadNewsletterTemplate(), [])
+    expect(out).toContain('League Lineup')
+    expect(out).toContain('Upcoming Events')
+    expect(out).toContain('{{LEAGUE_REG_DATES}}')
+    expect(out).not.toContain('SECTION:')
   })
 })
 

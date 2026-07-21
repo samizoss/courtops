@@ -10,6 +10,32 @@ export function loadNewsletterTemplate(): string {
 }
 
 /**
+ * Excise `<!-- SECTION: NAME --> ... <!-- /SECTION: NAME -->` regions for every
+ * OFF section, then strip ALL remaining section markers — markers never ship,
+ * whether the section is on or off. Runs BEFORE block expansion / slot injection
+ * so downstream steps (and the QA gate) never see an OFF section's tokens.
+ *
+ * Nesting is supported (e.g. LEAGUE_REG inside LEAGUES): a region whose markers
+ * were already swallowed by an excised parent is skipped silently — but a name
+ * that never existed in the source template throws, so typos fail loudly.
+ */
+export function removeSections(template: string, offSections: string[]): string {
+  let out = template
+  for (const name of offSections) {
+    if (!/^[A-Z][A-Z_]*$/.test(name)) throw new Error(`Invalid section name: ${name}`)
+    const re = new RegExp(
+      `[ \\t]*<!-- SECTION: ${name}(?: —[^>]*)? -->[\\s\\S]*?<!-- /SECTION: ${name} -->[ \\t]*\\r?\\n?`
+    )
+    if (re.test(out)) {
+      out = out.replace(re, '')
+    } else if (!new RegExp(`<!-- SECTION: ${name}(?: —[^>]*)? -->`).test(template)) {
+      throw new Error(`Unknown section: ${name} — no such marker in the template`)
+    }
+  }
+  return out.replace(/[ \t]*<!-- \/?SECTION: [A-Z_]+(?: —[^>]*)? -->[ \t]*\r?\n?/g, '')
+}
+
+/**
  * Defense-in-depth defanging for model-returned HTML slots (GLANCE_ITEMS, CLINIC_CONTENT,
  * ANNOUNCEMENT_BLOCKS, AHEAD_ITEMS) before they're injected raw into the newsletter template.
  * This is NOT a general-purpose HTML sanitizer — it's a small, readable set of regex passes

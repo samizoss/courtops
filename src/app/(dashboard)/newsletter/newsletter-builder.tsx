@@ -9,6 +9,12 @@ import {
   toLeagueRow,
   type PrefillEvent,
 } from '@/lib/newsletter-prefill'
+import {
+  DEFAULT_SECTIONS,
+  SECTION_LABELS,
+  type SectionKey,
+  type SectionToggles,
+} from '@/lib/newsletter-section-keys'
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -23,6 +29,8 @@ interface LeagueRow {
   fromCr?: boolean
   /** CR EventId the row came from; survives edits so re-applying never duplicates it. */
   crEventId?: number
+  /** Set when the newsletter month changed after this CR row was applied. */
+  stale?: boolean
 }
 
 interface EventRow {
@@ -35,6 +43,8 @@ interface EventRow {
   fromCr?: boolean
   /** CR EventId the row came from; survives edits so re-applying never duplicates it. */
   crEventId?: number
+  /** Set when the newsletter month changed after this CR row was applied. */
+  stale?: boolean
 }
 
 /** A row with no user content (e.g. the initial placeholder) — safe to drop on apply. */
@@ -64,6 +74,72 @@ function defaultMonthYear(): { month: string; year: number } {
 const inputClass =
   'w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent'
 const labelClass = 'block text-xs text-gray-400 mb-1'
+
+function SectionSwitch({
+  on,
+  onChange,
+  label,
+}: {
+  on: boolean
+  onChange: (next: boolean) => void
+  label: string
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={`Include ${label} section`}
+      onClick={() => onChange(!on)}
+      className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
+        on ? 'bg-orange-600' : 'bg-gray-700'
+      }`}
+    >
+      <span
+        className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
+          on ? 'translate-x-4' : ''
+        }`}
+      />
+    </button>
+  )
+}
+
+/** Card wrapper with a section on/off switch in the header; children hidden while off. */
+function ToggleCard({
+  sectionKey,
+  sections,
+  onToggle,
+  hint,
+  headerExtra,
+  children,
+}: {
+  sectionKey: SectionKey
+  sections: SectionToggles
+  onToggle: (key: SectionKey, next: boolean) => void
+  hint?: string
+  headerExtra?: React.ReactNode
+  children?: React.ReactNode
+}) {
+  const on = sections[sectionKey]
+  return (
+    <div className={`bg-gray-900 rounded-xl border border-gray-800 p-5 space-y-4 ${on ? '' : 'opacity-70'}`}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <SectionSwitch
+            on={on}
+            onChange={(next) => onToggle(sectionKey, next)}
+            label={SECTION_LABELS[sectionKey]}
+          />
+          <h3 className="text-sm font-semibold text-gray-300 truncate">{SECTION_LABELS[sectionKey]}</h3>
+        </div>
+        {on && headerExtra}
+      </div>
+      {!on && <p className="text-xs text-gray-600">Off — this section won&apos;t appear in the email.</p>}
+      {on && hint && <p className="text-xs text-gray-500">{hint}</p>}
+      {on && children}
+    </div>
+  )
+}
 
 function CrChecklistRow({
   event,
@@ -98,6 +174,14 @@ function CrChecklistRow({
   )
 }
 
+function StaleBadge() {
+  return (
+    <span className="px-1.5 py-0.5 bg-amber-500/10 border border-amber-500/30 rounded text-[10px] text-amber-300 whitespace-nowrap">
+      loaded for a different month — reload Court Reserve
+    </span>
+  )
+}
+
 interface NewsletterBuilderProps {
   /** owner/admin only may generate; staff see the form + preview read-only. */
   isAdmin: boolean
@@ -116,12 +200,12 @@ export function NewsletterBuilder({ isAdmin }: NewsletterBuilderProps) {
   const [events, setEvents] = useState<EventRow[]>([
     { day: '', mon: '', name: '', detail: '', url: '' },
   ])
-  const [memberRegOpen, setMemberRegOpen] = useState('')
-  const [dailyPlayerRegOpen, setDailyPlayerRegOpen] = useState('')
+  const [leagueRegInfo, setLeagueRegInfo] = useState('')
   const [coachQuote, setCoachQuote] = useState('')
   const [coachName, setCoachName] = useState('')
   const [spotlightName, setSpotlightName] = useState('')
   const [staffName, setStaffName] = useState('')
+  const [sections, setSections] = useState<SectionToggles>(DEFAULT_SECTIONS)
 
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<string[] | null>(null)
@@ -135,14 +219,42 @@ export function NewsletterBuilder({ isAdmin }: NewsletterBuilderProps) {
   const [crEventChecks, setCrEventChecks] = useState<Record<number, boolean>>({})
   const [crLeagueChecks, setCrLeagueChecks] = useState<Record<number, boolean>>({})
 
+  function toggleSection(key: SectionKey, next: boolean) {
+    setSections((prev) => ({ ...prev, [key]: next }))
+  }
+
   // Any manual edit to a CR-prefilled row promotes it to a manual row
-  // (fromCr cleared) so a later "Apply to newsletter" never clobbers it.
+  // (fromCr + stale cleared) so a later "Apply to newsletter" never clobbers it.
   function updateLeague(i: number, patch: Partial<LeagueRow>) {
-    setLeagues((prev) => prev.map((row, idx) => (idx === i ? { ...row, ...patch, fromCr: false } : row)))
+    setLeagues((prev) =>
+      prev.map((row, idx) => (idx === i ? { ...row, ...patch, fromCr: false, stale: false } : row))
+    )
   }
 
   function updateEvent(i: number, patch: Partial<EventRow>) {
-    setEvents((prev) => prev.map((row, idx) => (idx === i ? { ...row, ...patch, fromCr: false } : row)))
+    setEvents((prev) =>
+      prev.map((row, idx) => (idx === i ? { ...row, ...patch, fromCr: false, stale: false } : row))
+    )
+  }
+
+  /**
+   * Changing the newsletter month invalidates anything loaded from Court Reserve:
+   * the checklist is cleared (stale months would be misleading) and applied CR rows
+   * are flagged stale — but kept, and manual rows are never touched (clobber-safe).
+   */
+  function handleMonthYearChange(nextMonth: string, nextYear: number) {
+    const changed = nextMonth !== month || nextYear !== year
+    setMonth(nextMonth)
+    setYear(nextYear)
+    if (!changed) return
+    if (crEvents) {
+      setCrEvents(null)
+      setCrLoadedLabel('')
+      setCrEventChecks({})
+      setCrLeagueChecks({})
+    }
+    setLeagues((prev) => prev.map((r) => (r.fromCr ? { ...r, stale: true } : r)))
+    setEvents((prev) => prev.map((r) => (r.fromCr ? { ...r, stale: true } : r)))
   }
 
   async function handleLoadFromCr() {
@@ -217,20 +329,26 @@ export function NewsletterBuilder({ isAdmin }: NewsletterBuilderProps) {
           notes,
           heroTopic,
           heroUrl,
-          // Strip the client-only fromCr/crEventId tracking fields — the
-          // generate contract is unchanged by CR prefill.
-          leagues: leagues
-            .filter((l) => l.name.trim() || l.detail.trim() || l.url.trim())
-            .map(({ name, detail, url }) => ({ name, detail, url })),
-          events: events
-            .filter((e) => e.name.trim() || e.detail.trim() || e.url.trim() || e.day.trim())
-            .map(({ day, mon, name, detail, url }) => ({ day, mon, name, detail, url })),
-          memberRegOpen,
-          dailyPlayerRegOpen,
+          // Strip the client-only fromCr/crEventId/stale tracking fields — the
+          // generate contract is unchanged by CR prefill. Belt-and-braces: omit rows
+          // entirely when their section is OFF, so a half-filled hidden row never
+          // reaches the server (the route validates this too, defensively).
+          leagues: sections.LEAGUES
+            ? leagues
+                .filter((l) => l.name.trim() || l.detail.trim() || l.url.trim())
+                .map(({ name, detail, url }) => ({ name, detail, url }))
+            : [],
+          events: sections.EVENTS
+            ? events
+                .filter((e) => e.name.trim() || e.detail.trim() || e.url.trim() || e.day.trim())
+                .map(({ day, mon, name, detail, url }) => ({ day, mon, name, detail, url }))
+            : [],
+          leagueRegInfo,
           coachQuote,
           coachName,
           spotlightName,
           staffName,
+          sections,
         }),
       })
 
@@ -273,8 +391,9 @@ export function NewsletterBuilder({ isAdmin }: NewsletterBuilderProps) {
       <div className="mb-8">
         <h2 className="text-2xl font-bold">Newsletter Builder</h2>
         <p className="text-gray-400 text-sm mt-1">
-          Paste your notes, fill in the facts, and generate the monthly newsletter HTML to paste
-          into a Court Reserve email. The AI writes copy only — code builds all the HTML.
+          Pick the month, load your Court Reserve events, toggle the sections you want, and
+          generate the monthly newsletter HTML to paste into a Court Reserve email. The AI writes
+          copy only — code builds all the HTML.
         </p>
         {!isAdmin && (
           <div className="mt-4 bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
@@ -289,11 +408,17 @@ export function NewsletterBuilder({ isAdmin }: NewsletterBuilderProps) {
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,420px)_1fr] gap-8">
         {/* Left: form */}
         <div className="space-y-6">
-          <div className="bg-gray-900 rounded-xl border border-gray-800 p-5 space-y-4">
+          {/* 1. Month — everything below (CR preload, generated copy, UTM campaign) binds to this. */}
+          <div className="bg-gray-900 rounded-xl border border-orange-500/40 p-5 space-y-3">
+            <h3 className="text-sm font-semibold text-gray-200">Newsletter month</h3>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={labelClass}>Month</label>
-                <select value={month} onChange={(e) => setMonth(e.target.value)} className={inputClass}>
+                <select
+                  value={month}
+                  onChange={(e) => handleMonthYearChange(e.target.value, year)}
+                  className={inputClass}
+                >
                   {MONTH_NAMES.map((m) => (
                     <option key={m} value={m}>{m}</option>
                   ))}
@@ -304,115 +429,28 @@ export function NewsletterBuilder({ isAdmin }: NewsletterBuilderProps) {
                 <input
                   type="number"
                   value={year}
-                  onChange={(e) => setYear(Number(e.target.value))}
+                  onChange={(e) => handleMonthYearChange(month, Number(e.target.value))}
                   className={inputClass}
                 />
               </div>
             </div>
-
-            <div>
-              <label className={labelClass}>Paste your notes for this month</label>
-              <textarea
-                rows={12}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Any messy format is fine — bullet points, half sentences, copy-pasted texts..."
-                className={inputClass}
-              />
-            </div>
           </div>
 
-          <div className="bg-gray-900 rounded-xl border border-gray-800 p-5 space-y-4">
-            <h3 className="text-sm font-semibold text-gray-300">Hero</h3>
-            <div>
-              <label className={labelClass}>Hero topic</label>
-              <input
-                type="text"
-                value={heroTopic}
-                onChange={(e) => setHeroTopic(e.target.value)}
-                placeholder="e.g. Fall league registration opening"
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <label className={labelClass}>Hero Court Reserve URL</label>
-              <input
-                type="url"
-                value={heroUrl}
-                onChange={(e) => setHeroUrl(e.target.value)}
-                placeholder="https://app.courtreserve.com/..."
-                className={inputClass}
-              />
-            </div>
-          </div>
-
-          <div className="bg-gray-900 rounded-xl border border-gray-800 p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-300">Leagues</h3>
-              <button
-                type="button"
-                onClick={() => setLeagues((prev) => [...prev, { name: '', detail: '', url: '' }])}
-                className="px-3 py-1 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 text-xs font-medium rounded-lg transition-colors"
-              >
-                + Add league
-              </button>
-            </div>
-            {leagues.map((row, i) => (
-              <div key={i} className="border border-gray-800 rounded-lg p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-500">League {i + 1}</span>
-                  {leagues.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => setLeagues((prev) => prev.filter((_, idx) => idx !== i))}
-                      className="text-xs text-red-400 hover:text-red-300"
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
-                <input
-                  type="text"
-                  value={row.name}
-                  onChange={(e) => updateLeague(i, { name: e.target.value })}
-                  placeholder="Name (e.g. Ladder Play)"
-                  className={inputClass}
-                />
-                <input
-                  type="text"
-                  value={row.detail}
-                  onChange={(e) => updateLeague(i, { detail: e.target.value })}
-                  placeholder="Detail line"
-                  className={inputClass}
-                />
-                <input
-                  type="url"
-                  value={row.url}
-                  onChange={(e) => updateLeague(i, { url: e.target.value })}
-                  placeholder="Registration URL"
-                  className={inputClass}
-                />
-              </div>
-            ))}
-          </div>
-
-          {/* Load from Court Reserve — read-only prefill for the Events/Leagues
+          {/* 2. Load from Court Reserve — read-only prefill for the Events/Leagues
               rows below. Visible and functional for all members (the GET
               endpoint is member-read); Generate stays admin-only. */}
           <div className="bg-gray-900 rounded-xl border border-gray-800 p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-300">Load from Court Reserve</h3>
-              <button
-                type="button"
-                onClick={handleLoadFromCr}
-                disabled={crLoading}
-                className="px-3 py-1 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed border border-gray-700 text-gray-300 text-xs font-medium rounded-lg transition-colors"
-              >
-                {crLoading ? 'Loading...' : crEvents ? 'Reload' : 'Load events'}
-              </button>
-            </div>
+            <h3 className="text-sm font-semibold text-gray-300">Load from Court Reserve</h3>
+            <button
+              type="button"
+              onClick={handleLoadFromCr}
+              disabled={crLoading}
+              className="w-full px-3 py-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed border border-gray-700 text-gray-200 text-sm font-medium rounded-lg transition-colors"
+            >
+              {crLoading ? 'Loading...' : `Load ${month} ${year} events from Court Reserve`}
+            </button>
             <p className="text-xs text-gray-500">
-              Pulls {month} {year} events straight from your Court Reserve calendar. Check what to
+              Pulls that month&apos;s events straight from your Court Reserve calendar. Check what to
               include, then apply — one-off events start checked, weekly series start unchecked.
             </p>
 
@@ -483,9 +521,120 @@ export function NewsletterBuilder({ isAdmin }: NewsletterBuilderProps) {
             </p>
           </div>
 
+          {/* 3. Notes */}
           <div className="bg-gray-900 rounded-xl border border-gray-800 p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-300">Events</h3>
+            <div>
+              <label className={labelClass}>Paste your notes for this month</label>
+              <textarea
+                rows={12}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Any messy format is fine — bullet points, half sentences, copy-pasted texts..."
+                className={inputClass}
+              />
+            </div>
+          </div>
+
+          {/* 4. Hero — always in the email, no toggle. */}
+          <div className="bg-gray-900 rounded-xl border border-gray-800 p-5 space-y-4">
+            <h3 className="text-sm font-semibold text-gray-300">Hero</h3>
+            <div>
+              <label className={labelClass}>Hero topic</label>
+              <input
+                type="text"
+                value={heroTopic}
+                onChange={(e) => setHeroTopic(e.target.value)}
+                placeholder="e.g. Fall league registration opening"
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Hero Court Reserve URL</label>
+              <input
+                type="url"
+                value={heroUrl}
+                onChange={(e) => setHeroUrl(e.target.value)}
+                placeholder="https://app.courtreserve.com/..."
+                className={inputClass}
+              />
+            </div>
+          </div>
+
+          {/* 5. Toggled sections, in email order. */}
+          <ToggleCard
+            sectionKey="LEAGUES"
+            sections={sections}
+            onToggle={toggleSection}
+            headerExtra={
+              <button
+                type="button"
+                onClick={() => setLeagues((prev) => [...prev, { name: '', detail: '', url: '' }])}
+                className="px-3 py-1 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 text-xs font-medium rounded-lg transition-colors"
+              >
+                + Add league
+              </button>
+            }
+          >
+            {leagues.map((row, i) => (
+              <div key={i} className="border border-gray-800 rounded-lg p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-gray-500">League {i + 1}</span>
+                  <span className="flex items-center gap-2">
+                    {row.fromCr && row.stale && <StaleBadge />}
+                    {leagues.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setLeagues((prev) => prev.filter((_, idx) => idx !== i))}
+                        className="text-xs text-red-400 hover:text-red-300"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </span>
+                </div>
+                <input
+                  type="text"
+                  value={row.name}
+                  onChange={(e) => updateLeague(i, { name: e.target.value })}
+                  placeholder="Name (e.g. Ladder Play)"
+                  className={inputClass}
+                />
+                <input
+                  type="text"
+                  value={row.detail}
+                  onChange={(e) => updateLeague(i, { detail: e.target.value })}
+                  placeholder="Detail line"
+                  className={inputClass}
+                />
+                <input
+                  type="url"
+                  value={row.url}
+                  onChange={(e) => updateLeague(i, { url: e.target.value })}
+                  placeholder="Registration URL"
+                  className={inputClass}
+                />
+              </div>
+            ))}
+            <div>
+              <label className={labelClass}>League registration info (optional, one line)</label>
+              <input
+                type="text"
+                value={leagueRegInfo}
+                onChange={(e) => setLeagueRegInfo(e.target.value)}
+                placeholder="e.g. Members register Mon 8/4 @ noon; daily players Wed 8/6"
+                className={inputClass}
+              />
+              <p className="text-[11px] text-gray-600 mt-1">
+                Appears word-for-word under the league list. Leave blank to drop the line.
+              </p>
+            </div>
+          </ToggleCard>
+
+          <ToggleCard
+            sectionKey="EVENTS"
+            sections={sections}
+            onToggle={toggleSection}
+            headerExtra={
               <button
                 type="button"
                 onClick={() =>
@@ -495,20 +644,24 @@ export function NewsletterBuilder({ isAdmin }: NewsletterBuilderProps) {
               >
                 + Add event
               </button>
-            </div>
+            }
+          >
             {events.map((row, i) => (
               <div key={i} className="border border-gray-800 rounded-lg p-3 space-y-2">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <span className="text-xs text-gray-500">Event {i + 1}</span>
-                  {events.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => setEvents((prev) => prev.filter((_, idx) => idx !== i))}
-                      className="text-xs text-red-400 hover:text-red-300"
-                    >
-                      Remove
-                    </button>
-                  )}
+                  <span className="flex items-center gap-2">
+                    {row.fromCr && row.stale && <StaleBadge />}
+                    {events.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setEvents((prev) => prev.filter((_, idx) => idx !== i))}
+                        className="text-xs text-red-400 hover:text-red-300"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </span>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <input
@@ -549,34 +702,54 @@ export function NewsletterBuilder({ isAdmin }: NewsletterBuilderProps) {
                 />
               </div>
             ))}
-          </div>
+          </ToggleCard>
 
-          <div className="bg-gray-900 rounded-xl border border-gray-800 p-5 space-y-4">
-            <h3 className="text-sm font-semibold text-gray-300">Registration windows</h3>
+          <ToggleCard
+            sectionKey="CLINICS"
+            sections={sections}
+            onToggle={toggleSection}
+            hint="Copy comes from your notes — mention LTP, Liveball, and clinic times there."
+          />
+
+          <ToggleCard
+            sectionKey="ANNOUNCEMENTS"
+            sections={sections}
+            onToggle={toggleSection}
+            hint="Copy comes from your notes — each announcement becomes its own block."
+          />
+
+          <ToggleCard
+            sectionKey="COMMUNITY_IMAGE"
+            sections={sections}
+            onToggle={toggleSection}
+            hint="Adds a photo placeholder you swap in the Court Reserve editor."
+          />
+
+          <ToggleCard sectionKey="SPOTLIGHT" sections={sections} onToggle={toggleSection}>
             <div>
-              <label className={labelClass}>Member registration open</label>
+              <label className={labelClass}>Member spotlight name</label>
               <input
                 type="text"
-                value={memberRegOpen}
-                onChange={(e) => setMemberRegOpen(e.target.value)}
-                placeholder="Mon 8/4 @ 12:00 PM"
+                value={spotlightName}
+                onChange={(e) => setSpotlightName(e.target.value)}
                 className={inputClass}
               />
             </div>
+          </ToggleCard>
+
+          <ToggleCard sectionKey="STAFF" sections={sections} onToggle={toggleSection}>
             <div>
-              <label className={labelClass}>Daily player registration open</label>
+              <label className={labelClass}>Staff shout-out name</label>
               <input
                 type="text"
-                value={dailyPlayerRegOpen}
-                onChange={(e) => setDailyPlayerRegOpen(e.target.value)}
-                placeholder="Wed 8/6 @ 12:00 PM"
+                value={staffName}
+                onChange={(e) => setStaffName(e.target.value)}
                 className={inputClass}
               />
             </div>
-          </div>
+          </ToggleCard>
 
-          <div className="bg-gray-900 rounded-xl border border-gray-800 p-5 space-y-4">
-            <h3 className="text-sm font-semibold text-gray-300">Coach&apos;s Corner</h3>
+          <ToggleCard sectionKey="COACH_QUOTE" sections={sections} onToggle={toggleSection}>
             <div>
               <label className={labelClass}>Coach quote</label>
               <input
@@ -595,29 +768,14 @@ export function NewsletterBuilder({ isAdmin }: NewsletterBuilderProps) {
                 className={inputClass}
               />
             </div>
-          </div>
+          </ToggleCard>
 
-          <div className="bg-gray-900 rounded-xl border border-gray-800 p-5 space-y-4">
-            <h3 className="text-sm font-semibold text-gray-300">Community</h3>
-            <div>
-              <label className={labelClass}>Member spotlight name</label>
-              <input
-                type="text"
-                value={spotlightName}
-                onChange={(e) => setSpotlightName(e.target.value)}
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <label className={labelClass}>Staff shout-out name</label>
-              <input
-                type="text"
-                value={staffName}
-                onChange={(e) => setStaffName(e.target.value)}
-                className={inputClass}
-              />
-            </div>
-          </div>
+          <ToggleCard
+            sectionKey="AHEAD"
+            sections={sections}
+            onToggle={toggleSection}
+            hint="Next-month teasers — copy comes from your notes."
+          />
 
           {errors && (
             <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
