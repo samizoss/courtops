@@ -166,22 +166,54 @@ export function getDigestImageTier(countsByDay: number[]): DigestImageTier {
   return { eventFontSize: 12, lineHeight: 1.05, eventGap: 1, rowPaddingY: 4 }
 }
 
-export function renderDigestEmail(events: DigestEvent[], window: { start: string; end: string }): string {
+/**
+ * Renders the digest email HTML from the frozen template.
+ *
+ * `opts.crOrgId` is the club's Court Reserve org id (orgs.courtreserve_org_id).
+ * It is deliberately NOT stored per-run: it's org-level config, so callers
+ * (the /weekly-digest page) re-read it at render time — which also gives old
+ * stored runs working links for free. When it's absent, or an event predates
+ * the eventId field (pre-2026-07-21 runs), the name renders as plain bold
+ * text — exactly what email clients that strip styles fall back to as well.
+ */
+export function renderDigestEmail(
+  events: DigestEvent[],
+  window: { start: string; end: string },
+  opts: { crOrgId?: string | null } = {}
+): string {
   const template = fs.readFileSync(path.join(process.cwd(), 'templates', 'weekly-digest.html'), 'utf8')
   const byDay = DAY_LABELS.map((_, i) => events.filter((e) => e.dayIndex === i))
   const maxPerDay = Math.max(0, ...byDay.map((d) => d.length))
   const fontSize = maxPerDay > 5 ? 13 : 15 // >5 events: shrink one step, never truncate
+
+  const eventName = (e: DigestEvent): string => {
+    const bold = `<strong>${escapeHtml(e.name)}</strong>`
+    if (e.eventId == null || !opts.crOrgId) return bold
+    // Verified working URL shape (Court Reserve public event details page).
+    const href = `https://app.courtreserve.com/Online/Events/Details/${encodeURIComponent(opts.crOrgId)}/${encodeURIComponent(String(e.eventId))}`
+    // White + underline + bold stays readable on the blue background
+    // (white-on-#004a8d ≈ 8.9:1 — see templates/weekly-digest.html) and
+    // degrades to plain bold text when a client strips styles.
+    return `<a href="${escapeHtml(href)}" style="color:#ffffff;text-decoration:underline;font-weight:700;">${bold}</a>`
+  }
+
   const rows = DAY_LABELS.map((label, i) => ({
     DAY_LABEL: label,
     ROW_FONT_SIZE: String(fontSize),
     DAY_EVENTS: {
       value: byDay[i]
-        .map((e) => `${escapeHtml(formatTimeRange(e.startTime, e.endTime))} | <strong>${escapeHtml(e.name)}</strong>`)
+        .map((e) => `${escapeHtml(formatTimeRange(e.startTime, e.endTime))} | ${eventName(e)}`)
         .join('<br>'),
       html: true as const,
     },
   }))
   let html = expandBlock(template, 'DAY_ROWS', rows)
-  html = injectSlots(html, { DATE_RANGE: formatDateRange(window.start, window.end) })
+  html = injectSlots(html, {
+    DATE_RANGE: formatDateRange(window.start, window.end),
+    MAPS_URL: `https://maps.google.com/?q=${encodeURIComponent(JAR_BRAND.club.address)}`,
+    SITE_URL: JAR_BRAND.club.site,
+    INSTAGRAM_URL: JAR_BRAND.club.socials.instagram,
+    FACEBOOK_URL: JAR_BRAND.club.socials.facebook,
+  })
   return html
 }

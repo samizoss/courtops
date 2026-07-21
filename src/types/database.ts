@@ -480,6 +480,8 @@ export interface WeeklyDigestEvent {
   endTime: string
   startIso: string
   name: string
+  /** CR EventId for deep links. Absent on runs stored before 2026-07-21 — renderer shows plain text. */
+  eventId?: number | null
 }
 
 export interface WeeklyDigestRun {

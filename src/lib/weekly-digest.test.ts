@@ -153,6 +153,14 @@ describe('normalizeEvents', () => {
     expect(normalizeEvents(rows, window)[0].name).toBe('HIP Class (3.5+)')
   })
 
+  it('populates eventId from CREventRegistration.EventId', () => {
+    expect(normalizeEvents([row({ EventId: 4567 })], window)[0].eventId).toBe(4567)
+  })
+
+  it('stores eventId as null when EventId is missing', () => {
+    expect(normalizeEvents([row({ EventId: undefined as unknown as number })], window)[0].eventId).toBeNull()
+  })
+
   it('skips rows with unparsable times or missing name', () => {
     const rows = [
       row({ StartTime: 'not-a-date' }),
@@ -287,6 +295,42 @@ describe('renderDigestEmail', () => {
     const html = renderDigestEmail([ev({ name: 'HIP Class (3.5+)' })], window)
     expect(html).toContain('<strong>HIP Class (3.5+)</strong>')
     expect(html).toContain('7:00 - 10:00 AM')
+  })
+
+  it('links the event name to Court Reserve when eventId and crOrgId are present', () => {
+    const html = renderDigestEmail([ev({ eventId: 4567 })], window, { crOrgId: '13403' })
+    expect(html).toContain('<a href="https://app.courtreserve.com/Online/Events/Details/13403/4567"')
+    expect(html).toMatch(
+      /<a href="https:\/\/app\.courtreserve\.com\/Online\/Events\/Details\/13403\/4567"[^>]*><strong>Open Play<\/strong><\/a>/
+    )
+  })
+
+  it('renders the name as plain bold text when eventId is missing (pre-v1.1 stored runs)', () => {
+    const html = renderDigestEmail([ev({ eventId: undefined })], window, { crOrgId: '13403' })
+    expect(html).toContain('<strong>Open Play</strong>')
+    expect(html).not.toContain('app.courtreserve.com/Online/Events/Details')
+  })
+
+  it('renders the name unlinked when crOrgId is unavailable, even with an eventId', () => {
+    const html = renderDigestEmail([ev({ eventId: 4567 })], window)
+    expect(html).not.toContain('app.courtreserve.com/Online/Events/Details')
+  })
+
+  it('emits only https hrefs', () => {
+    const html = renderDigestEmail([ev({ eventId: 4567 })], window, { crOrgId: '13403' })
+    const hrefs = [...html.matchAll(/href="([^"]+)"/g)].map((m) => m[1])
+    expect(hrefs.length).toBeGreaterThan(0)
+    for (const href of hrefs) {
+      expect(href).toMatch(/^https:\/\//)
+    }
+  })
+
+  it('footer links the address to Google Maps and includes site + Instagram + Facebook', () => {
+    const html = renderDigestEmail([], window)
+    expect(html).toContain('https://maps.google.com/?q=3701%20S.%20Western%20Ave.%2C%20Sioux%20Falls%2C%20SD')
+    expect(html).toContain('href="https://thepbjar.com"')
+    expect(html).toContain('href="https://www.instagram.com/thejarpickleballclub/"')
+    expect(html).toContain('href="https://www.facebook.com/thejarpickleballclub/"')
   })
 
   it('backward compat: re-renders a pre-fix stored run (UTC-shifted startIso, no eventId) with correct wall-clock times', () => {

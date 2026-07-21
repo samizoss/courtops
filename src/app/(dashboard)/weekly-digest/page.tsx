@@ -15,12 +15,18 @@ export default async function WeeklyDigestPage() {
   }
 
   const supabase = await createClient()
-  const { data: runs } = await supabase
-    .from('weekly_digest_runs')
-    .select('*')
-    .eq('org_id', userOrg.orgId)
-    .order('generated_at', { ascending: false })
-    .limit(10)
+  // crOrgId is org-level config re-read at render time (NOT stored per-run):
+  // event links in the email need orgs.courtreserve_org_id, and reading it
+  // here means runs stored before the link feature get working links too.
+  const [{ data: runs }, { data: orgRow }] = await Promise.all([
+    supabase
+      .from('weekly_digest_runs')
+      .select('*')
+      .eq('org_id', userOrg.orgId)
+      .order('generated_at', { ascending: false })
+      .limit(10),
+    supabase.from('orgs').select('courtreserve_org_id').eq('id', userOrg.orgId).single(),
+  ])
 
   const allRuns = (runs ?? []) as WeeklyDigestRun[]
   const latestRun = allRuns[0] ?? null
@@ -32,7 +38,11 @@ export default async function WeeklyDigestPage() {
   const previewRun = latestRun?.status === 'success' ? latestRun : latestSuccess
 
   const emailHtml = previewRun
-    ? renderDigestEmail(previewRun.events, { start: previewRun.week_start, end: previewRun.week_end })
+    ? renderDigestEmail(
+        previewRun.events,
+        { start: previewRun.week_start, end: previewRun.week_end },
+        { crOrgId: orgRow?.courtreserve_org_id ?? null }
+      )
     : null
 
   const previewDateRange = previewRun ? formatDateRange(previewRun.week_start, previewRun.week_end) : null
