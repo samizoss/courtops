@@ -32,7 +32,12 @@ const inputClass =
   'w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent'
 const labelClass = 'block text-xs text-gray-400 mb-1'
 
-export function NewsletterBuilder() {
+interface NewsletterBuilderProps {
+  /** owner/admin only may generate; staff see the form + preview read-only. */
+  isAdmin: boolean
+}
+
+export function NewsletterBuilder({ isAdmin }: NewsletterBuilderProps) {
   const { toast } = useToast()
   const defaults = defaultMonthYear()
 
@@ -133,6 +138,14 @@ export function NewsletterBuilder() {
           Paste your notes, fill in the facts, and generate the monthly newsletter HTML to paste
           into a Court Reserve email. The AI writes copy only — code builds all the HTML.
         </p>
+        {!isAdmin && (
+          <div className="mt-4 bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+            <p className="text-blue-300 text-sm">
+              View-only — ask an admin to generate. You can browse and fill in the form, but
+              generating the newsletter requires an admin account.
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,420px)_1fr] gap-8">
@@ -394,10 +407,14 @@ export function NewsletterBuilder() {
             </div>
           )}
 
+          {/* Generate is owner/admin-only — the API route 403s regardless;
+              disabling here keeps the affordance honest for staff (fields
+              stay editable for drafting, they just can't call the API). */}
           <button
             onClick={handleGenerate}
-            disabled={loading}
-            className="w-full px-4 py-3 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-medium rounded-lg transition-colors"
+            disabled={loading || !isAdmin}
+            title={isAdmin ? undefined : 'View-only — ask an admin to generate'}
+            className="w-full px-4 py-3 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
           >
             {loading ? 'Generating...' : html ? 'Regenerate copy' : 'Generate'}
           </button>

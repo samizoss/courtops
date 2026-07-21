@@ -29,11 +29,12 @@ const montserratRegular = fs.readFileSync(path.join(FONTS_DIR, 'Montserrat-Regul
 const montserratBold = fs.readFileSync(path.join(FONTS_DIR, 'Montserrat-Bold.ttf'))
 
 export async function GET(request: Request) {
+  // Read-only PNG render: any authenticated org member may fetch it (staff
+  // view/download the graphic on /weekly-digest as of 2026-07-21). Queries
+  // below are scoped by org_id + RLS. Generating a digest (POST
+  // /api/weekly-digest/run) remains owner/admin-only.
   const org = await getUserOrg()
   if (!org) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!['owner', 'admin'].includes(org.role)) {
-    return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
-  }
 
   const { searchParams } = new URL(request.url)
   const week = searchParams.get('week')

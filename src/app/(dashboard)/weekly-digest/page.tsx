@@ -10,9 +10,15 @@ import type { WeeklyDigestRun } from '@/types/database'
 export default async function WeeklyDigestPage() {
   const userOrg = await getUserOrg()
   if (!userOrg) return null
-  if (!['owner', 'admin'].includes(userOrg.role)) {
+  // Staff get view-only access (2026-07-21): previews, Copy HTML, Download
+  // PNG. Generating stays owner/admin-only — the client hides the button and
+  // POST /api/weekly-digest/run enforces it server-side. Possible future
+  // refinement: a per-staff "content" capability (profiles.capabilities[])
+  // instead of all-staff, per Sami's "I don't mind all staff" direction.
+  if (!['owner', 'admin', 'staff'].includes(userOrg.role)) {
     redirect('/')
   }
+  const isAdmin = ['owner', 'admin'].includes(userOrg.role)
 
   const supabase = await createClient()
   // crOrgId is org-level config re-read at render time (NOT stored per-run):
@@ -53,6 +59,7 @@ export default async function WeeklyDigestPage() {
       previewRun={previewRun}
       previewDateRange={previewDateRange}
       emailHtml={emailHtml}
+      isAdmin={isAdmin}
     />
   )
 }
