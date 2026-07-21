@@ -27,44 +27,87 @@ export function getWeekWindow(now: Date): { start: string; end: string } {
   }
 }
 
-export interface DigestEvent { dayIndex: number; startTime: string; endTime: string; startIso: string; name: string }
-
-function chicagoIsoDate(d: Date): string {
-  const { y, m, d: day } = chicagoYmdWeekday(d)
-  return `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+export interface DigestEvent {
+  dayIndex: number
+  startTime: string
+  endTime: string
+  /**
+   * Sort key only. Since the 2026-07-21 wall-clock fix this is
+   * "YYYY-MM-DDTHH:MM" (naive, no zone); rows stored before the fix hold a
+   * server-TZ-dependent UTC instant instead. Nothing in the display path
+   * reads it — rendering always goes through startTime/endTime raw strings.
+   */
+  startIso: string
+  name: string
+  /** Court Reserve EventId for deep-linking. Missing on runs stored before 2026-07-21 — render unlinked. */
+  eventId?: number | null
 }
+
+/**
+ * Court Reserve `StartTime`/`EndTime` are *naive Chicago wall-clock* strings —
+ * "2026-07-27T18:00:00", no zone suffix (verified against prod
+ * weekly_digest_runs.events, 2026-07-21). They must NEVER go through
+ * `new Date(raw)`: JS parses zone-less date-times in the server's local
+ * timezone, so on Vercel (UTC) every time shifted 5-6h when re-formatted in
+ * America/Chicago ("LTP-Monday 6pm" rendered as 1:00 PM). This parser reads
+ * the digits straight off the string — no Date, no timezone math anywhere in
+ * the display path.
+ */
+interface WallClock { y: number; mo: number; d: number; h: number; min: number }
+
+function parseWallClock(raw: string): WallClock | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{1,2}):(\d{2})/.exec(raw)
+  if (!m) return null
+  const wc = { y: +m[1], mo: +m[2], d: +m[3], h: +m[4], min: +m[5] }
+  if (wc.mo < 1 || wc.mo > 12 || wc.d < 1 || wc.d > 31 || wc.h > 23 || wc.min > 59) return null
+  return wc
+}
+
+const pad2 = (n: number) => String(n).padStart(2, '0')
 
 export function normalizeEvents(rows: CREventRegistration[], window: { start: string; end: string }): DigestEvent[] {
   const seen = new Map<string, DigestEvent>()
   for (const r of rows) {
-    const start = new Date(r.StartTime); const end = new Date(r.EndTime)
-    if (isNaN(start.getTime()) || isNaN(end.getTime()) || !r.EventName) continue
-    const dateIso = chicagoIsoDate(start)
+    const start = parseWallClock(r.StartTime); const end = parseWallClock(r.EndTime)
+    if (!start || !end || !r.EventName) continue
+    // Date and dayIndex come from the string's own date part — never from a
+    // timezone-converted Date (see parseWallClock).
+    const dateIso = `${start.y}-${pad2(start.mo)}-${pad2(start.d)}`
     if (dateIso < window.start || dateIso > window.end) continue
     const key = r.EventDateId ? `id:${r.EventDateId}` : `${dateIso}|${r.StartTime}|${r.EventName}`
     if (seen.has(key)) continue
+    // Pure calendrical day arithmetic — UTC noon anchors are fine here
+    // because both sides are date-only strings, not instants.
     const dayIndex = Math.round((Date.parse(dateIso + 'T12:00:00Z') - Date.parse(window.start + 'T12:00:00Z')) / 86400000)
     seen.set(key, {
       dayIndex,
-      startIso: start.toISOString(),
+      startIso: `${dateIso}T${pad2(start.h)}:${pad2(start.min)}`, // wall-clock sort key
       startTime: r.StartTime,
       endTime: r.EndTime,
       name: r.EventName, // verbatim from CR — never rename
+      eventId: typeof r.EventId === 'number' ? r.EventId : null,
     })
   }
   return [...seen.values()].sort((a, b) => a.dayIndex - b.dayIndex || a.startIso.localeCompare(b.startIso))
 }
 
-function fmtTime(d: Date, withMeridiem: boolean): string {
-  const s = new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit', hour12: true }).format(d)
-  return withMeridiem ? s : s.replace(/\s?(AM|PM)$/i, '')
+function fmtWallTime(wc: WallClock, withMeridiem: boolean): string {
+  const h12 = wc.h % 12 === 0 ? 12 : wc.h % 12
+  const base = `${h12}:${pad2(wc.min)}`
+  return withMeridiem ? `${base} ${wc.h < 12 ? 'AM' : 'PM'}` : base
 }
 
-export function formatTimeRange(startIso: string, endIso: string): string {
-  const s = new Date(startIso); const e = new Date(endIso)
-  const mer = (d: Date) => new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: 'numeric', hour12: true }).format(d).slice(-2)
-  const same = mer(s) === mer(e)
-  return `${fmtTime(s, !same)} - ${fmtTime(e, true)}`
+/**
+ * Formats two raw CR wall-clock strings as e.g. "7:00 - 10:00 AM" (meridiem
+ * collapsed when both sides match). Backward compatible with runs stored
+ * before the wall-clock fix: those rows hold the same raw naive strings.
+ * Unparsable input renders as '' rather than "Invalid Date".
+ */
+export function formatTimeRange(startRaw: string, endRaw: string): string {
+  const s = parseWallClock(startRaw); const e = parseWallClock(endRaw)
+  if (!s || !e) return ''
+  const same = (s.h < 12) === (e.h < 12)
+  return `${fmtWallTime(s, !same)} - ${fmtWallTime(e, true)}`
 }
 
 export function formatDateRange(startDate: string, endDate: string): string {
@@ -123,22 +166,54 @@ export function getDigestImageTier(countsByDay: number[]): DigestImageTier {
   return { eventFontSize: 12, lineHeight: 1.05, eventGap: 1, rowPaddingY: 4 }
 }
 
-export function renderDigestEmail(events: DigestEvent[], window: { start: string; end: string }): string {
+/**
+ * Renders the digest email HTML from the frozen template.
+ *
+ * `opts.crOrgId` is the club's Court Reserve org id (orgs.courtreserve_org_id).
+ * It is deliberately NOT stored per-run: it's org-level config, so callers
+ * (the /weekly-digest page) re-read it at render time — which also gives old
+ * stored runs working links for free. When it's absent, or an event predates
+ * the eventId field (pre-2026-07-21 runs), the name renders as plain bold
+ * text — exactly what email clients that strip styles fall back to as well.
+ */
+export function renderDigestEmail(
+  events: DigestEvent[],
+  window: { start: string; end: string },
+  opts: { crOrgId?: string | null } = {}
+): string {
   const template = fs.readFileSync(path.join(process.cwd(), 'templates', 'weekly-digest.html'), 'utf8')
   const byDay = DAY_LABELS.map((_, i) => events.filter((e) => e.dayIndex === i))
   const maxPerDay = Math.max(0, ...byDay.map((d) => d.length))
   const fontSize = maxPerDay > 5 ? 13 : 15 // >5 events: shrink one step, never truncate
+
+  const eventName = (e: DigestEvent): string => {
+    const bold = `<strong>${escapeHtml(e.name)}</strong>`
+    if (e.eventId == null || !opts.crOrgId) return bold
+    // Verified working URL shape (Court Reserve public event details page).
+    const href = `https://app.courtreserve.com/Online/Events/Details/${encodeURIComponent(opts.crOrgId)}/${encodeURIComponent(String(e.eventId))}`
+    // White + underline + bold stays readable on the blue background
+    // (white-on-#004a8d ≈ 8.9:1 — see templates/weekly-digest.html) and
+    // degrades to plain bold text when a client strips styles.
+    return `<a href="${escapeHtml(href)}" style="color:#ffffff;text-decoration:underline;font-weight:700;">${bold}</a>`
+  }
+
   const rows = DAY_LABELS.map((label, i) => ({
     DAY_LABEL: label,
     ROW_FONT_SIZE: String(fontSize),
     DAY_EVENTS: {
       value: byDay[i]
-        .map((e) => `${escapeHtml(formatTimeRange(e.startTime, e.endTime))} | <strong>${escapeHtml(e.name)}</strong>`)
+        .map((e) => `${escapeHtml(formatTimeRange(e.startTime, e.endTime))} | ${eventName(e)}`)
         .join('<br>'),
       html: true as const,
     },
   }))
   let html = expandBlock(template, 'DAY_ROWS', rows)
-  html = injectSlots(html, { DATE_RANGE: formatDateRange(window.start, window.end) })
+  html = injectSlots(html, {
+    DATE_RANGE: formatDateRange(window.start, window.end),
+    MAPS_URL: `https://maps.google.com/?q=${encodeURIComponent(JAR_BRAND.club.address)}`,
+    SITE_URL: JAR_BRAND.club.site,
+    INSTAGRAM_URL: JAR_BRAND.club.socials.instagram,
+    FACEBOOK_URL: JAR_BRAND.club.socials.facebook,
+  })
   return html
 }

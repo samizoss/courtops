@@ -42,7 +42,12 @@ This week's lineup at The Jar
     <h1 class="h1 hero-h" style="color:#ffffff;font-size:34px;line-height:1.2;margin:0 0 10px 0;font-family:'Days One',Montserrat,Impact,'Arial Black',sans-serif;text-transform:uppercase;">
       THIS WEEK @ THE JAR
     </h1>
-    <p class="h1" style="color:#b42033;font-size:20px;font-weight:700;margin:0;font-family:'Days One',Montserrat,Impact,sans-serif;text-transform:uppercase;">
+    <!-- Contrast (WCAG 2.x, computed 2026-07-21): white #ffffff on blue #004a8d = 8.88:1 (AA+AAA).
+         The previous red #b42033 on this blue was 1.35:1 — a hard fail ("red on blue is hard").
+         Other brand options on this blue: cream #fffffb = 8.86:1, lightBlue #65bee5 = 4.25:1
+         (below the 4.5:1 AA bar for normal text) — so white/cream only for text on blue;
+         red stays reserved for accents on light/white backgrounds. -->
+    <p class="h1" style="color:#ffffff;font-size:20px;font-weight:700;margin:0;font-family:'Days One',Montserrat,Impact,sans-serif;text-transform:uppercase;">
       {{DATE_RANGE}}
     </p>
   </td>
@@ -70,10 +75,14 @@ This week's lineup at The Jar
       </td></tr>
     </table>
     <p class="body-text" style="color:#ffffff;font-size:13px;line-height:1.7;margin:0 0 6px 0;font-family:'Montserrat',Calibri,Arial,sans-serif;">
-      The Jar Pickleball Club &bull; 3701 S. Western Ave., Sioux Falls, SD
+      The Jar Pickleball Club &bull; <a href="{{MAPS_URL}}" style="color:#ffffff;text-decoration:underline;">3701 S. Western Ave., Sioux Falls, SD</a>
     </p>
-    <p class="body-text" style="color:#ffffff;font-size:12px;line-height:1.7;margin:0;font-family:'Montserrat',Calibri,Arial,sans-serif;">
+    <p class="body-text" style="color:#ffffff;font-size:12px;line-height:1.7;margin:0 0 10px 0;font-family:'Montserrat',Calibri,Arial,sans-serif;">
       Sun 8am&ndash;8pm | Mon/Wed 7am&ndash;9pm | Tue/Thu 5am&ndash;9pm | Fri/Sat 7am&ndash;10pm
+    </p>
+    <!-- Footer links stay white (#ffffff on #004a8d ≈ 8.9:1); lightBlue #65bee5 on this blue is only ≈4.3:1, below WCAG AA 4.5:1 for small text. -->
+    <p class="body-text" style="color:#ffffff;font-size:12px;line-height:1.7;margin:0;font-family:'Montserrat',Calibri,Arial,sans-serif;">
+      <a href="{{SITE_URL}}" style="color:#ffffff;text-decoration:underline;">thepbjar.com</a> &nbsp;&bull;&nbsp; <a href="{{INSTAGRAM_URL}}" style="color:#ffffff;text-decoration:underline;">Instagram</a> &nbsp;&bull;&nbsp; <a href="{{FACEBOOK_URL}}" style="color:#ffffff;text-decoration:underline;">Facebook</a>
     </p>
   </td>
 </tr>

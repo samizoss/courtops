@@ -29,11 +29,12 @@ const montserratRegular = fs.readFileSync(path.join(FONTS_DIR, 'Montserrat-Regul
 const montserratBold = fs.readFileSync(path.join(FONTS_DIR, 'Montserrat-Bold.ttf'))
 
 export async function GET(request: Request) {
+  // Read-only PNG render: any authenticated org member may fetch it (staff
+  // view/download the graphic on /weekly-digest as of 2026-07-21). Queries
+  // below are scoped by org_id + RLS. Generating a digest (POST
+  // /api/weekly-digest/run) remains owner/admin-only.
   const org = await getUserOrg()
   if (!org) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!['owner', 'admin'].includes(org.role)) {
-    return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
-  }
 
   const { searchParams } = new URL(request.url)
   const week = searchParams.get('week')
@@ -144,6 +145,11 @@ export async function GET(request: Request) {
           >
             @ THE JAR
           </div>
+          {/* Contrast (WCAG 2.x, computed 2026-07-21): the date sits on a WHITE
+              pill, so red #b42033 on #ffffff = 6.57:1 — passes AA (4.5:1). This
+              is NOT the email's failing combo (red directly on blue #004a8d =
+              1.35:1, fixed to white there). Everything else on this canvas is
+              white on blue = 8.88:1. Red never sits directly on blue here. */}
           <div
             style={{
               display: 'flex',

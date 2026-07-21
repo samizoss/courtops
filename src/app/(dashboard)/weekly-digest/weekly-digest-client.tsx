@@ -9,9 +9,11 @@ interface Props {
   previewRun: WeeklyDigestRun | null
   previewDateRange: string | null
   emailHtml: string | null
+  /** owner/admin only may generate; staff see previews, Copy HTML, Download PNG. */
+  isAdmin: boolean
 }
 
-export function WeeklyDigestClient({ latestRun, previewRun, previewDateRange, emailHtml }: Props) {
+export function WeeklyDigestClient({ latestRun, previewRun, previewDateRange, emailHtml, isAdmin }: Props) {
   const { toast } = useToast()
   const [generating, setGenerating] = useState(false)
 
@@ -74,13 +76,17 @@ export function WeeklyDigestClient({ latestRun, previewRun, previewDateRange, em
             </p>
           )}
         </div>
-        <button
-          onClick={handleGenerate}
-          disabled={generating}
-          className="px-4 py-2 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          {generating ? 'Generating…' : 'Generate now'}
-        </button>
+        {/* Generate is owner/admin-only — the API route 403s regardless, this
+            just avoids offering staff a button that can only fail. */}
+        {isAdmin && (
+          <button
+            onClick={handleGenerate}
+            disabled={generating}
+            className="px-4 py-2 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            {generating ? 'Generating…' : 'Generate now'}
+          </button>
+        )}
       </div>
 
       {latestRun?.status === 'error' && (
@@ -96,8 +102,14 @@ export function WeeklyDigestClient({ latestRun, previewRun, previewDateRange, em
       {!previewRun ? (
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
           <p className="text-sm text-gray-400">
-            No digest has been generated yet. Click <span className="text-gray-300">Generate now</span> to pull this
-            week&apos;s Court Reserve events.
+            {isAdmin ? (
+              <>
+                No digest has been generated yet. Click <span className="text-gray-300">Generate now</span> to pull
+                this week&apos;s Court Reserve events.
+              </>
+            ) : (
+              <>No digest has been generated yet. Ask an admin to generate one.</>
+            )}
           </p>
         </div>
       ) : (

@@ -29,12 +29,16 @@ const nav = [
   // job (Maddie). If the entry is clutter for front-desk staff, scope it to a
   // capability later — the pages + RLS already allow staff by design.
   { href: '/content', label: 'Content', icon: '📅', roles: ['owner', 'admin', 'staff'] },
-  // Newsletter Builder — admin-only (Feature 1, 2026-07). Generates the monthly
-  // Court Reserve newsletter HTML; not a staff-facing tool.
-  { href: '/newsletter', label: 'Newsletter', icon: '✉', roles: ['owner', 'admin'] },
-  // Weekly Digest is admin-only — deterministic Court Reserve events digest
-  // (email + social PNG), Friday cron + manual "Generate now".
-  { href: '/weekly-digest', label: 'Weekly Digest', icon: '📰', roles: ['owner', 'admin'] },
+  // Newsletter + Weekly Digest opened to staff 2026-07-21 (Sami: "I don't
+  // mind all staff") — staff get view-only access (previews, Copy HTML,
+  // Download PNG); the generate actions stay owner/admin-only, enforced by
+  // the API routes and hidden/disabled in the UI. If broad staff access
+  // gets noisy later, scope these to a per-staff "content" capability
+  // (profiles.capabilities[] already exists for shift roles).
+  { href: '/newsletter', label: 'Newsletter', icon: '✉', roles: ['owner', 'admin', 'staff'] },
+  // Weekly Digest — deterministic Court Reserve events digest (email +
+  // social PNG), Friday cron + manual "Generate now" (owner/admin only).
+  { href: '/weekly-digest', label: 'Weekly Digest', icon: '📰', roles: ['owner', 'admin', 'staff'] },
   { href: '/messaging', label: 'Messages', icon: '💬', roles: ['owner'] },
   { href: '/reports', label: 'Reports', icon: '📊', roles: ['owner', 'admin', 'viewer'] },
   { href: '/settings', label: 'Settings', icon: '⚙', roles: ['owner', 'admin', 'viewer'] },
