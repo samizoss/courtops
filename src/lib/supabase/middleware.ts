@@ -96,9 +96,12 @@ export async function updateSession(request: NextRequest) {
     // request to /login before the route's own auth check ever runs. The
     // route itself still enforces auth (Bearer CRON_SECRET for GET, admin
     // session via getUserOrg() for POST); this only stops middleware from
-    // pre-empting that with an HTML redirect. See PR for the same latent gap
-    // affecting /api/cron/availability-reminders (out of scope here).
-    !request.nextUrl.pathname.startsWith('/api/weekly-digest')
+    // pre-empting that with an HTML redirect.
+    !request.nextUrl.pathname.startsWith('/api/weekly-digest') &&
+    // Same gap for /api/cron/*: confirmed 2026-07-21 that the daily
+    // availability-reminders cron was being 307'd to /login before its
+    // Bearer CRON_SECRET check ever ran (silently non-functional in prod).
+    !request.nextUrl.pathname.startsWith('/api/cron')
   ) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
