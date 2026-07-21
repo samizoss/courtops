@@ -291,6 +291,20 @@ describe('renderDigestEmail', () => {
     expect(html).not.toContain('{{')
   })
 
+  it('never puts brand red on the blue background (1.35:1 contrast — WCAG fail)', () => {
+    // The date range was red #b42033 on blue #004a8d until 2026-07-21. All
+    // text on the blue email canvas must be white/cream (~8.9:1).
+    const html = renderDigestEmail([ev({})], window)
+    expect(html).not.toMatch(/color:\s*#b42033/i)
+  })
+
+  it('keeps the accessibility fundamentals: lang, logo alt, presentation tables', () => {
+    const html = renderDigestEmail([], window)
+    expect(html).toMatch(/<html[^>]*\slang="en"/)
+    expect(html).toMatch(/<img[^>]*alt="The Jar Pickleball Club"/)
+    expect(html).not.toMatch(/<table(?![^>]*role="presentation")/)
+  })
+
   it('keeps event names verbatim and bold, time regular', () => {
     const html = renderDigestEmail([ev({ name: 'HIP Class (3.5+)' })], window)
     expect(html).toContain('<strong>HIP Class (3.5+)</strong>')

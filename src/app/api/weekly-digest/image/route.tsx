@@ -145,6 +145,11 @@ export async function GET(request: Request) {
           >
             @ THE JAR
           </div>
+          {/* Contrast (WCAG 2.x, computed 2026-07-21): the date sits on a WHITE
+              pill, so red #b42033 on #ffffff = 6.57:1 — passes AA (4.5:1). This
+              is NOT the email's failing combo (red directly on blue #004a8d =
+              1.35:1, fixed to white there). Everything else on this canvas is
+              white on blue = 8.88:1. Red never sits directly on blue here. */}
           <div
             style={{
               display: 'flex',
