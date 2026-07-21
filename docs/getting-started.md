@@ -256,6 +256,8 @@ Go to **Newsletter** from the sidebar (admin only). This builds the monthly Cour
 5. Once it's clean, review the preview on the right side of the page.
 6. Click **Copy HTML**, then paste it into a new Court Reserve email campaign.
 
+**Shortcut — Load from Court Reserve:** instead of typing event and league rows by hand, click **Load events** in the *Load from Court Reserve* panel. It lists that month's Court Reserve events with include/exclude checkboxes — one-off events start checked, weekly recurring series start unchecked — and **Apply to newsletter** fills in the event and league rows (dates, times, and sign-up links) for you; every row stays fully editable afterward, and re-applying never overwrites rows you added or edited yourself. Events with zero Court Reserve registrations don't appear (CR API limitation).
+
 Links in the newsletter are automatically tagged for click tracking — you don't need to add anything yourself.
 
 ---
