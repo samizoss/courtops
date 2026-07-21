@@ -12,8 +12,10 @@ Welcome to CourtOps! This guide walks you through initial setup and daily use of
 4. [Staff & Scheduling](#4-staff--scheduling)
 5. [SOPs (Standard Operating Procedures)](#5-sops)
 6. [Dashboard Overview](#6-dashboard)
-7. [Settings Reference](#7-settings-reference)
-8. [FAQ & Troubleshooting](#8-faq--troubleshooting)
+7. [Newsletter Builder](#7-newsletter-builder)
+8. [Weekly Digest](#8-weekly-digest)
+9. [Settings Reference](#9-settings-reference)
+10. [FAQ & Troubleshooting](#10-faq--troubleshooting)
 
 ---
 
@@ -241,7 +243,42 @@ Your dashboard adapts to your role:
 
 ---
 
-## 7. Settings Reference
+## 7. Newsletter Builder
+
+Go to **Newsletter** from the sidebar (admin only). This builds the monthly Court Reserve email newsletter without writing any HTML by hand.
+
+**Step by step:**
+
+1. **Paste your notes for this month** into the notes box — any messy format is fine (bullets, half-sentences, copy-pasted texts). This gives the AI context, but it isn't what gets published word-for-word.
+2. **Fill in the structured facts** below it: hero topic + Court Reserve link, league rows, event rows, member/daily-player registration-open dates, a coach's quote, and the member/staff spotlight names. These are the facts that actually appear in the newsletter.
+3. Click **Generate**. AI writes the newsletter copy in your voice and drops it into the fixed CourtOps newsletter template — it never changes the layout or design, only the words.
+4. **Fix anything the checklist flags.** If a slot is empty, a fact wasn't filled in, or a link isn't secure (`https://`), **Copy HTML** is blocked and the specific problems are listed. Fill in what's missing and click **Generate** again (it becomes **Regenerate copy** once you've generated once).
+5. Once it's clean, review the preview on the right side of the page.
+6. Click **Copy HTML**, then paste it into a new Court Reserve email campaign.
+
+Links in the newsletter are automatically tagged for click tracking — you don't need to add anything yourself.
+
+---
+
+## 8. Weekly Digest
+
+Go to **Weekly Digest** from the sidebar (admin only). This is "This Week @ The Jar" — a ready-to-send weekly roundup built automatically from your live Court Reserve schedule. There's no AI writing here; it's a direct pull of next week's events.
+
+**Step by step:**
+
+1. **Every Friday at 9am**, CourtOps automatically builds next week's (Monday–Sunday) digest and emails admins a link to review it. It never sends anything on its own — you always review and copy it yourself.
+2. Need it before Friday, or did something on the schedule change? Click **Generate now** on the Weekly Digest page any time to rebuild it immediately.
+3. Review the **email preview** on the left. When it looks right, click **Copy HTML** and paste it into a Court Reserve email, the same way as the newsletter.
+4. Review the **social graphic** on the right — a ready-to-post, Instagram-sized image of the week's schedule. Click **Download PNG** and post it wherever you'd share it.
+5. On a busy week, the graphic automatically shrinks its text so every event still fits — nothing gets cut off or dropped.
+
+**Note:** the digest only shows events that have at least one Court Reserve registration — Court Reserve doesn't expose events with zero registrations, so a same-day-added event with no signups yet won't appear until someone registers.
+
+If a digest run fails (e.g. a Court Reserve connection hiccup), admins get an alert email and the page shows your last successful digest instead of a blank one.
+
+---
+
+## 9. Settings Reference
 
 ### General (Settings > General)
 - Organization name and slug (subdomain)
@@ -276,7 +313,7 @@ Configuration for content planning — set these up once and the planning tools 
 
 ---
 
-## 8. FAQ & Troubleshooting
+## 10. FAQ & Troubleshooting
 
 **Q: A staff member says they can't log in.**
 Check Settings > Team — is their account active? Did their invite link expire? Click **Resend** to generate a new one.
@@ -301,4 +338,4 @@ The schedule grid correctly filters approved time off. Make sure the time-off re
 
 ---
 
-*Last updated: July 1, 2026*
+*Last updated: July 21, 2026*
