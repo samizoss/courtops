@@ -22,7 +22,7 @@ export default async function IntegrationsSettingsPage() {
       .single(),
     supabase
       .from('orgs')
-      .select('courtreserve_org_id')
+      .select('courtreserve_org_id, timezone')
       .eq('id', userOrg.orgId)
       .single(),
     supabase
@@ -81,8 +81,9 @@ export default async function IntegrationsSettingsPage() {
                       <td className="px-4 py-2.5 text-white font-medium">{ev?.name ?? '—'}</td>
                       <td className="px-4 py-2.5 text-gray-400">{ev?.cr_category_name ?? '—'}</td>
                       <td className="px-4 py-2.5 text-gray-300">
-                        {/* Server renders in UTC on Vercel — format in the club's timezone. */}
-                        {new Date(s.start_time).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: orgSettings?.timezone || 'America/Chicago' })}
+                        {/* Server renders in UTC on Vercel — format in the club's timezone
+                            (orgs.timezone; org_settings never had a timezone column). */}
+                        {new Date(s.start_time).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: org?.timezone || 'America/Chicago' })}
                       </td>
                       <td className="px-4 py-2.5 text-right text-gray-300 font-mono">{s.registration_count}</td>
                     </tr>

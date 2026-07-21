@@ -198,13 +198,39 @@ export function mapTier(crMembershipName: string | null | undefined): string | n
   return null
 }
 
+/**
+ * Day-granularity date from a CR datetime string.
+ *
+ * CR sends naive org-local wall-clock strings (no offset — verified against
+ * The Jar's prod data 2026-07-21, e.g. attendance DateTime
+ * "2026-07-21T16:39:03.157" + TimeZone "America/Chicago"). The date the club
+ * cares about is the WALL-CLOCK date, so extract it textually. The previous
+ * `new Date(d).toISOString()` round-trip re-interpreted the string in the
+ * server timezone and flipped late-evening times to the next date on any
+ * non-UTC server (it was only accidentally correct on Vercel/UTC).
+ */
 export function toISODate(d: string | null | undefined): string | null {
   if (!d) return null
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ]|$)/.exec(d.trim())
+  if (m) {
+    // Validate it's a real calendar date (reject 2026-13-40).
+    const t = Date.UTC(+m[1], +m[2] - 1, +m[3])
+    const check = new Date(t)
+    if (check.getUTCFullYear() !== +m[1] || check.getUTCMonth() !== +m[2] - 1 || check.getUTCDate() !== +m[3]) return null
+    return `${m[1]}-${m[2]}-${m[3]}`
+  }
+  // Non-CR shapes (e.g. explicit offset): fall back to the UTC date of the instant.
   const date = new Date(d)
   if (isNaN(date.getTime())) return null
   return date.toISOString().split('T')[0]
 }
 
+/**
+ * Calendar date of a Date's LOCAL components, for CR day-granularity query
+ * params. Callers build windows with `new Date(year, month, 1)` (local), so
+ * reading back via toISOString() shifted the date on non-UTC servers.
+ */
 export function fmt(d: Date): string {
-  return d.toISOString().split('T')[0]
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }

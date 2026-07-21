@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { CourtReserveAPI, mapTier, toISODate, fmt } from '@/lib/courtreserve'
+import { crWallClockToInstant } from '@/lib/cr-time'
 
 /**
  * POST /api/sync/courtreserve
@@ -38,16 +39,19 @@ export async function POST() {
     return NextResponse.json({ error: 'Court Reserve API credentials not configured. Go to Settings > Integrations.' }, { status: 400 })
   }
 
-  // Get CR org ID from orgs table
+  // Get CR org ID + timezone from orgs table (timezone lives on orgs,
+  // edited via Settings → General; CR datetimes are org-local wall clock).
   const { data: org } = await supabase
     .from('orgs')
-    .select('courtreserve_org_id')
+    .select('courtreserve_org_id, timezone')
     .eq('id', orgId)
     .single()
 
   if (!org?.courtreserve_org_id) {
     return NextResponse.json({ error: 'Court Reserve Org ID not set. Go to Settings > Integrations.' }, { status: 400 })
   }
+
+  const orgTimezone = org.timezone || 'America/Chicago'
 
   // Create sync log entry
   const { data: syncLog } = await supabase
@@ -286,8 +290,11 @@ export async function POST() {
         const sessionRows = []
         for (const [dateId, s] of sessionsByDateId) {
           const eventUuid = evIdMap.get(s.crEventId)
-          const start = new Date(s.start)
-          const end = new Date(s.end)
+          // CR StartTime/EndTime are naive org-local wall-clock strings —
+          // `new Date(s.start)` would mislabel them as UTC on Vercel and
+          // store instants 5-6h early (see src/lib/cr-time.ts).
+          const start = crWallClockToInstant(s.start, orgTimezone)
+          const end = crWallClockToInstant(s.end, orgTimezone)
           if (!eventUuid || isNaN(start.getTime()) || isNaN(end.getTime())) continue
           sessionRows.push({
             org_id: orgId,
