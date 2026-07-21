@@ -1,12 +1,12 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
+// Shared {{TOKEN}} template primitives live in template-engine.ts (also used by
+// the weekly digest renderer); re-exported here so existing imports keep working.
+export { escapeHtml, injectSlots, expandBlock, type SlotValue } from '@/lib/template-engine'
+
 export function loadNewsletterTemplate(): string {
   return fs.readFileSync(path.join(process.cwd(), 'templates', 'newsletter-skeleton.html'), 'utf8')
-}
-
-export function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
 /**
@@ -35,27 +35,6 @@ export function sanitizeModelHtml(html: string): string {
     /javascript:|data:text\/html/i.test(full) ? `${attr}${eq}'#'` : full
   )
   return out
-}
-
-export type SlotValue = string | { value: string; html: true }
-
-/** Replace {{TOKEN}} slots. Plain strings are HTML-escaped; {html:true} values injected raw. */
-export function injectSlots(template: string, slots: Record<string, SlotValue>): string {
-  let out = template
-  for (const [token, v] of Object.entries(slots)) {
-    const raw = typeof v === 'string' ? escapeHtml(v) : v.value
-    out = out.replaceAll(`{{${token}}}`, raw)
-  }
-  return out
-}
-
-/** Expand a repeatable block delimited by <!-- SLOT: NAME ... --> ... <!-- /NAME -->. */
-export function expandBlock(template: string, blockName: string, rows: Array<Record<string, SlotValue>>): string {
-  const re = new RegExp(`<!-- SLOT: ${blockName}[\\s\\S]*?-->([\\s\\S]*?)<!-- /${blockName} -->`)
-  const m = template.match(re)
-  if (!m) throw new Error(`Block ${blockName} not found in template`)
-  const expanded = rows.map((row) => injectSlots(m[1], row)).join('\n')
-  return template.replace(re, expanded)
 }
 
 /** QA rule 4: UTM-tag club + Court Reserve links. campaign = "YYYY-MM". Matches href="..." and href='...'. */
