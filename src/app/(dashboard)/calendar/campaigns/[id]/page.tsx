@@ -51,10 +51,13 @@ export default async function CampaignPage({
       .order('name'),
   ])
 
-  const { data: orgSettings } = await supabase
-    .from('org_settings')
+  // Club timezone lives on orgs (Settings → General), NOT org_settings —
+  // the previous org_settings query selected a nonexistent column, always
+  // errored, and silently fell back to America/Chicago.
+  const { data: orgRow } = await supabase
+    .from('orgs')
     .select('timezone')
-    .eq('org_id', userOrg.orgId)
+    .eq('id', userOrg.orgId)
     .single()
 
   const linkedEvents: LinkedEvent[] = ((linkRows ?? []) as unknown as {
@@ -87,7 +90,7 @@ export default async function CampaignPage({
       allEvents={(allEvents ?? []) as CrEventOption[]}
       orgId={userOrg.orgId}
       canEdit={canEdit}
-      timezone={orgSettings?.timezone || 'America/Chicago'}
+      timezone={orgRow?.timezone || 'America/Chicago'}
     />
   )
 }
