@@ -49,13 +49,16 @@ describe('getWeekWindow', () => {
 describe('normalizeEvents', () => {
   const window = { start: '2026-07-20', end: '2026-07-26' }
 
+  // Court Reserve sends *naive Chicago wall-clock* strings — no Z, no offset
+  // (verified against prod weekly_digest_runs.events 2026-07-21). "T07:00:00"
+  // means 7:00 AM at the club, on any server, in any timezone.
   function row(overrides: Partial<CREventRegistration>): CREventRegistration {
     return {
       EventId: 1,
       EventName: 'Open Play',
       EventDateId: 100,
-      StartTime: '2026-07-20T12:00:00.000Z', // Mon 7am Chicago
-      EndTime: '2026-07-20T15:00:00.000Z', // Mon 10am Chicago
+      StartTime: '2026-07-20T07:00:00', // Mon 7am wall clock
+      EndTime: '2026-07-20T10:00:00', // Mon 10am wall clock
       CancelledOnUtc: null,
       ...overrides,
     }
@@ -94,8 +97,8 @@ describe('normalizeEvents', () => {
       row({}), // Mon, in window
       row({
         EventDateId: 200,
-        StartTime: '2026-07-27T12:00:00.000Z', // following Monday, out of window
-        EndTime: '2026-07-27T15:00:00.000Z',
+        StartTime: '2026-07-27T07:00:00', // following Monday, out of window
+        EndTime: '2026-07-27T10:00:00',
       }),
     ]
     expect(normalizeEvents(rows, window)).toHaveLength(1)
@@ -105,20 +108,20 @@ describe('normalizeEvents', () => {
     const rows = [
       row({
         EventDateId: 300,
-        StartTime: '2026-07-26T18:00:00.000Z', // Sun 1pm Chicago
-        EndTime: '2026-07-26T20:00:00.000Z',
+        StartTime: '2026-07-26T13:00:00', // Sun 1pm
+        EndTime: '2026-07-26T15:00:00',
         EventName: 'Sunday Session',
       }),
       row({
         EventDateId: 100,
-        StartTime: '2026-07-20T12:00:00.000Z', // Mon 7am
-        EndTime: '2026-07-20T15:00:00.000Z',
+        StartTime: '2026-07-20T07:00:00', // Mon 7am
+        EndTime: '2026-07-20T10:00:00',
         EventName: 'Monday Early',
       }),
       row({
         EventDateId: 101,
-        StartTime: '2026-07-20T16:00:00.000Z', // Mon 11am
-        EndTime: '2026-07-20T18:00:00.000Z',
+        StartTime: '2026-07-20T11:00:00', // Mon 11am
+        EndTime: '2026-07-20T13:00:00',
         EventName: 'Monday Late',
       }),
     ]
@@ -126,6 +129,23 @@ describe('normalizeEvents', () => {
     expect(result.map((e) => e.name)).toEqual(['Monday Early', 'Monday Late', 'Sunday Session'])
     expect(result[0].dayIndex).toBe(0)
     expect(result[2].dayIndex).toBe(6)
+  })
+
+  it('sorts a same-day evening event after a morning one by actual start time', () => {
+    const rows = [
+      row({ EventDateId: 401, StartTime: '2026-07-20T18:00:00', EndTime: '2026-07-20T19:30:00', EventName: 'Evening' }),
+      row({ EventDateId: 400, StartTime: '2026-07-20T07:00:00', EndTime: '2026-07-20T10:00:00', EventName: 'Morning' }),
+    ]
+    expect(normalizeEvents(rows, window).map((e) => e.name)).toEqual(['Morning', 'Evening'])
+  })
+
+  it('takes dayIndex from the string date part — a Sunday-midnight event stays on Sunday', () => {
+    // A UTC-misparse pipeline on a Chicago-rendered server would pull
+    // 2026-07-26T00:00:00 back to Saturday evening. Wall-clock parsing must not.
+    const rows = [row({ EventDateId: 500, StartTime: '2026-07-26T00:00:00', EndTime: '2026-07-26T02:00:00' })]
+    const result = normalizeEvents(rows, window)
+    expect(result).toHaveLength(1)
+    expect(result[0].dayIndex).toBe(6)
   })
 
   it('keeps event names verbatim, never renaming', () => {
@@ -143,18 +163,38 @@ describe('normalizeEvents', () => {
 })
 
 describe('formatTimeRange', () => {
+  // CR strings are wall clock: "...T18:00:00" is 6:00 PM on ANY server in ANY
+  // timezone — the formatter reads digits off the string and never constructs
+  // a Date, so there is no timezone conversion for a server TZ to corrupt.
   it('shows meridiem once when both sides match', () => {
-    // 7:00 AM - 10:00 AM Chicago (CDT, summer)
-    expect(formatTimeRange('2026-07-20T12:00:00.000Z', '2026-07-20T15:00:00.000Z')).toBe(
-      '7:00 - 10:00 AM'
-    )
+    expect(formatTimeRange('2026-07-20T07:00:00', '2026-07-20T10:00:00')).toBe('7:00 - 10:00 AM')
   })
 
   it('shows meridiem on both sides when they differ', () => {
-    // 11:00 AM - 1:00 PM Chicago
-    expect(formatTimeRange('2026-07-20T16:00:00.000Z', '2026-07-20T18:00:00.000Z')).toBe(
-      '11:00 AM - 1:00 PM'
-    )
+    expect(formatTimeRange('2026-07-20T11:00:00', '2026-07-20T13:00:00')).toBe('11:00 AM - 1:00 PM')
+  })
+
+  it('REGRESSION (prod 2026-07-21): LTP-Monday 6pm renders 6:00 PM, not 1:00 PM', () => {
+    // Raw prod values from weekly_digest_runs.events for "LTP-Monday 6pm".
+    // Pre-fix, new Date() parsed these as UTC on Vercel and the digest showed
+    // "1:00 - 2:30 PM".
+    expect(formatTimeRange('2026-07-20T18:00:00', '2026-07-20T19:30:00')).toBe('6:00 - 7:30 PM')
+  })
+
+  it('REGRESSION (prod 2026-07-21): POP Weekday Mornings renders 7-10 AM, not 2-5 AM', () => {
+    expect(formatTimeRange('2026-07-27T07:00:00', '2026-07-27T10:00:00')).toBe('7:00 - 10:00 AM')
+  })
+
+  it('handles midnight and noon (12-hour edge cases)', () => {
+    expect(formatTimeRange('2026-07-20T00:00:00', '2026-07-20T12:00:00')).toBe('12:00 AM - 12:00 PM')
+  })
+
+  it('is season-independent — a winter (CST) string formats identically', () => {
+    expect(formatTimeRange('2026-01-12T18:00:00', '2026-01-12T19:30:00')).toBe('6:00 - 7:30 PM')
+  })
+
+  it('returns an empty string for unparsable input instead of "Invalid Date"', () => {
+    expect(formatTimeRange('not-a-date', '2026-07-20T10:00:00')).toBe('')
   })
 })
 
@@ -184,9 +224,9 @@ describe('renderDigestEmail', () => {
   function ev(overrides: Partial<DigestEvent>): DigestEvent {
     return {
       dayIndex: 0,
-      startTime: '2026-07-20T12:00:00.000Z',
-      endTime: '2026-07-20T15:00:00.000Z',
-      startIso: '2026-07-20T12:00:00.000Z',
+      startTime: '2026-07-20T07:00:00',
+      endTime: '2026-07-20T10:00:00',
+      startIso: '2026-07-20T07:00',
       name: 'Open Play',
       ...overrides,
     }
@@ -210,7 +250,7 @@ describe('renderDigestEmail', () => {
 
   it('shrinks font size to 13 when any day has more than 5 events', () => {
     const events = Array.from({ length: 6 }, (_, i) =>
-      ev({ dayIndex: 2, name: `Event ${i}`, startTime: `2026-07-22T${12 + i}:00:00.000Z`, endTime: `2026-07-22T${13 + i}:00:00.000Z` })
+      ev({ dayIndex: 2, name: `Event ${i}`, startTime: `2026-07-22T${12 + i}:00:00`, endTime: `2026-07-22T${13 + i}:00:00` })
     )
     const html = renderDigestEmail(events, window)
     expect(html).toContain('font-size:13px')
@@ -225,7 +265,7 @@ describe('renderDigestEmail', () => {
 
   it('never truncates events, even when a day has more than 5', () => {
     const events = Array.from({ length: 8 }, (_, i) =>
-      ev({ dayIndex: 3, name: `Session ${i}`, startTime: `2026-07-23T${12 + i}:00:00.000Z`, endTime: `2026-07-23T${13 + i}:00:00.000Z` })
+      ev({ dayIndex: 3, name: `Session ${i}`, startTime: `2026-07-23T${12 + i}:00:00`, endTime: `2026-07-23T${13 + i}:00:00` })
     )
     const html = renderDigestEmail(events, window)
     for (let i = 0; i < 8; i++) {
@@ -247,6 +287,23 @@ describe('renderDigestEmail', () => {
     const html = renderDigestEmail([ev({ name: 'HIP Class (3.5+)' })], window)
     expect(html).toContain('<strong>HIP Class (3.5+)</strong>')
     expect(html).toContain('7:00 - 10:00 AM')
+  })
+
+  it('backward compat: re-renders a pre-fix stored run (UTC-shifted startIso, no eventId) with correct wall-clock times', () => {
+    // Shape lifted from a real pre-v1.1 weekly_digest_runs.events row. Raw
+    // startTime/endTime were always stored verbatim (naive wall clock); only
+    // the derived startIso was a server-TZ-dependent UTC instant. The
+    // renderer must read the raw strings and ignore startIso.
+    const stored = {
+      dayIndex: 0,
+      startTime: '2026-07-20T18:00:00',
+      endTime: '2026-07-20T19:30:00',
+      startIso: '2026-07-20T23:00:00.000Z',
+      name: 'LTP-Monday 6pm',
+    } as DigestEvent
+    const html = renderDigestEmail([stored], window)
+    expect(html).toContain('6:00 - 7:30 PM')
+    expect(html).toContain('LTP-Monday 6pm')
   })
 })
 
