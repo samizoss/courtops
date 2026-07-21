@@ -249,14 +249,15 @@ Go to **Newsletter** from the sidebar (admin only). This builds the monthly Cour
 
 **Step by step:**
 
-1. **Paste your notes for this month** into the notes box — any messy format is fine (bullets, half-sentences, copy-pasted texts). This gives the AI context, but it isn't what gets published word-for-word.
-2. **Fill in the structured facts** below it: hero topic + Court Reserve link, league rows, event rows, member/daily-player registration-open dates, a coach's quote, and the member/staff spotlight names. These are the facts that actually appear in the newsletter.
-3. Click **Generate**. AI writes the newsletter copy in your voice and drops it into the fixed CourtOps newsletter template — it never changes the layout or design, only the words.
-4. **Fix anything the checklist flags.** If a slot is empty, a fact wasn't filled in, or a link isn't secure (`https://`), **Copy HTML** is blocked and the specific problems are listed. Fill in what's missing and click **Generate** again (it becomes **Regenerate copy** once you've generated once).
-5. Once it's clean, review the preview on the right side of the page.
-6. Click **Copy HTML**, then paste it into a new Court Reserve email campaign.
-
-**Shortcut — Load from Court Reserve:** instead of typing event and league rows by hand, click **Load events** in the *Load from Court Reserve* panel. It lists that month's Court Reserve events with include/exclude checkboxes — one-off events start checked, weekly recurring series start unchecked — and **Apply to newsletter** fills in the event and league rows (dates, times, and sign-up links) for you; every row stays fully editable afterward, and re-applying never overwrites rows you added or edited yourself. Events with zero Court Reserve registrations don't appear (CR API limitation).
+1. **Pick the newsletter month** at the top of the form. Everything below — the Court Reserve preload, the generated copy, the link tracking — binds to this month. Changing it clears the Court Reserve checklist and flags any already-applied Court Reserve rows as stale so you know to reload (rows you typed or edited yourself are never touched).
+2. **Load from Court Reserve** (directly under the month picker): click **Load [month] events from Court Reserve**. It lists that month's Court Reserve events with include/exclude checkboxes — one-off events start checked, weekly recurring series start unchecked — and **Apply to newsletter** fills in the event and league rows (dates, times, and sign-up links) for you; every row stays fully editable afterward, and re-applying never overwrites rows you added or edited yourself. Events with zero Court Reserve registrations don't appear (CR API limitation).
+3. **Paste your notes for this month** into the notes box — any messy format is fine (bullets, half-sentences, copy-pasted texts). This gives the AI context, but it isn't what gets published word-for-word.
+4. **Toggle sections on or off.** Every section except the hero, "This Month at a Glance," and the sign-off has an on/off switch — turn off anything you don't have content for this month (e.g. no member spotlight? Switch it off) and it simply won't appear in the email. Leagues, Events, Clinics, Announcements, and Looking Ahead start on; the community photo, Member Spotlight, Staff Shout-Out, and Coach's Corner start off. The checklist never blocks you over a section that's switched off.
+5. **Fill in the facts for the sections that are on**: hero topic + Court Reserve link, league rows (plus an optional one-line "League registration info" that appears in the email word-for-word — leave it blank to drop the line), event rows, a coach's quote, and the member/staff spotlight names.
+6. Click **Generate**. AI writes the newsletter copy in your voice and drops it into the fixed CourtOps newsletter template — it never changes the layout or design, only the words.
+7. **Fix anything the checklist flags.** If a slot is empty, a fact wasn't filled in, or a link isn't secure (`https://`), **Copy HTML** is blocked and the specific problems are listed. Fill in what's missing and click **Generate** again (it becomes **Regenerate copy** once you've generated once — your section toggles are kept).
+8. Once it's clean, review the preview on the right side of the page.
+9. Click **Copy HTML**, then paste it into a new Court Reserve email campaign.
 
 Links in the newsletter are automatically tagged for click tracking — you don't need to add anything yourself.
 
