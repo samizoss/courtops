@@ -5,6 +5,7 @@ import {
   formatTimeRange,
   formatDateRange,
   renderDigestEmail,
+  getDigestImageTier,
   DAY_LABELS,
   type DigestEvent,
 } from './weekly-digest'
@@ -246,5 +247,59 @@ describe('renderDigestEmail', () => {
     const html = renderDigestEmail([ev({ name: 'HIP Class (3.5+)' })], window)
     expect(html).toContain('<strong>HIP Class (3.5+)</strong>')
     expect(html).toContain('7:00 - 10:00 AM')
+  })
+})
+
+describe('getDigestImageTier', () => {
+  it('uses the largest (tier 1) font for a quiet week', () => {
+    expect(getDigestImageTier([1, 2, 1, 0, 2, 1, 3]).eventFontSize).toBe(24)
+  })
+
+  it('steps down to tier 2 when total weekly pressure is high even though no single day is very busy', () => {
+    // 3 events every day = 21 total, no day exceeds tier 1's max-per-day
+    // threshold — this is the exact "broadly busy week" case that a
+    // single-day-only heuristic would miss.
+    const tier = getDigestImageTier([3, 3, 3, 3, 3, 3, 3])
+    expect(tier.eventFontSize).toBe(19)
+  })
+
+  it('steps down when a single day spikes, even if the weekly total is otherwise low', () => {
+    const tier = getDigestImageTier([0, 0, 0, 20, 0, 0, 0])
+    expect(tier.eventFontSize).toBeLessThan(24)
+  })
+
+  it('drops to the smallest (tier 3) font for the worst realistic case: 7 days x 8 events', () => {
+    const tier = getDigestImageTier([8, 8, 8, 8, 8, 8, 8])
+    expect(tier.eventFontSize).toBe(12)
+  })
+
+  it('fits the worst realistic case within the 1350px canvas budget', () => {
+    // Mirrors the height-budget comment on getDigestImageTier: fixed
+    // chrome (header + rows-container margin + footer) is ~489px, leaving
+    // ~861px for the 7 day rows.
+    const FIXED_CHROME = 489
+    const CANVAS_HEIGHT = 1350
+    const BUDGET_FOR_ROWS = CANVAS_HEIGHT - FIXED_CHROME
+
+    const tier = getDigestImageTier([8, 8, 8, 8, 8, 8, 8])
+    const eventsHeight = 8 * (tier.eventFontSize * tier.lineHeight) + 7 * tier.eventGap
+    const rowHeight = 2 /* border */ + tier.rowPaddingY * 2 + eventsHeight
+    const totalRowsHeight = rowHeight * 7
+
+    expect(totalRowsHeight).toBeLessThanOrEqual(BUDGET_FOR_ROWS)
+  })
+
+  it('stays at tier 1 defaults exactly at the tier 1/2 boundary (20 total, maxPerDay 4)', () => {
+    const tier = getDigestImageTier([4, 4, 4, 4, 4, 0, 0]) // 20 total, max 4
+    expect(tier.eventFontSize).toBe(24)
+  })
+
+  it('crosses into tier 2 just past the boundary (21 total)', () => {
+    const tier = getDigestImageTier([4, 4, 4, 4, 4, 1, 0]) // 21 total, max 4
+    expect(tier.eventFontSize).toBe(19)
+  })
+
+  it('handles an empty week without throwing', () => {
+    expect(getDigestImageTier([0, 0, 0, 0, 0, 0, 0]).eventFontSize).toBe(24)
   })
 })

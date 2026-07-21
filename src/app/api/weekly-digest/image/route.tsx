@@ -4,7 +4,7 @@ import { ImageResponse } from 'next/og'
 import { NextResponse } from 'next/server'
 import { getUserOrg } from '@/lib/get-user-org'
 import { createClient } from '@/lib/supabase/server'
-import { DAY_LABELS, formatTimeRange, formatDateRange, type DigestEvent } from '@/lib/weekly-digest'
+import { DAY_LABELS, formatTimeRange, formatDateRange, getDigestImageTier, type DigestEvent } from '@/lib/weekly-digest'
 import { JAR_BRAND } from '@/lib/jar-brand'
 
 export const runtime = 'nodejs'
@@ -59,8 +59,10 @@ export async function GET(request: Request) {
 
   const events = (run.events ?? []) as DigestEvent[]
   const byDay = DAY_LABELS.map((_, i) => events.filter((e) => e.dayIndex === i))
-  const maxPerDay = Math.max(0, ...byDay.map((d) => d.length))
-  const eventFontSize = maxPerDay > 5 ? 19 : 24
+  // Tier picked from total weekly pressure (not just one day's count) —
+  // see the height-budget comment on getDigestImageTier in weekly-digest.ts
+  // for the math showing why this never truncates the canvas.
+  const tier = getDigestImageTier(byDay.map((d) => d.length))
   const dateRange = formatDateRange(run.week_start, run.week_end)
 
   const daysOne = daysOneRegular
@@ -184,8 +186,8 @@ export async function GET(request: Request) {
                 display: 'flex',
                 flexDirection: 'row',
                 borderTop: '2px solid #ffffff',
-                paddingTop: 14,
-                paddingBottom: 14,
+                paddingTop: tier.rowPaddingY,
+                paddingBottom: tier.rowPaddingY,
               }}
             >
               <div
@@ -210,8 +212,9 @@ export async function GET(request: Request) {
                         style={{
                           display: 'flex',
                           color: '#ffffff',
-                          fontSize: eventFontSize,
-                          marginBottom: idx < byDay[i].length - 1 ? 4 : 0,
+                          fontSize: tier.eventFontSize,
+                          lineHeight: tier.lineHeight,
+                          marginBottom: idx < byDay[i].length - 1 ? tier.eventGap : 0,
                         }}
                       >
                         <span style={{ fontFamily: 'Montserrat', fontWeight: 400 }}>{formatTimeRange(e.startTime, e.endTime)}</span>

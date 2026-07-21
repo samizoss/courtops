@@ -74,6 +74,55 @@ export function formatDateRange(startDate: string, endDate: string): string {
 
 export const DAY_LABELS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const
 
+export interface DigestImageTier {
+  eventFontSize: number
+  lineHeight: number
+  eventGap: number
+  rowPaddingY: number
+}
+
+/**
+ * Font/spacing tier for the weekly-digest PNG (`image/route.tsx`), a fixed
+ * 1080x1350 canvas rendered via next/og (satori — no scrolling, no
+ * overflow: anything past 1350px tall gets silently cropped). Design rule
+ * is "never truncate," so instead of a single font step-down keyed off one
+ * day's count, this picks from 3 tiers keyed off total weekly pressure
+ * (every day contributes to the same fixed-height column, so a broadly
+ * busy week is exactly as dangerous as one very busy day).
+ *
+ * Height budget math (see image/route.tsx for the literal JSX these
+ * numbers describe):
+ *   header (title x2 @ 72px/1.1 + paddingTop 64 + date pill)  ≈ 305px
+ *   + rows container marginTop                                =  48px
+ *   + footer (logo 80 + paddingTop 16 + paddingBottom 40)     = 136px
+ *   -----------------------------------------------------------------
+ *   fixed total                                                489px
+ *   budget remaining for the 7 day rows: 1350 - 489            ≈ 861px
+ *
+ * Each row's height = (border 2px + rowPaddingY*2) + max(dayLabelHeight
+ * ~36px, eventsHeight), where eventsHeight(n) = n*(eventFontSize*lineHeight)
+ * + (n-1)*eventGap for that day's n events.
+ *
+ * Worst realistic case per spec: 7 days x 8 events/day (56 total). Tier 3's
+ * numbers are sized for exactly that:
+ *   eventsHeight(8) = 8*(12*1.05) + 7*1 = 8*12.6 + 7 ≈ 107.8px
+ *   row total       = (2 + 4*2) + 107.8 = 10 + 107.8 ≈ 117.8px
+ *   7 rows          ≈ 824.6px  <  861px budget (≈36px to spare)
+ * so the worst realistic week still fits within the fixed 1350px canvas.
+ */
+export function getDigestImageTier(countsByDay: number[]): DigestImageTier {
+  const totalEvents = countsByDay.reduce((sum, n) => sum + n, 0)
+  const maxPerDay = Math.max(0, ...countsByDay)
+
+  if (maxPerDay <= 4 && totalEvents <= 20) {
+    return { eventFontSize: 24, lineHeight: 1.2, eventGap: 4, rowPaddingY: 14 }
+  }
+  if (maxPerDay <= 6 && totalEvents <= 35) {
+    return { eventFontSize: 19, lineHeight: 1.15, eventGap: 3, rowPaddingY: 10 }
+  }
+  return { eventFontSize: 12, lineHeight: 1.05, eventGap: 1, rowPaddingY: 4 }
+}
+
 export function renderDigestEmail(events: DigestEvent[], window: { start: string; end: string }): string {
   const template = fs.readFileSync(path.join(process.cwd(), 'templates', 'weekly-digest.html'), 'utf8')
   const byDay = DAY_LABELS.map((_, i) => events.filter((e) => e.dayIndex === i))
