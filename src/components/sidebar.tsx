@@ -29,6 +29,9 @@ const nav = [
   // job (Maddie). If the entry is clutter for front-desk staff, scope it to a
   // capability later — the pages + RLS already allow staff by design.
   { href: '/content', label: 'Content', icon: '📅', roles: ['owner', 'admin', 'staff'] },
+  // Newsletter Builder — admin-only (Feature 1, 2026-07). Generates the monthly
+  // Court Reserve newsletter HTML; not a staff-facing tool.
+  { href: '/newsletter', label: 'Newsletter', icon: '✉', roles: ['owner', 'admin'] },
   { href: '/messaging', label: 'Messages', icon: '💬', roles: ['owner'] },
   { href: '/reports', label: 'Reports', icon: '📊', roles: ['owner', 'admin', 'viewer'] },
   { href: '/settings', label: 'Settings', icon: '⚙', roles: ['owner', 'admin', 'viewer'] },
