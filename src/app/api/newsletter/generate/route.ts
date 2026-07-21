@@ -66,17 +66,22 @@ const EventSchema = z.object({
   url: HttpsUrlSchema,
 })
 
-const SectionsSchema = z
-  .object(
-    Object.fromEntries(SECTION_KEYS.map((k) => [k, z.boolean()])) as Record<
-      (typeof SECTION_KEYS)[number],
-      z.ZodBoolean
-    >
-  )
-  // Older clients (or curl) that omit sections get the pre-v1.2 behavior: everything on.
-  .default(ALL_SECTIONS_ON)
+// Bare shape (no default) so it can be reused as-is in the second validation pass below,
+// where `sections` has already been resolved and is never undefined. The lenient first
+// pass applies `.default(ALL_SECTIONS_ON)` itself for older clients that omit `sections`.
+const SectionsShape = z.object(
+  Object.fromEntries(SECTION_KEYS.map((k) => [k, z.boolean()])) as Record<
+    (typeof SECTION_KEYS)[number],
+    z.ZodBoolean
+  >
+)
 
-const GenerateRequestSchema = z.object({
+// Row-level shape (LeagueSchema/EventSchema) is validated in a SECOND pass, after
+// `sections` is known — see GenerateRequestSchema below. A half-filled row in a
+// section the admin has toggled OFF is invisible in the builder UI; it must never
+// 400 the request. `leagues`/`events` are left as `unknown[]` here on purpose so
+// this first pass never inspects row shape.
+const RawGenerateRequestSchema = z.object({
   month: z
     .string()
     .refine((v) => MONTH_NAMES.includes(v.trim().toLowerCase()), {
@@ -86,16 +91,51 @@ const GenerateRequestSchema = z.object({
   notes: z.string(),
   heroTopic: z.string().min(1, 'Hero topic is required'),
   heroUrl: HttpsUrlSchema,
-  leagues: z.array(LeagueSchema).default([]),
-  events: z.array(EventSchema).default([]),
+  leagues: z.array(z.unknown()).default([]),
+  events: z.array(z.unknown()).default([]),
   /** Optional one-liner injected VERBATIM into the league section; empty removes the line. */
   leagueRegInfo: z.string().default(''),
   coachQuote: z.string().default(''),
   coachName: z.string().default(''),
   spotlightName: z.string().default(''),
   staffName: z.string().default(''),
-  sections: SectionsSchema,
+  // Older clients (or curl) that omit sections get the pre-v1.2 behavior: everything on.
+  sections: SectionsShape.default(ALL_SECTIONS_ON),
 })
+
+// Second pass: everything else was already validated above (re-declared here, not
+// re-invented, so `.pipe()` gives the final type its real shape instead of falling
+// back to a passthrough index signature) — only `leagues`/`events` get row-shape
+// validation, and only after the OFF-section arrays were dropped by the transform.
+// `sections` is always defined by this point (the first pass already applied its
+// default), so this reuses the bare SectionsShape rather than the `.default()`-wrapped
+// version to keep the piped input/output types aligned.
+const ValidatedGenerateRequestSchema = z.object({
+  month: z.string(),
+  year: z.number().int(),
+  notes: z.string(),
+  heroTopic: z.string(),
+  heroUrl: HttpsUrlSchema,
+  leagues: z.array(LeagueSchema),
+  events: z.array(EventSchema),
+  leagueRegInfo: z.string(),
+  coachQuote: z.string(),
+  coachName: z.string(),
+  spotlightName: z.string(),
+  staffName: z.string(),
+  sections: SectionsShape,
+})
+
+// Two-step validation: parse `sections` first (defaults/shape unchanged above), then
+// drop `leagues`/`events` entirely when their section is OFF, THEN validate row shape.
+// This mirrors the generate route's own excise-before-inject ordering (see
+// `assembleNewsletter`) at the request-validation layer, so a half-filled row hidden
+// behind an OFF toggle can never 400 the request.
+export const GenerateRequestSchema = RawGenerateRequestSchema.transform((body) => ({
+  ...body,
+  leagues: body.sections.LEAGUES ? body.leagues : [],
+  events: body.sections.EVENTS ? body.events : [],
+})).pipe(ValidatedGenerateRequestSchema)
 
 type GenerateRequest = z.infer<typeof GenerateRequestSchema>
 

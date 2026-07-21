@@ -199,6 +199,27 @@ describe('assembleNewsletter', () => {
     expect(html).not.toContain('{{')
   })
 
+  it('blocks on a literal MISSING: string from the model in an ON section (excise-before-inject safety net)', () => {
+    const sections = ALL_SECTIONS_ON
+    const slots = { ...slotsFor(sections), COACH_QUOTE: 'MISSING: coach quote' }
+    const { qa } = assembleNewsletter(baseInput(sections, 'x'), slots)
+    expect(qa.errors.length).toBeGreaterThan(0)
+    expect(qa.errors.some((e) => e.includes('MISSING: coach quote'))).toBe(true)
+  })
+
+  it('never sees a MISSING: string for a section that is OFF — the model was never asked for that slot', () => {
+    const sections = toggles({ COACH_QUOTE: false })
+    // Even if a caller mistakenly stuffed a MISSING: value into modelSlots for an OFF
+    // section, buildSlotSchema never asked the model for COACH_QUOTE, and the excise
+    // step removes the COACH_QUOTE region before injection — the errant slot is never
+    // read at all. slotsFor() reflects the real dynamic schema (COACH_QUOTE absent).
+    const slots = { ...slotsFor(sections), COACH_QUOTE: 'MISSING: coach quote' }
+    const { qa, html } = assembleNewsletter(baseInput(sections, 'x'), slots)
+    expect(qa.errors).toHaveLength(0)
+    expect(html).not.toContain('MISSING:')
+    expect(html).not.toContain("Coach's Corner")
+  })
+
   it('still assembles a valid core-only newsletter with every toggleable section off', () => {
     const allOff = Object.fromEntries(SECTION_KEYS.map((k) => [k, false])) as SectionToggles
     const { html, qa } = assembleNewsletter(baseInput(allOff), slotsFor(allOff))

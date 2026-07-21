@@ -330,13 +330,19 @@ export function NewsletterBuilder({ isAdmin }: NewsletterBuilderProps) {
           heroTopic,
           heroUrl,
           // Strip the client-only fromCr/crEventId/stale tracking fields — the
-          // generate contract is unchanged by CR prefill.
-          leagues: leagues
-            .filter((l) => l.name.trim() || l.detail.trim() || l.url.trim())
-            .map(({ name, detail, url }) => ({ name, detail, url })),
-          events: events
-            .filter((e) => e.name.trim() || e.detail.trim() || e.url.trim() || e.day.trim())
-            .map(({ day, mon, name, detail, url }) => ({ day, mon, name, detail, url })),
+          // generate contract is unchanged by CR prefill. Belt-and-braces: omit rows
+          // entirely when their section is OFF, so a half-filled hidden row never
+          // reaches the server (the route validates this too, defensively).
+          leagues: sections.LEAGUES
+            ? leagues
+                .filter((l) => l.name.trim() || l.detail.trim() || l.url.trim())
+                .map(({ name, detail, url }) => ({ name, detail, url }))
+            : [],
+          events: sections.EVENTS
+            ? events
+                .filter((e) => e.name.trim() || e.detail.trim() || e.url.trim() || e.day.trim())
+                .map(({ day, mon, name, detail, url }) => ({ day, mon, name, detail, url }))
+            : [],
           leagueRegInfo,
           coachQuote,
           coachName,
