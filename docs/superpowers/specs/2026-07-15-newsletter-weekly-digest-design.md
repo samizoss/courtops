@@ -106,26 +106,35 @@ HARD RULES:
 ```
 
 ### Slot schema (the model's contract)
+
+> **v1.2 (2026-07-21):** the schema is now built DYNAMICALLY per request — sections are
+> toggleable (`sections` map in the request), OFF sections are excised from the template
+> before the model call, and only ON-section slots appear in the zod schema. The system
+> prompt gains one dynamic line listing OFF sections. `LEAGUE_REG_DATES` is no longer a
+> model slot — it's an optional admin-typed line injected verbatim (or its template line
+> removed when empty). The global member/daily reg-open fields were removed.
+> Always-on slots: PREHEADER, HERO_*, GLANCE_ITEMS, SIGNOFF_TEXT.
+
 ```
-PREHEADER            string, 40–100 chars
-HERO_HEADLINE        string, ≤6 words
-HERO_VALUE_LINE      string, 1–2 sentences
-HERO_CTA             string, ≤4 words
-HERO_IMAGE_SUGGESTION string, short photo direction, URL-encodable
-HERO_IMAGE_ALT       string
-GLANCE_ITEMS         html — •-separated lines with dates
-LEAGUE_INTRO         string, one line
-LEAGUE_REG_DATES     string, member + daily player windows
-CLINIC_CONTENT       html
-ANNOUNCEMENT_BLOCKS  html — h3+p pairs; inline styles only
-COMMUNITY_IMAGE_SUGGESTION / COMMUNITY_IMAGE_ALT  string
-SPOTLIGHT_NAME       string   SPOTLIGHT_TEXT  string, 3–4 sentences
-STAFF_NAME           string   STAFF_TEXT      string, 2–3 sentences
-COACH_QUOTE          string   COACH_NAME      string
-AHEAD_ITEMS          html
-SIGNOFF_TEXT         string, 1–2 sentences
+PREHEADER            string, 40–100 chars                      (always)
+HERO_HEADLINE        string, ≤6 words                          (always)
+HERO_VALUE_LINE      string, 1–2 sentences                     (always)
+HERO_CTA             string, ≤4 words                          (always)
+HERO_IMAGE_SUGGESTION string, short photo direction, URL-encodable (always)
+HERO_IMAGE_ALT       string                                    (always)
+GLANCE_ITEMS         html — •-separated lines with dates       (always)
+LEAGUE_INTRO         string, one line                          (LEAGUES on)
+CLINIC_CONTENT       html                                      (CLINICS on)
+ANNOUNCEMENT_BLOCKS  html — h3+p pairs; inline styles only     (ANNOUNCEMENTS on)
+COMMUNITY_IMAGE_SUGGESTION / COMMUNITY_IMAGE_ALT  string       (COMMUNITY_IMAGE on)
+SPOTLIGHT_NAME       string   SPOTLIGHT_TEXT  string, 3–4 sentences (SPOTLIGHT on)
+STAFF_NAME           string   STAFF_TEXT      string, 2–3 sentences (STAFF on)
+COACH_QUOTE          string   COACH_NAME      string           (COACH_QUOTE on)
+AHEAD_ITEMS          html                                      (AHEAD on)
+SIGNOFF_TEXT         string, 1–2 sentences                     (always)
 ```
-HERO_URL, LEAGUE rows, EVENT rows come from the structured fields, not the model.
+HERO_URL, LEAGUE rows, EVENT rows come from the structured fields, not the model
+(pre-fillable from Court Reserve with include/exclude, since v1.1/PR #67).
 Code builds LEAGUE_ROWS / EVENT_ROWS by repeating the marked blocks in the skeleton.
 
 ### QA gate — pure code, runs after injection, blocks Copy on failure
